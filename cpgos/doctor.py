@@ -76,7 +76,8 @@ def check_node() -> Check:
     except ValueError:
         ok = False
     return Check("Node.js 20.9+ (UI only)", ok, raw or "unknown version",
-                 "upgrade Node to 20.9 or newer for make web", critical=False)
+                 "make web switches automatically if nvm is installed; else: cd web && nvm install",
+                 critical=False)
 
 
 def check_docker() -> Check:

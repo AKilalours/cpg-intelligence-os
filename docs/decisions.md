@@ -192,3 +192,16 @@ reading page `searchParams` asynchronously. Verified: 0 npm vulnerabilities,
 build, and all six pages served with real data. CI now fails on high or
 critical advisories, Dependabot opens weekly update PRs, and `make doctor`
 checks the Node version.
+
+## 28. The project declares its Node version, and checks it first
+After the Next.js 16 upgrade, `make web` on the Mac ran `npm install` under
+Node 18.20.8 (end of life since April 2025) and then failed inside Next.js.
+Root cause: the upgrade raised the Node requirement without checking the
+machine it runs on, and `make web` never checked Node before installing.
+
+Fix: `web/.nvmrc` pins Node 22 (the version the build was verified on);
+`scripts/serve.sh` checks Node before `npm install` and, when nvm is
+installed, switches to the pinned version automatically (installing it once);
+otherwise it stops with the exact fix. CI reads the same `.nvmrc`, so CI,
+the sandbox, and the Mac run the same Node. Tests simulate Node 18 with and
+without nvm and assert that npm is never run on an unsupported Node.

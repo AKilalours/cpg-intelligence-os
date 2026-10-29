@@ -106,7 +106,8 @@ separately.
 
 ## Quick start
 
-Requirements: Python 3.10+, Docker (Colima or Docker Desktop), Node 20+ for the UI.
+Requirements: Python 3.10+, Docker (Colima or Docker Desktop), and for the UI Node 22
+(pinned in `web/.nvmrc`; `make web` switches to it automatically if nvm is installed).
 Run each line on its own; every command checks its prerequisites and says what to fix.
 
 ```bash

@@ -96,3 +96,49 @@ def test_serve_refuses_a_busy_port_instead_of_drifting():
         s.close()
     assert r.returncode == 1
     assert f"port {port} is already in use" in r.stderr and "CPGOS_WEB_PORT" in r.stderr
+
+
+def _fake_bin(tmp_path, node_version):
+    """A PATH where node/npm/npx are fakes; npm records whether it was called."""
+    bin_dir = tmp_path / f"bin_{node_version}"
+    bin_dir.mkdir()
+    (bin_dir / "node").write_text(f"#!/bin/sh\necho v{node_version}\n")
+    (bin_dir / "npm").write_text(f"#!/bin/sh\ntouch {tmp_path}/npm_was_called\n")
+    (bin_dir / "npx").write_text("#!/bin/sh\necho next-dev-started\n")
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    return bin_dir
+
+
+def _free_port():
+    import socket
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close()
+    return p
+
+
+def _serve_web(tmp_path, path_dirs, home):
+    env = {**os.environ, "PATH": ":".join([*map(str, path_dirs), "/usr/bin", "/bin"]),
+           "HOME": str(home), "CPGOS_WEB_PORT": str(_free_port())}
+    env.pop("NVM_DIR", None)
+    return subprocess.run(["bash", str(config.REPO_ROOT / "scripts" / "serve.sh"), "web"],
+                          capture_output=True, text=True, env=env, timeout=30)
+
+
+def test_old_node_without_nvm_stops_before_npm_install(tmp_path):
+    # Regression: Node 18 ran npm install for Next 16, then failed inside Next.
+    r = _serve_web(tmp_path, [_fake_bin(tmp_path, "18.20.8")], home=tmp_path)
+    assert r.returncode == 1
+    assert "needs Node.js 20.9 or newer; found v18.20.8" in r.stderr and "nvm install" in r.stderr
+    assert not (tmp_path / "npm_was_called").exists()
+
+
+def test_old_node_with_nvm_switches_automatically(tmp_path):
+    old, new = _fake_bin(tmp_path, "18.20.8"), _fake_bin(tmp_path, "22.11.0")
+    nvm_dir = tmp_path / ".nvm"
+    nvm_dir.mkdir()
+    # Fake nvm: `nvm use` puts the Node 22 bin first on PATH, as real nvm does.
+    (nvm_dir / "nvm.sh").write_text(f'nvm() {{ [ "$1" = use ] && export PATH="{new}:$PATH"; return 0; }}\n')
+    r = _serve_web(tmp_path, [old], home=tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert "Switching to Node 22 with nvm" in r.stdout and "Using Node v22.11.0" in r.stdout
+    assert "next-dev-started" in r.stdout
