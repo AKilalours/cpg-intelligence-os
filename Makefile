@@ -7,7 +7,7 @@ PY     := $(VENV)/bin/python
 DATASET ?= m5
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon load-fatura test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -56,6 +56,9 @@ reconcile: $(PY)  ## Cash application + deduction validation, written by the eng
 
 eval-recon: $(PY)  ## Replay both engines, score against the hidden answer key, store the report
 	$(PY) scripts/finance.py evaluate
+
+load-fatura: $(PY)  ## Register FATURA invoices and write their answer key (after make download DATASET=fatura)
+	$(PY) scripts/documents.py load-fatura
 
 test: $(PY)  ## Run the backend tests (needs a reachable Postgres)
 	$(PY) -m pytest

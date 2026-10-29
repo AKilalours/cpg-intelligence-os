@@ -270,3 +270,23 @@ would always be zero, so the API measures deadlines from `world_clock`.
 scores them against `eval.*`, and stores the result in `eval.report` with the
 code version and world. The UI reads the stored report, so opening a page can
 never run an engine or recompute against the answer key.
+
+## 38. One normaliser for answers and predictions
+FATURA stores "Invoice Date: 04-May-2007" as the answer. Comparing raw strings
+would mark "2007-05-04" wrong. Gold and every extractor's output go through
+the same typed normaliser (dates, exact decimals, currency codes, ids), and
+it refuses ambiguous input (03/04/2008) instead of guessing.
+
+## 39. FATURA's official unseen split is used once
+Its dev and test lists are the same 10 layouts. Tuning on dev and reporting
+test would report a tuned score as unseen. They form one holdout scored once;
+calibration uses 8 of the 40 training layouts, held out from fitting.
+
+## 40. Layout answers never sit where the engine can read them
+`source_document.layout_cluster` is readable by the engine role. The true
+layout id is kept in `eval.doc_meta`, so the layout router is scored, not told.
+
+## 41. Do not score checks a dataset cannot support
+FATURA's totals do not add up (8 of 5,597) and its dates are random. The
+arithmetic check is evaluated on data where totals are real, and FATURA's
+results say so, instead of penalising correct reads.
