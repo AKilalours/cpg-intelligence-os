@@ -71,7 +71,16 @@ function Body({ data }: { data: Overview }) {
                 {data.recent_runs.map((r) => (
                   <tr key={r.run_id}>
                     <td>{r.dataset_key}</td>
-                    <td>{r.file_name}</td>
+                    <td>
+                      {r.file_name}
+                      {r.scope.partial ? (
+                        <div className="text-xs text-muted">
+                          {"Partial load" +
+                            (r.scope.stores ? `: ${r.scope.stores.join(", ")}` : "") +
+                            (r.scope.limit_series ? `, first ${count(r.scope.limit_series)} series` : "")}
+                        </div>
+                      ) : null}
+                    </td>
                     <td>{r.data_origin.replace(/_/g, " ")}</td>
                     <td>
                       <Status value={r.status} />

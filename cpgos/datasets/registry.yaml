@@ -19,16 +19,22 @@ datasets:
     title: M5 Forecasting (Walmart)
     modules: [forecasting]
     origin: real
-    method: kaggle
-    kaggle_competition: m5-forecasting-accuracy
+    method: http
+    url: https://github.com/Nixtla/m5-forecasts/raw/main/datasets/m5.zip
+    archive: zip
     files: [calendar.csv, sell_prices.csv, sales_train_evaluation.csv]
+    kaggle_competition: m5-forecasting-accuracy
     landing_page: https://www.kaggle.com/competitions/m5-forecasting-accuracy
     license: Kaggle competition rules
     license_verified: false
     notes: >
-      ~30k intermittent item-store daily series with weekly prices and calendar events.
-      Has NO promotion flag; any promo signal derived from price drops must be stored
-      with promo_flag_source='derived_price_drop'.
+      Downloaded from a copy of the Kaggle M5 release hosted on GitHub by Nixtla (used by their
+      datasetsforecast library). The copy is reformatted: calendar.csv has no `d` column and the
+      sales file has no `id` column; the loader handles both layouts. Verified on the full data:
+      30,490 series, 1,969 calendar days, 6,841,121 price rows, matching the official release.
+      Values were not cross-checked cell by cell against Kaggle's own files. To use Kaggle directly,
+      download with the Kaggle CLI into data/raw/m5/. M5 has NO promotion flag; any promo signal
+      derived from price drops must be stored with promo_flag_source='derived_price_drop'.
 
   favorita:
     title: Corporacion Favorita Grocery Sales Forecasting

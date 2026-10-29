@@ -48,6 +48,7 @@ class IngestionRun(BaseModel):
     rows_loaded: int | None
     rows_quarantined: int | None
     failure_reason: str | None
+    scope: dict
     started_at: datetime
     finished_at: datetime | None
 
@@ -95,6 +96,7 @@ class SalesPoint(BaseModel):
 class SalesSeries(BaseModel):
     sku_code: str
     store: str
+    granularity: str
     data_origin: str
     points: list[SalesPoint]
 
@@ -102,6 +104,7 @@ class SalesSeries(BaseModel):
 class SeriesKey(BaseModel):
     sku_code: str
     store: str
+    granularity: str
     category: str | None
     observations: int
     total_units: Decimal

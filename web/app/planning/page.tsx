@@ -36,10 +36,13 @@ export default async function PlanningPage({ searchParams }: { searchParams: Sea
           <Section title={pick ? `${pick.sku} at ${pick.store}` : "Series"}>
             {series && series.ok ? (
               <>
-                <Sparkline values={series.data.points.map((p) => p.units)} />
+                <Sparkline
+                  values={series.data.points.map((p) => p.units)}
+                  label={series.data.granularity === "week" ? "Weekly units" : "Daily units"}
+                />
                 <p className="mt-2 text-sm text-muted">
-                  {`${count(series.data.points.length)} days of daily units, data origin: ${series.data.data_origin.replace(/_/g, " ")}. `}
-                  Days before the item was first priced are excluded.
+                  {`${count(series.data.points.length)} ${series.data.granularity === "week" ? "weeks" : "days"} of units sold, data origin: ${series.data.data_origin.replace(/_/g, " ")}. `}
+                  Periods before the item was first priced are excluded.
                 </p>
               </>
             ) : series ? (

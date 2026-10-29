@@ -29,7 +29,7 @@ def test_overview_on_empty_db_is_zero_not_fake(client):
 
 
 def test_overview_reflects_loaded_rows(client, conn):
-    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture")
+    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture", pg_granularity="day", parquet_root=None)
     load_deduction_codes(conn)
     partner = conn.execute("SELECT partner_id FROM trading_partner WHERE name='KeHE'").fetchone()[0]
     conn.execute(
@@ -45,13 +45,14 @@ def test_overview_reflects_loaded_rows(client, conn):
     assert body["coverage"]["sales_observations"] == 13
     assert body["coverage"]["real_dataset_versions"] == 1  # only the KeHE table is real here
     assert body["recent_runs"][0]["data_origin"] == "test_fixture"
+    assert body["recent_runs"][0]["scope"] == {"partial": False}
 
     ded = client.get("/api/deductions").json()[0]
     assert ded["code"] == "WP" and ded["code_family"] == "promotion" and ded["days_to_deadline"] == 5
 
 
 def test_sales_series_and_404(client, conn):
-    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture")
+    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture", pg_granularity="day", parquet_root=None)
     keys = client.get("/api/sales/series-keys").json()
     assert {k["sku_code"] for k in keys} == {"HOBBIES_1_001", "FOODS_3_090"}
     series = client.get("/api/sales/series", params={"sku_code": "FOODS_3_090", "store": "CA_1"}).json()
@@ -79,6 +80,20 @@ def test_bad_query_params_rejected(client):
 
 
 def test_fixture_loads_never_count_as_real_versions(client, conn):
-    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture")
+    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture", pg_granularity="day", parquet_root=None)
     rows = {d["key"]: d for d in client.get("/api/datasets").json()}
     assert rows["m5"]["versions_loaded"] == 0
+
+
+def test_daily_and_weekly_rows_are_never_mixed(client, conn):
+    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture", pg_granularity="day", parquet_root=None)
+    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture", pg_granularity="week", parquet_root=None)
+    day = {k["sku_code"]: k["total_units"] for k in client.get("/api/sales/series-keys").json()}
+    week = {k["sku_code"]: k["total_units"] for k in client.get("/api/sales/series-keys", params={"granularity": "week"}).json()}
+    assert day == week == {"FOODS_3_090": "15.000", "HOBBIES_1_001": "7.000"}  # not doubled
+    s = client.get("/api/sales/series", params={"sku_code": "HOBBIES_1_001", "store": "CA_1", "granularity": "week"}).json()
+    assert s["granularity"] == "week" and len(s["points"]) == 2
+
+
+def test_empty_sales_returns_no_keys(client):
+    assert client.get("/api/sales/series-keys").json() == []

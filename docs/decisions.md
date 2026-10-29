@@ -74,3 +74,55 @@ than sample numbers. Modules that do not exist yet say which phase builds them.
 Test fixtures share dataset keys with the real data they imitate. The API
 excludes `test_fixture` rows when reporting loaded versions; a test enforces it
 after an early build showed fixture loads as "3 versions loaded" for M5.
+
+# Phase 1c: real-scale M5
+
+## 15. Daily data in Parquet, weekly totals in Postgres
+Real M5 is 46.9M daily rows after pre-launch filtering. Postgres is the system
+of record for the ledger, not an analytics store. Daily rows go to Parquet
+(partitioned by store, read with DuckDB for forecasting); Postgres gets weekly
+totals (6.7M rows) for the app. Both come from one validated pass, and the
+totals are checked to agree (66,927,173 units in both).
+
+## 16. Memory is bounded by design, then measured
+Two out-of-memory failures on real data shaped the loader:
+1. DuckDB TEMP tables are memory-resident; work tables are now ordinary tables
+   in a disk-backed scratch file, so they spill.
+2. Scanning the 1,946-column wide file inside DuckDB exceeded 1 GB. The wide
+   file is now reshaped in Python one line at a time, so memory holds one line.
+Measured: 1.07 to 1.21 GB peak per store load with a 1 GB DuckDB limit,
+flat across all 10 stores.
+
+## 17. Read each source exactly once
+A subset load once dropped about a third of its series: the sales file was a
+view read twice, and with parallel reads the two reads returned different rows.
+The file is now read once, and the loader enforces an invariant (every series
+read appears in the output with every day) that fails the run if violated.
+
+## 18. Large-file checks are SQL, and must agree with the Python contract
+Row-by-row Python validation is too slow for 47M rows. The same rules are
+expressed as SQL; a test damages a fixture four ways and asserts both
+validators quarantine exactly the same rows for the same reasons.
+
+## 19. Partial loads are labeled partial
+Every ingestion run records its scope (`{"partial": true, "stores": [...]}`),
+and the UI shows it. A one-store load can never pass for a full load.
+
+## 20. Test output can never reach real data folders
+A test once wrote fixture Parquet into data/processed/m5, where forecasting
+would later read it as real data. Output paths now include the data origin,
+the loader refuses to write fixtures under the real folder, and every test run
+redirects that folder to a temporary one.
+
+## 21. A source copy is verified, not trusted
+M5 is downloaded from a GitHub-hosted copy of the Kaggle release. That copy is
+reformatted (no `d` or `id` columns), so the loader supports both layouts and
+derives day labels only after verifying the calendar dates are consecutive.
+Row counts match the official release; cell values were not cross-checked
+against Kaggle's own files, and the registry says so.
+
+## 22. LLM tiers for Phase 2 (decided, not yet built)
+Document extraction will cascade: rules and OCR, then a local open model via
+Ollama, then Claude Sonnet 5.5 only for low-confidence fields and unseen
+layouts. All models sit behind one interface so the Evaluation Lab, not
+preference, decides what each tier uses.

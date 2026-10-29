@@ -25,6 +25,13 @@ def _url_for(dbname: str) -> str:
     return f"{base}/{dbname}" + (f"?{query}" if query else "")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_processed_data(tmp_path, monkeypatch):
+    """No test may write into the real data/processed folder."""
+    import cpgos.ingest.m5 as m5mod
+    monkeypatch.setattr(m5mod, "PROCESSED_ROOT", tmp_path / "isolated_processed" / "m5")
+
+
 @pytest.fixture(scope="session")
 def template_db():
     name = f"cpgos_tmpl_{uuid.uuid4().hex[:8]}"

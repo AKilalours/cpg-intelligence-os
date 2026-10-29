@@ -19,7 +19,7 @@ forecasting and promotion analytics.
 
 | Phase | Scope | State |
 |---|---|---|
-| 1 | Data foundation and product shell | Done (real data loads pending downloads) |
+| 1 | Data foundation and product shell | **Done**, verified on full real M5 |
 | 2 | Document AI and reconciliation | Not started |
 | 3 | Agentic investigation | Not started |
 | 4 | Evaluation and production controls | Not started |
@@ -38,7 +38,8 @@ forecasting and promotion analytics.
   records; only the reviewer role can change decision statuses.
 - **Exact money arithmetic** with no-lost-cent allocation.
 - **Data contracts** with row quarantine and batch rejection on format drift.
-- **Real M5 loader** (staging + COPY, idempotent, provenance-preserving).
+- **Real M5 loader** that streams 46.9M rows within a fixed memory budget:
+  daily rows to Parquet, weekly totals to Postgres, idempotent, provenance-preserving.
 - **Published KeHE deduction codes** with a source link per row.
 - **Read-only API** (FastAPI) over the schema: overview, datasets, ingestion
   runs, deductions, sales series. Money is returned as exact decimal strings.
@@ -48,6 +49,40 @@ forecasting and promotion analytics.
 - **Tests against a real Postgres** plus web type checks and build, run in CI.
 
 See [`docs/decisions.md`](docs/decisions.md) for the reasoning behind each choice.
+
+## Phase 1 results (measured)
+
+The full M5 dataset was loaded store by store in a 4-core, 3.9 GB Linux sandbox
+with DuckDB capped at 1 GB, then recounted by independent code:
+
+| Check | Series | Daily rows after pre-launch filter | Units |
+|---|---|---|---|
+| Independent Python recount | 30,490 | 46,881,677 | 66,927,173 |
+| Parquet output (daily) | 30,490 | 46,881,677 | 66,927,173 |
+| Postgres output (weekly, 6,719,161 rows) | 30,490 | | 66,927,173 |
+
+- Rows quarantined: 0. Pre-launch days excluded: 12,299,413 (30,490 series x 1,941 days, minus loaded rows).
+- Per-store load time: 35 to 46 seconds. Peak memory: 1.07 to 1.21 GB, flat across stores.
+- Verified file fingerprints (SHA-256) for the M5 files used:
+  - `calendar.csv` `568d0fe5f41790142379698732908e4e57432c1c6396f3f59fb880a9c2b54231`
+  - `sell_prices.csv` `5c7cf045b1abbdc8d5007809c40b3682c5216075937f93e2cef01caddc4a30d9`
+  - `sales_train_evaluation.csv` `c21a519596680feb86f27a9e62f6c8b583f8be60c2c195f080ae8ca2990af2b7`
+
+Bugs found by running on real data, each with a regression test, are written up
+in [`docs/decisions.md`](docs/decisions.md) (entries 14, 16, 17, 20).
+
+### Phase 1 release checklist
+
+| Check | Status |
+|---|---|
+| Every stored value traces to a source file version and loader code version | Done |
+| Bad rows quarantined with reasons; format changes reject the batch | Done |
+| Partial loads labeled partial everywhere | Done |
+| Test data cannot be counted or stored as real data | Done, with tests |
+| Ledger cannot be changed by the agent role (database-enforced) | Done, with tests |
+| No hardcoded metrics in the UI | Done |
+| CI runs backend tests, web type check, and web build | Done |
+| Full real dataset processed within a fixed memory budget | Done (M5) |
 
 ## Data
 
@@ -79,8 +114,11 @@ python -m cpgos.db                       # apply migrations
 
 python scripts/download_data.py --list   # datasets and license status
 echo "m5: true" >> data/license_acceptance.yaml   # only after reading the terms
-python scripts/download_data.py m5       # needs Kaggle CLI + joined competition
+python scripts/download_data.py m5       # ~50 MB download, extracts the 3 files used
+python scripts/load_data.py m5           # all 10 stores: daily -> Parquet, weekly -> Postgres
 ```
+
+The full M5 load writes a temporary file of about 2.5 GB while it runs.
 
 Run the API and the UI (two terminals):
 
@@ -99,7 +137,5 @@ pytest
 ## Limitations (current)
 
 - No models or agents yet; the UI marks which phase builds each module.
-- The M5 loader holds one file in memory; a streaming version is needed before
-  loading all ~30k series on a small machine.
 - Several dataset licenses are flagged `license_verified: false` in the registry
   and must be read before use.

@@ -16,6 +16,7 @@ export interface IngestionRun {
   rows_loaded: number | null;
   rows_quarantined: number | null;
   failure_reason: string | null;
+  scope: { partial: boolean; stores?: string[]; limit_series?: number };
   started_at: string;
   finished_at: string | null;
 }
@@ -69,6 +70,7 @@ export interface Deduction {
 export interface SeriesKey {
   sku_code: string;
   store: string;
+  granularity: "day" | "week";
   category: string | null;
   observations: number;
   total_units: Decimal;
@@ -77,6 +79,7 @@ export interface SeriesKey {
 export interface SalesSeries {
   sku_code: string;
   store: string;
+  granularity: "day" | "week";
   data_origin: string;
   points: {
     obs_date: string;

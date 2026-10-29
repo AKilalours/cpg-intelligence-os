@@ -81,7 +81,7 @@ def _runs(conn: psycopg.Connection, limit: int) -> list[s.IngestionRun]:
     rows = conn.execute(
         """SELECT r.run_id, d.dataset_key, d.file_name, d.data_origin, r.contract_name,
                   r.contract_version, r.code_version, r.status, r.rows_in, r.rows_loaded,
-                  r.rows_quarantined, r.failure_reason, r.started_at, r.finished_at
+                  r.rows_quarantined, r.failure_reason, r.scope, r.started_at, r.finished_at
            FROM ingestion_run r JOIN dataset_version d USING (dataset_version_id)
            ORDER BY r.started_at DESC, r.run_id DESC LIMIT %s""",
         (limit,),
@@ -144,16 +144,41 @@ def deductions(
     return [s.Deduction(**r) for r in rows]
 
 
+GRANULARITY = Query(None, pattern="^(day|week)$")
+
+
+def _granularity(conn: psycopg.Connection, requested: str | None) -> str | None:
+    """Never mix daily and weekly rows in one answer: that would double-count units.
+
+    When not requested, use the finest granularity present.
+    """
+    if requested:
+        return requested
+    row = conn.execute(
+        """SELECT granularity FROM sales_observation GROUP BY granularity
+           ORDER BY (granularity = 'day') DESC LIMIT 1"""
+    ).fetchone()
+    return row["granularity"] if row else None
+
+
 @app.get("/api/sales/series-keys", response_model=list[s.SeriesKey])
-def series_keys(limit: int = Query(50, ge=1, le=500), conn: psycopg.Connection = Depends(get_conn)):
+def series_keys(
+    limit: int = Query(50, ge=1, le=500),
+    granularity: str | None = GRANULARITY,
+    conn: psycopg.Connection = Depends(get_conn),
+):
+    g = _granularity(conn, granularity)
+    if g is None:
+        return []
     rows = conn.execute(
-        """SELECT p.sku_code, st.external_code AS store, p.category,
+        """SELECT p.sku_code, st.external_code AS store, o.granularity, p.category,
                   count(*) AS observations, sum(o.units) AS total_units
            FROM sales_observation o
            JOIN product p USING (sku_id) JOIN store st USING (store_id)
-           GROUP BY p.sku_code, st.external_code, p.category
+           WHERE o.granularity = %s
+           GROUP BY p.sku_code, st.external_code, o.granularity, p.category
            ORDER BY total_units DESC LIMIT %s""",
-        (limit,),
+        (g, limit),
     ).fetchall()
     return [s.SeriesKey(**r) for r in rows]
 
@@ -162,22 +187,24 @@ def series_keys(limit: int = Query(50, ge=1, le=500), conn: psycopg.Connection =
 def sales_series(
     sku_code: str = Query(..., max_length=64),
     store: str = Query(..., max_length=32),
+    granularity: str | None = GRANULARITY,
     conn: psycopg.Connection = Depends(get_conn),
 ):
+    g = _granularity(conn, granularity)
     rows = conn.execute(
         """SELECT o.obs_date, o.units, o.shelf_price, o.promo_flag, o.promo_flag_source, d.data_origin
            FROM sales_observation o
            JOIN product p USING (sku_id) JOIN store st USING (store_id)
            JOIN dataset_version d USING (dataset_version_id)
-           WHERE p.sku_code = %s AND st.external_code = %s
+           WHERE p.sku_code = %s AND st.external_code = %s AND o.granularity = %s
            ORDER BY o.obs_date""",
-        (sku_code, store),
+        (sku_code, store, g),
     ).fetchall()
     if not rows:
-        raise HTTPException(404, f"No sales for {sku_code} at {store}")
+        raise HTTPException(404, f"No {g or ''} sales for {sku_code} at {store}".replace("  ", " "))
     origins = {r["data_origin"] for r in rows}
     return s.SalesSeries(
-        sku_code=sku_code, store=store,
+        sku_code=sku_code, store=store, granularity=g,
         data_origin=next(iter(origins)) if len(origins) == 1 else "mixed",
         points=[s.SalesPoint(**r) for r in rows],  # extra keys are ignored
     )

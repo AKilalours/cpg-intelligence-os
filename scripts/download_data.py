@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -38,7 +39,25 @@ def fetch_http(spec) -> list[Path]:
         with urllib.request.urlopen(url, timeout=60) as r, tmp.open("wb") as f:
             shutil.copyfileobj(r, f)
         tmp.rename(dest)  # atomic: a half-downloaded file never looks complete
-    return [dest]
+    if spec.raw.get("archive") != "zip":
+        return [dest]
+    # Extract only the files the project uses, each atomically.
+    wanted = spec.raw.get("files")
+    out = [dest]
+    with zipfile.ZipFile(dest) as z:
+        names = wanted or [n for n in z.namelist() if not n.endswith("/")]
+        missing = [n for n in names if n not in z.namelist()]
+        if missing:
+            raise RuntimeError(f"archive is missing expected files: {missing}")
+        for n in names:
+            target = spec.raw_dir / Path(n).name
+            if not target.exists():
+                part = target.with_suffix(target.suffix + ".part")
+                with z.open(n) as src, part.open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                part.rename(target)
+            out.append(target)
+    return out
 
 
 def fetch_kaggle(spec) -> list[Path]:
