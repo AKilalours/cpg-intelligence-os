@@ -19,7 +19,7 @@ forecasting and promotion analytics.
 
 | Phase | Scope | State |
 |---|---|---|
-| 1 | Data foundation and product shell | Data foundation done, shell in progress |
+| 1 | Data foundation and product shell | Done (real data loads pending downloads) |
 | 2 | Document AI and reconciliation | Not started |
 | 3 | Agentic investigation | Not started |
 | 4 | Evaluation and production controls | Not started |
@@ -40,7 +40,12 @@ forecasting and promotion analytics.
 - **Data contracts** with row quarantine and batch rejection on format drift.
 - **Real M5 loader** (staging + COPY, idempotent, provenance-preserving).
 - **Published KeHE deduction codes** with a source link per row.
-- **Tests against a real Postgres**, run in CI.
+- **Read-only API** (FastAPI) over the schema: overview, datasets, ingestion
+  runs, deductions, sales series. Money is returned as exact decimal strings.
+- **Product shell** (Next.js) with the six sections of the plan: Overview,
+  Documents, Finance, Planning, AI Investigation, Evaluation Lab. Every number is
+  computed from the database; empty states say exactly what to load.
+- **Tests against a real Postgres** plus web type checks and build, run in CI.
 
 See [`docs/decisions.md`](docs/decisions.md) for the reasoning behind each choice.
 
@@ -77,6 +82,13 @@ echo "m5: true" >> data/license_acceptance.yaml   # only after reading the terms
 python scripts/download_data.py m5       # needs Kaggle CLI + joined competition
 ```
 
+Run the API and the UI (two terminals):
+
+```bash
+uvicorn cpgos.api.app:app --port 8000
+cd web && npm install && npm run dev      # http://localhost:3000
+```
+
 Tests:
 
 ```bash
@@ -86,7 +98,7 @@ pytest
 
 ## Limitations (current)
 
-- No UI, models, or agents yet; this phase is the foundation they depend on.
+- No models or agents yet; the UI marks which phase builds each module.
 - The M5 loader holds one file in memory; a streaming version is needed before
   loading all ~30k series on a small machine.
 - Several dataset licenses are flagged `license_verified: false` in the registry

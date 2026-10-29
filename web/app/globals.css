@@ -1,0 +1,54 @@
+@import "@fontsource/public-sans/400.css";
+@import "@fontsource/public-sans/600.css";
+@import "@fontsource/barlow-condensed/600.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  background: #F2F4F0;
+  color: #1C2B3A;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Ledger paper: tables sit on green column rules, like an accounting pad. */
+.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.ledger th {
+  text-align: left;
+  font-weight: 600;
+  color: #5D6B64;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid #C9D8C6;
+}
+.ledger td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid #C9D8C6;
+  vertical-align: top;
+}
+.ledger td + td,
+.ledger th + th {
+  border-left: 1px solid #C9D8C6;
+}
+.ledger .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid #1C2B3A;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

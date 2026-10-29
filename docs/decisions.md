@@ -51,3 +51,26 @@ it, so a reviewer can always see what the system believed at the time.
 Each applied migration's SHA-256 is recorded; editing one after it ran stops
 the runner. Plain SQL files instead of an ORM migration tool keep the schema
 readable in review.
+
+# Phase 1b: product shell
+
+## 11. The API is read-only by construction
+Every request runs inside `SET TRANSACTION READ ONLY`, so even a buggy query
+cannot write (`tests/test_api.py::test_api_connection_is_read_only`). Writes
+will go through separate, explicitly permissioned endpoints when they exist.
+
+## 12. Money never becomes a float, end to end
+The API serializes Decimal as a string ("514.80"). The UI formats that string
+by regrouping digits as text, never parsing it into a JavaScript number.
+The only exception is chart drawing, where values are used for pixel positions
+and never displayed.
+
+## 13. No placeholder metrics
+Every figure on screen is computed from database rows at request time. With
+no data loaded, the UI shows zeros and the exact command to load data, rather
+than sample numbers. Modules that do not exist yet say which phase builds them.
+
+## 14. Fixtures never count as real data
+Test fixtures share dataset keys with the real data they imitate. The API
+excludes `test_fixture` rows when reporting loaded versions; a test enforces it
+after an early build showed fixture loads as "3 versions loaded" for M5.
