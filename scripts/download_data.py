@@ -20,6 +20,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from cpgos.preflight import require_packages  # noqa: E402  (stdlib only)
+
+require_packages({"yaml": "pyyaml"})
+
 from cpgos.datasets.registry import (  # noqa: E402
     LicenseNotAcceptedError,
     load_registry,

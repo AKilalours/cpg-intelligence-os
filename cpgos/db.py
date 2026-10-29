@@ -8,11 +8,12 @@ already ran, the runner refuses to continue instead of silently drifting.
 from __future__ import annotations
 
 import hashlib
-import os
 import subprocess
 from pathlib import Path
 
 import psycopg
+
+from cpgos import config
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "db" / "migrations"
 
@@ -22,9 +23,12 @@ class MigrationDriftError(RuntimeError):
 
 
 def database_url() -> str:
-    url = os.environ.get("CPGOS_DATABASE_URL")
+    url = config.get("CPGOS_DATABASE_URL")
     if not url:
-        raise RuntimeError("Set CPGOS_DATABASE_URL, e.g. postgresql://cpgos:...@localhost:5432/cpgos")
+        raise RuntimeError(
+            "CPGOS_DATABASE_URL is not set. Run `make setup` (creates .env from .env.example) "
+            "or export it in your shell."
+        )
     return url
 
 

@@ -16,6 +16,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 
+from cpgos import config
 from cpgos.api import schemas as s
 from cpgos.datasets.registry import ACCEPT_PATH, load_registry
 
@@ -29,9 +30,9 @@ app.add_middleware(
 
 
 def get_conn() -> Iterator[psycopg.Connection]:
-    url = os.environ.get("CPGOS_DATABASE_URL")
+    url = config.get("CPGOS_DATABASE_URL")
     if not url:
-        raise HTTPException(503, "CPGOS_DATABASE_URL is not set")
+        raise HTTPException(503, "CPGOS_DATABASE_URL is not set; run `make setup` to create .env")
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION READ ONLY")
         yield conn

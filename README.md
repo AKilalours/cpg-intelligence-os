@@ -106,33 +106,35 @@ separately.
 
 ## Quick start
 
-```bash
-docker compose up -d
-pip install -e ".[dev]"
-export CPGOS_DATABASE_URL=postgresql://cpgos:cpgos_local_only@localhost:5432/cpgos
-python -m cpgos.db                       # apply migrations
+Requirements: Python 3.10+, Docker (Colima or Docker Desktop), Node 20+ for the UI.
+Run each line on its own; every command checks its prerequisites and says what to fix.
 
-python scripts/download_data.py --list   # datasets and license status
-echo "m5: true" >> data/license_acceptance.yaml   # only after reading the terms
-python scripts/download_data.py m5       # ~50 MB download, extracts the 3 files used
-python scripts/load_data.py m5           # all 10 stores: daily -> Parquet, weekly -> Postgres
+```bash
+make setup        # creates .venv, installs packages, creates .env
+make db           # starts Docker (Colima) if stopped, starts Postgres, applies migrations
+make doctor       # checks everything and prints the exact fix for anything missing
+```
+
+Load real M5 (after reading the Kaggle terms):
+
+```bash
+echo "m5: true" >> data/license_acceptance.yaml
+make download DATASET=m5    # ~50 MB, extracts the 3 files used
+make load-m5                # all 10 stores: daily -> Parquet, weekly -> Postgres
 ```
 
 The full M5 load writes a temporary file of about 2.5 GB while it runs.
 
-Run the API and the UI (two terminals):
+Run the app (two terminals) and the tests:
 
 ```bash
-uvicorn cpgos.api.app:app --port 8000
-cd web && npm install && npm run dev      # http://localhost:3000
+make api          # http://localhost:8000
+make web          # http://localhost:3000
+make test
 ```
 
-Tests:
-
-```bash
-export CPGOS_TEST_ADMIN_URL=postgresql://cpgos:cpgos_local_only@localhost:5432/postgres
-pytest
-```
+All Python commands run through the project's own `.venv`, so a conda or system
+Python in your shell can't be picked up by accident. `make help` lists everything.
 
 ## Limitations (current)
 

@@ -18,6 +18,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from cpgos.preflight import require_packages  # noqa: E402  (stdlib only)
+
+require_packages()  # clear message instead of an import traceback when run with the wrong Python
+
 from cpgos.datasets.registry import LicenseNotAcceptedError, load_registry, pin_or_verify, require_license_accepted  # noqa: E402
 from cpgos.db import connect, migrate  # noqa: E402
 

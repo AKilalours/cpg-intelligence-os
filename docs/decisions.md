@@ -126,3 +126,22 @@ Document extraction will cascade: rules and OCR, then a local open model via
 Ollama, then Claude Sonnet 5.5 only for low-confidence fields and unseen
 layouts. All models sit behind one interface so the Evaluation Lab, not
 preference, decides what each tier uses.
+
+# Setup reliability
+
+## 23. One entry point, one interpreter, self-diagnosing
+The first real setup on a Mac failed twice: Docker's engine (Colima) was
+stopped, and because setup steps were chained with `&&`, the virtual
+environment was never created. The next commands then ran with conda's base
+Python, which lacked psycopg, and crashed with an import traceback.
+
+Root cause: setup depended on five manual steps run in order, with the right
+Python, Docker already running, and a variable exported in the same terminal.
+
+Fix: a Makefile is the single entry point and always uses `.venv/bin/python`;
+`make db` starts Colima or Docker Desktop if needed, checks the port is free,
+and waits until Postgres is ready; the database address lives in `.env`
+(created by `make setup`, real environment variables still win); scripts check
+their packages before importing them and print the interpreter and the fix;
+`make doctor` checks every prerequisite. A test runs a script under a Python
+missing psycopg and asserts a plain message with the fix, not a traceback.

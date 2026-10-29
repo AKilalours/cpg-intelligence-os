@@ -13,9 +13,27 @@ from pathlib import Path
 import psycopg
 import pytest
 
+from cpgos import config
 from cpgos.db import migrate
 
-ADMIN_URL = os.environ.get("CPGOS_TEST_ADMIN_URL", "postgresql://postgres@/postgres?host=/tmp")
+def _admin_url() -> str:
+    """Where tests create throwaway databases.
+
+    Priority: CPGOS_TEST_ADMIN_URL, else the project database server from
+    CPGOS_DATABASE_URL (.env) with the maintenance database `postgres`.
+    Tests never touch the project database itself, only temporary ones.
+    """
+    explicit = config.get("CPGOS_TEST_ADMIN_URL")
+    if explicit:
+        return explicit
+    url = config.get("CPGOS_DATABASE_URL")
+    if url:
+        base, _, query = url.partition("?")
+        return base.rsplit("/", 1)[0] + "/postgres" + (f"?{query}" if query else "")
+    return "postgresql://postgres@/postgres?host=/tmp"
+
+
+ADMIN_URL = _admin_url()
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
