@@ -128,10 +128,14 @@ Each store writes a temporary file of about 250 MB while it loads.
 Run the app (two terminals) and the tests:
 
 ```bash
-make api          # http://localhost:8000
-make web          # http://localhost:3000
+make api          # http://localhost:8100/api/health
+make web          # http://localhost:3100
 make test
 ```
+
+Ports default to 3100 (UI) and 8100 (API) because 3000 and 8000 are often taken,
+for example by Grafana. Change them in `.env` (`CPGOS_WEB_PORT`, `CPGOS_API_PORT`);
+`make web` and `make api` refuse to start on a busy port and name the program using it.
 
 All Python commands run through the project's own `.venv`, so a conda or system
 Python in your shell can't be picked up by accident. `make help` lists everything.

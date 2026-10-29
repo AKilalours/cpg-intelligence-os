@@ -23,7 +23,8 @@ from cpgos.datasets.registry import ACCEPT_PATH, load_registry
 app = FastAPI(title="CPG Intelligence OS API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CPGOS_CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=(config.get("CPGOS_CORS_ORIGINS")
+                   or f"http://localhost:{config.get('CPGOS_WEB_PORT', '3100')}").split(","),
     allow_methods=["GET"],
     allow_headers=["*"],
 )

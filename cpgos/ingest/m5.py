@@ -79,7 +79,7 @@ list_filter([
     CASE WHEN cat_id IS NULL OR cat_id NOT IN ('HOBBIES', 'HOUSEHOLD', 'FOODS') THEN 'cat_id: not in allowed set' END,
     CASE WHEN store_id IS NULL OR NOT regexp_full_match(store_id, '[A-Z]{2}_[0-9]+') THEN 'store_id: bad format' END,
     CASE WHEN state_id IS NULL OR state_id NOT IN ('CA', 'TX', 'WI') THEN 'state_id: not in allowed set' END
-], x -> x IS NOT NULL)
+], lambda x: x IS NOT NULL)
 """
 
 

@@ -10,6 +10,7 @@ import argparse
 import importlib.util
 import os
 import shutil
+import socket
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -96,6 +97,31 @@ def check_postgres() -> Check:
     return Check("Postgres reachable", True, f"connected; {applied}/{total} migrations applied")
 
 
+def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
+
+def _port_owner(port: int) -> str:
+    r = _run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-Fc"], timeout=5)
+    if r is None or r.returncode != 0:
+        return ""
+    names = [line[1:] for line in r.stdout.splitlines() if line.startswith("c")]
+    return names[0] if names else ""
+
+
+def check_port(label: str, env_key: str, default: int) -> Check:
+    """Informational: a busy port is fine if it's our own server already running."""
+    port = int(config.get(env_key, str(default)))
+    if not port_in_use(port):
+        return Check(f"{label} port {port}", True, "free", critical=False)
+    owner = _port_owner(port)
+    return Check(f"{label} port {port}", False, f"in use{f' by {owner!r}' if owner else ''}",
+                 f"fine if that's this project's {label.lower()}; otherwise stop it or set {env_key} in .env",
+                 critical=False)
+
+
 def check_datasets() -> list[Check]:
     if importlib.util.find_spec("yaml") is None:
         return [Check("Datasets", False, "can't read registry: pyyaml not installed", "make setup", critical=False)]
@@ -121,7 +147,9 @@ def check_datasets() -> list[Check]:
 
 def run_checks() -> list[Check]:
     return [check_python(), check_project_env(), check_packages(), check_env_file(),
-            check_docker(), check_postgres(), *check_datasets()]
+            check_docker(), check_postgres(),
+            check_port("API", "CPGOS_API_PORT", 8100), check_port("UI", "CPGOS_WEB_PORT", 3100),
+            *check_datasets()]
 
 
 def main(argv: list[str] | None = None) -> int:

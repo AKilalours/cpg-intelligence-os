@@ -169,7 +169,7 @@ def test_parquet_output_is_complete_and_written_once(conn, tmp_path):
     out = tmp_path / "pq"
     files = list(out.rglob("*.parquet"))
     assert files and all("store_id=CA_1" in str(f) and "/test_fixture/" in str(f) for f in files)
-    n, units = duckdb.sql(f"SELECT count(*), sum(units) FROM read_parquet('{out}/**/*.parquet')").fetchone()
+    (n, units), = duckdb.sql(f"SELECT count(*), sum(units) FROM read_parquet('{out}/**/*.parquet')").fetchall()
     assert (n, units) == (13, 22)
     mtimes = {f: f.stat().st_mtime_ns for f in files}
     _load(conn, parquet_root=tmp_path / "pq", pg_granularity="none")

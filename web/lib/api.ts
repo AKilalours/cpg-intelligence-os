@@ -1,6 +1,6 @@
 import "server-only";
 
-const BASE = process.env.CPGOS_API_URL ?? "http://127.0.0.1:8000";
+const BASE = process.env.CPGOS_API_URL ?? "http://127.0.0.1:8100";
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -16,7 +16,7 @@ export async function api<T>(path: string): Promise<ApiResult<T>> {
   } catch {
     return {
       ok: false,
-      error: `Can't reach the API at ${BASE}. Start it with: uvicorn cpgos.api.app:app --port 8000`,
+      error: `Can't reach the API at ${BASE}. Start it with: make api`,
     };
   }
 }

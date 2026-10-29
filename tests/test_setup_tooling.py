@@ -64,3 +64,35 @@ def test_doctor_runs_and_returns_exit_code(capsys, monkeypatch):
     code = doctor.main(["--core"])
     out = capsys.readouterr().out
     assert code == 1 and "Postgres reachable" in out and "-> make db" in out
+
+
+def _listener():
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    s.listen()
+    return s, s.getsockname()[1]
+
+
+def test_doctor_flags_a_busy_port(monkeypatch):
+    s, port = _listener()
+    try:
+        monkeypatch.setenv("CPGOS_WEB_PORT", str(port))
+        c = doctor.check_port("UI", "CPGOS_WEB_PORT", 3100)
+        assert not c.ok and "in use" in c.detail and "CPGOS_WEB_PORT" in c.fix
+    finally:
+        s.close()
+    assert doctor.check_port("UI", "CPGOS_WEB_PORT", 3100).ok  # free again
+
+
+def test_serve_refuses_a_busy_port_instead_of_drifting():
+    # Regression: Next.js moved from 3000 to 3001 silently; port 3000 was Grafana.
+    s, port = _listener()
+    try:
+        env = {**os.environ, "CPGOS_WEB_PORT": str(port)}
+        r = subprocess.run(["bash", str(config.REPO_ROOT / "scripts" / "serve.sh"), "web"],
+                           capture_output=True, text=True, env=env, timeout=20)
+    finally:
+        s.close()
+    assert r.returncode == 1
+    assert f"port {port} is already in use" in r.stderr and "CPGOS_WEB_PORT" in r.stderr

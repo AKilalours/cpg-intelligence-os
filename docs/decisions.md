@@ -158,3 +158,24 @@ left its run marked "running" forever, and two loads could run at once.
 Interrupts now mark the run failed with a reason; a per-dataset advisory lock
 allows one load at a time, and because of that lock the next load can safely
 mark any leftover "running" record as interrupted. Each has a test.
+
+## 25. Exact dependency versions, tested on the oldest and newest Python
+DuckDB 2.0.0 (Python 3.11+ only) removed the `x -> ...` lambda syntax the
+loader used. Development ran on Python 3.10, which can only install DuckDB
+1.5.6, so the break was invisible locally while CI and the Mac (Python 3.12)
+failed: a "works on my machine" bug caused by unpinned dependencies plus
+testing on a different Python than users run.
+
+Fixes: the SQL uses `lambda x: ...` (verified to need DuckDB 1.3+: 1.2.2
+rejects it, 1.3.0 accepts it); `requirements.lock` pins exact versions with
+per-Python markers (DuckDB 1.5.6 on 3.10, 2.0.0 on 3.11+) and is what
+`make setup` and CI install; CI runs the suite on Python 3.10 and 3.12; a
+weekly CI job installs the newest releases so the next break shows up as a
+warning before it reaches anyone. One real M5 store was re-loaded on DuckDB
+2.0.0 and matched the earlier verified counts exactly.
+
+## 26. Dedicated ports, and refuse a busy port instead of drifting
+Opening the UI at localhost:3000 showed Grafana: another program already held
+port 3000, and Next.js silently moved to 3001. Defaults are now 3100 (UI) and
+8100 (API), configurable in `.env`; `make web` and `make api` refuse to start
+on a busy port and name the program holding it; `make doctor` reports both.
