@@ -45,7 +45,7 @@ def test_overview_reflects_loaded_rows(client, conn):
     assert body["coverage"]["sales_observations"] == 13
     assert body["coverage"]["real_dataset_versions"] == 1  # only the KeHE table is real here
     assert body["recent_runs"][0]["data_origin"] == "test_fixture"
-    assert body["recent_runs"][0]["scope"] == {"partial": False}
+    assert body["recent_runs"][0]["scope"] == {"partial": False, "pg_granularity": "day"}
 
     ded = client.get("/api/deductions").json()[0]
     assert ded["code"] == "WP" and ded["code_family"] == "promotion" and ded["days_to_deadline"] == 5

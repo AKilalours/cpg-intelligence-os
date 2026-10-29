@@ -120,10 +120,10 @@ Load real M5 (after reading the Kaggle terms):
 ```bash
 echo "m5: true" >> data/license_acceptance.yaml
 make download DATASET=m5    # ~50 MB, extracts the 3 files used
-make load-m5                # all 10 stores: daily -> Parquet, weekly -> Postgres
+make load-m5                # one store at a time (~40s each); re-run resumes where it stopped
 ```
 
-The full M5 load writes a temporary file of about 2.5 GB while it runs.
+Each store writes a temporary file of about 250 MB while it loads.
 
 Run the app (two terminals) and the tests:
 

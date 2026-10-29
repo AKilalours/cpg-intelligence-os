@@ -145,3 +145,16 @@ and waits until Postgres is ready; the database address lives in `.env`
 their packages before importing them and print the interpreter and the fix;
 `make doctor` checks every prerequisite. A test runs a script under a Python
 missing psycopg and asserts a plain message with the fix, not a traceback.
+
+## 24. Load in partitions by default; never leave a run "running"
+The first full single-pass M5 load on a Mac showed no progress after 9
+minutes. Store-by-store loading was the configuration actually verified
+(about 40 s and 1.1 GB per store), so it is now the default: memory is
+bounded by one store, not the whole dataset, and a re-run skips stores
+already loaded from the same file (matched by SHA-256 and granularity).
+
+While fixing this, two gaps were closed: an interrupted load (Ctrl+C, crash)
+left its run marked "running" forever, and two loads could run at once.
+Interrupts now mark the run failed with a reason; a per-dataset advisory lock
+allows one load at a time, and because of that lock the next load can safely
+mark any leftover "running" record as interrupted. Each has a test.

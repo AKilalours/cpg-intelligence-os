@@ -16,7 +16,13 @@ export interface IngestionRun {
   rows_loaded: number | null;
   rows_quarantined: number | null;
   failure_reason: string | null;
-  scope: { partial: boolean; stores?: string[]; limit_series?: number };
+  scope: {
+    partial: boolean;
+    stores?: string[];
+    limit_series?: number;
+    batch?: { id: string; part: number; of: number };
+    pg_granularity?: string;
+  };
   started_at: string;
   finished_at: string | null;
 }

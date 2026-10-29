@@ -75,7 +75,7 @@ function Body({ data }: { data: Overview }) {
                       {r.file_name}
                       {r.scope.partial ? (
                         <div className="text-xs text-muted">
-                          {"Partial load" +
+                          {(r.scope.batch ? `Part ${r.scope.batch.part} of ${r.scope.batch.of}` : "Partial load") +
                             (r.scope.stores ? `: ${r.scope.stores.join(", ")}` : "") +
                             (r.scope.limit_series ? `, first ${count(r.scope.limit_series)} series` : "")}
                         </div>

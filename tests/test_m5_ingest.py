@@ -220,7 +220,8 @@ def test_scope_marks_partial_and_full_loads(conn):
     _load(conn, stores=["CA_1"])
     _load(conn)
     scopes = [r[0] for r in conn.execute("SELECT scope FROM ingestion_run ORDER BY run_id")]
-    assert scopes == [{"partial": True, "stores": ["CA_1"]}, {"partial": False}]
+    assert scopes == [{"partial": True, "stores": ["CA_1"], "pg_granularity": "day"},
+                      {"partial": False, "pg_granularity": "day"}]
 
 
 def test_store_filter_rejects_unknown_codes_and_empty_slices(conn):

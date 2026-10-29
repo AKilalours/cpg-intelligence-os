@@ -265,6 +265,7 @@ def load_m5(
     license_: str = "Kaggle competition rules",
     limit_series: int | None = None,
     stores: list[str] | None = None,
+    batch: dict | None = None,
     pg_granularity: str = "week",
     parquet_root: Path | None = PROCESSED_ROOT,
     memory_limit: str = "1GB",
@@ -292,125 +293,264 @@ def load_m5(
             scope["stores"] = sorted(stores)
         if limit_series is not None:
             scope["limit_series"] = int(limit_series)
+        if batch:
+            scope["batch"] = batch
+        scope["pg_granularity"] = pg_granularity
         run_id = conn.execute(
             """INSERT INTO ingestion_run (dataset_version_id, contract_name, contract_version, code_version, status, scope)
                VALUES (%s, %s, %s, %s, 'running', %s) RETURNING run_id""",
             (ver, M5_SALES_CONTRACT.name, M5_SALES_CONTRACT.version, code_version(), Jsonb(scope)),
         ).fetchone()[0]
 
-    with tempfile.TemporaryDirectory(prefix="cpgos_m5_") as tmp:
-        tmpdir = Path(tmp)
-        db = duckdb.connect(str(tmpdir / "work.duckdb"))
-        # Ordinary (not TEMP) tables in this file-backed scratch database can spill
-        # to disk; DuckDB TEMP tables are memory-resident and ran out of memory on real M5.
-        db.execute(f"SET memory_limit = '{memory_limit}'")
-        db.execute(f"SET threads = {int(threads)}")
-        db.execute(f"SET temp_directory = {_q(tmpdir / 'spill')}")
-        db.execute("SET preserve_insertion_order = false")
-        try:
-            fmt = _prepare(db, cal_p, price_p, sales_p, limit_series, stores, tmpdir)
-        except M5FormatError as exc:
-            _finish(conn, run_id, "rejected", 0, 0, 0, str(exc))
-            db.close()
-            return LoadReport(run_id, "rejected", 0, 0, 0, 0, str(exc))
-        except M5IntegrityError as exc:
-            _finish(conn, run_id, "failed", 0, 0, 0, str(exc))
-            db.close()
-            raise
+    try:
+        with tempfile.TemporaryDirectory(prefix="cpgos_m5_") as tmp:
+            tmpdir = Path(tmp)
+            db = duckdb.connect(str(tmpdir / "work.duckdb"))
+            # Ordinary (not TEMP) tables in this file-backed scratch database can spill
+            # to disk; DuckDB TEMP tables are memory-resident and ran out of memory on real M5.
+            db.execute(f"SET memory_limit = '{memory_limit}'")
+            db.execute(f"SET threads = {int(threads)}")
+            db.execute(f"SET temp_directory = {_q(tmpdir / 'spill')}")
+            db.execute("SET preserve_insertion_order = false")
+            try:
+                fmt = _prepare(db, cal_p, price_p, sales_p, limit_series, stores, tmpdir)
+            except M5FormatError as exc:
+                _finish(conn, run_id, "rejected", 0, 0, 0, str(exc))
+                db.close()
+                return LoadReport(run_id, "rejected", 0, 0, 0, 0, str(exc))
+            except M5IntegrityError as exc:
+                _finish(conn, run_id, "failed", 0, 0, 0, str(exc))
+                db.close()
+                raise
 
-        total_rows = db.execute("SELECT count(*) FROM long_t").fetchone()[0]
-        rows_in, n_bad = db.execute("SELECT count(*), count(*) FILTER (WHERE len(violations) > 0) FROM checked").fetchone()
-        skipped = total_rows - rows_in
-        bad_sample = db.execute(
-            """SELECT row_number() OVER (ORDER BY store_id, item_id, obs_date) AS rn,
-                      item_id, dept_id, cat_id, store_id, state_id, d, CAST(obs_date AS VARCHAR) AS obs_date,
-                      units_raw AS units, sell_price_raw AS sell_price, violations
-               FROM checked WHERE len(violations) > 0
-               ORDER BY store_id, item_id, obs_date LIMIT ?""",
-            [QUARANTINE_STORE_CAP],
-        ).fetchall()
-        notes = [] if n_bad <= QUARANTINE_STORE_CAP else [
-            f"{n_bad} rows failed checks; first {QUARANTINE_STORE_CAP} stored as evidence"]
+            total_rows = db.execute("SELECT count(*) FROM long_t").fetchone()[0]
+            rows_in, n_bad = db.execute("SELECT count(*), count(*) FILTER (WHERE len(violations) > 0) FROM checked").fetchone()
+            skipped = total_rows - rows_in
+            bad_sample = db.execute(
+                """SELECT row_number() OVER (ORDER BY store_id, item_id, obs_date) AS rn,
+                          item_id, dept_id, cat_id, store_id, state_id, d, CAST(obs_date AS VARCHAR) AS obs_date,
+                          units_raw AS units, sell_price_raw AS sell_price, violations
+                   FROM checked WHERE len(violations) > 0
+                   ORDER BY store_id, item_id, obs_date LIMIT ?""",
+                [QUARANTINE_STORE_CAP],
+            ).fetchall()
+            notes = [] if n_bad <= QUARANTINE_STORE_CAP else [
+                f"{n_bad} rows failed checks; first {QUARANTINE_STORE_CAP} stored as evidence"]
 
-        def store_quarantine() -> None:
-            for rn, *vals, violations in bad_sample:
-                keys = ["item_id", "dept_id", "cat_id", "store_id", "state_id", "d", "obs_date", "units", "sell_price"]
-                conn.execute(
-                    "INSERT INTO quarantined_row (run_id, row_number, raw, violations) VALUES (%s, %s, %s, %s)",
-                    (run_id, rn, Jsonb(dict(zip(keys, vals))), Jsonb(list(violations))),
+            def store_quarantine() -> None:
+                for rn, *vals, violations in bad_sample:
+                    keys = ["item_id", "dept_id", "cat_id", "store_id", "state_id", "d", "obs_date", "units", "sell_price"]
+                    conn.execute(
+                        "INSERT INTO quarantined_row (run_id, row_number, raw, violations) VALUES (%s, %s, %s, %s)",
+                        (run_id, rn, Jsonb(dict(zip(keys, vals))), Jsonb(list(violations))),
+                    )
+
+            rate_ok = rows_in > 0 and n_bad / rows_in <= M5_SALES_CONTRACT.max_quarantine_rate
+            if not rate_ok:
+                reason = (
+                    "no rows after pre-launch filtering" if rows_in == 0 else
+                    f"quarantine rate {n_bad / rows_in:.1%} exceeds {M5_SALES_CONTRACT.max_quarantine_rate:.1%}; "
+                    "likely a source format change, batch rejected"
                 )
+                with conn.transaction():
+                    store_quarantine()
+                _finish(conn, run_id, "rejected", rows_in, 0, n_bad, reason)
+                db.close()
+                return LoadReport(run_id, "rejected", rows_in, 0, n_bad, skipped, reason, fmt, pg_granularity, notes=notes)
 
-        rate_ok = rows_in > 0 and n_bad / rows_in <= M5_SALES_CONTRACT.max_quarantine_rate
-        if not rate_ok:
-            reason = (
-                "no rows after pre-launch filtering" if rows_in == 0 else
-                f"quarantine rate {n_bad / rows_in:.1%} exceeds {M5_SALES_CONTRACT.max_quarantine_rate:.1%}; "
-                "likely a source format change, batch rejected"
+            db.execute(
+                """CREATE TABLE clean AS
+                   SELECT obs_date, wk, item_id, dept_id, cat_id, store_id, state_id,
+                          CAST(trim(units_raw) AS BIGINT) AS units,
+                          CAST(trim(sell_price_raw) AS DECIMAL(14,4)) AS sell_price
+                   FROM checked WHERE len(violations) = 0"""
             )
-            with conn.transaction():
-                store_quarantine()
-            _finish(conn, run_id, "rejected", rows_in, 0, n_bad, reason)
-            db.close()
-            return LoadReport(run_id, "rejected", rows_in, 0, n_bad, skipped, reason, fmt, pg_granularity, notes=notes)
 
-        db.execute(
-            """CREATE TABLE clean AS
-               SELECT obs_date, wk, item_id, dept_id, cat_id, store_id, state_id,
-                      CAST(trim(units_raw) AS BIGINT) AS units,
-                      CAST(trim(sell_price_raw) AS DECIMAL(14,4)) AS sell_price
-               FROM checked WHERE len(violations) = 0"""
-        )
+            parquet_path, parquet_rows = None, 0
+            if parquet_root is not None:
+                # Origin is part of the path, so fixture or generated data can never
+                # land in the folder that forecasting reads real data from.
+                out = parquet_root / origin / sha256_file(sales_p)[:16]
+                loaded_stores = [r[0] for r in db.execute("SELECT DISTINCT store_id FROM clean ORDER BY 1").fetchall()]
+                todo = [st for st in loaded_stores if not (out / f"_SUCCESS_{st}").exists()]
+                if todo:
+                    out.mkdir(parents=True, exist_ok=True)
+                    in_list = ", ".join(f"'{st}'" for st in todo)
+                    db.execute(
+                        f"""COPY (SELECT obs_date, item_id, dept_id, cat_id, store_id, state_id, units, sell_price
+                                  FROM clean WHERE store_id IN ({in_list}) ORDER BY store_id, item_id, obs_date)
+                            TO {_q(out)} (FORMAT parquet, PARTITION_BY (store_id), OVERWRITE_OR_IGNORE true)"""
+                    )
+                    for st in todo:
+                        (out / f"_SUCCESS_{st}").write_text(f"dataset_version_id={ver}\n")
+                parquet_path = str(out)
+                parquet_rows = db.execute("SELECT count(*) FROM clean").fetchone()[0]
 
-        parquet_path, parquet_rows = None, 0
-        if parquet_root is not None:
-            # Origin is part of the path, so fixture or generated data can never
-            # land in the folder that forecasting reads real data from.
-            out = parquet_root / origin / sha256_file(sales_p)[:16]
-            loaded_stores = [r[0] for r in db.execute("SELECT DISTINCT store_id FROM clean ORDER BY 1").fetchall()]
-            todo = [st for st in loaded_stores if not (out / f"_SUCCESS_{st}").exists()]
-            if todo:
-                out.mkdir(parents=True, exist_ok=True)
-                in_list = ", ".join(f"'{st}'" for st in todo)
+            stage_csv = tmpdir / "stage.csv"
+            if pg_granularity == "day":
                 db.execute(
-                    f"""COPY (SELECT obs_date, item_id, dept_id, cat_id, store_id, state_id, units, sell_price
-                              FROM clean WHERE store_id IN ({in_list}) ORDER BY store_id, item_id, obs_date)
-                        TO {_q(out)} (FORMAT parquet, PARTITION_BY (store_id), OVERWRITE_OR_IGNORE true)"""
+                    f"""COPY (SELECT obs_date, item_id, dept_id, cat_id, store_id, state_id, units, sell_price FROM clean)
+                        TO {_q(stage_csv)} (FORMAT csv, HEADER false)"""
                 )
-                for st in todo:
-                    (out / f"_SUCCESS_{st}").write_text(f"dataset_version_id={ver}\n")
-            parquet_path = str(out)
-            parquet_rows = db.execute("SELECT count(*) FROM clean").fetchone()[0]
+            elif pg_granularity == "week":
+                # Week rows are dated by the first calendar day of the Walmart week,
+                # so every series' weeks line up regardless of launch day.
+                db.execute(
+                    f"""COPY (
+                          SELECT ws.week_start AS obs_date, item_id, dept_id, cat_id, store_id, state_id,
+                                 sum(units) AS units, max(sell_price) AS sell_price
+                          FROM clean JOIN (SELECT wk, min(obs_date) AS week_start FROM cal GROUP BY wk) ws USING (wk)
+                          GROUP BY ALL)
+                        TO {_q(stage_csv)} (FORMAT csv, HEADER false)"""
+                )
+            db.close()
 
-        stage_csv = tmpdir / "stage.csv"
-        if pg_granularity == "day":
-            db.execute(
-                f"""COPY (SELECT obs_date, item_id, dept_id, cat_id, store_id, state_id, units, sell_price FROM clean)
-                    TO {_q(stage_csv)} (FORMAT csv, HEADER false)"""
-            )
-        elif pg_granularity == "week":
-            # Week rows are dated by the first calendar day of the Walmart week,
-            # so every series' weeks line up regardless of launch day.
-            db.execute(
-                f"""COPY (
-                      SELECT ws.week_start AS obs_date, item_id, dept_id, cat_id, store_id, state_id,
-                             sum(units) AS units, max(sell_price) AS sell_price
-                      FROM clean JOIN (SELECT wk, min(obs_date) AS week_start FROM cal GROUP BY wk) ws USING (wk)
-                      GROUP BY ALL)
-                    TO {_q(stage_csv)} (FORMAT csv, HEADER false)"""
-            )
-        db.close()
+            try:
+                with conn.transaction():
+                    store_quarantine()
+                    loaded = 0 if pg_granularity == "none" else _write_postgres(conn, stage_csv, ver, pg_granularity)
+                    _finish(conn, run_id, "succeeded", rows_in, loaded, n_bad, None, in_tx=True)
+            except Exception as exc:
+                _finish(conn, run_id, "failed", rows_in, 0, n_bad, f"{type(exc).__name__}: {exc}")
+                raise
 
+        return LoadReport(run_id, "succeeded", rows_in, loaded, n_bad, skipped, None, fmt, pg_granularity,
+                          parquet_path, parquet_rows, notes)
+    except BaseException as exc:
+        # Ctrl+C, a crash, or a lost connection must never leave the run saying
+        # "running" forever. Best effort here; if this connection is unusable,
+        # the next load (holding the dataset lock) marks the run interrupted.
+        _mark_failed_if_running(conn, run_id, exc)
+        raise
+
+
+def _mark_failed_if_running(conn: psycopg.Connection, run_id: int, exc: BaseException) -> None:
+    reason = ("interrupted" if isinstance(exc, (KeyboardInterrupt, SystemExit))
+              else f"{type(exc).__name__}: {str(exc)[:500]}")
+    try:
+        conn.execute(
+            "UPDATE ingestion_run SET status='failed', failure_reason=%s, finished_at=now() "
+            "WHERE run_id=%s AND status='running'",
+            (reason, run_id),
+        )
+    except Exception:  # noqa: BLE001 - connection may be broken; stale-run cleanup covers it
+        pass
+
+
+def mark_stale_runs(conn: psycopg.Connection, dataset_key: str) -> int:
+    """Mark runs left 'running' by a killed process as failed.
+
+    Only safe while holding the dataset's load lock (see dataset_lock), because
+    then no other load of this dataset can be in progress.
+    """
+    cur = conn.execute(
+        """UPDATE ingestion_run r SET status='failed', finished_at=now(),
+                  failure_reason='interrupted (process ended without finishing; found by a later load)'
+           FROM dataset_version d
+           WHERE r.dataset_version_id = d.dataset_version_id
+             AND d.dataset_key = %s AND r.status = 'running'""",
+        (dataset_key,),
+    )
+    return cur.rowcount
+
+
+class LoadInProgressError(RuntimeError):
+    pass
+
+
+def dataset_lock(conn: psycopg.Connection, dataset_key: str):
+    """Session-level advisory lock: one load per dataset at a time."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _lock():
+        got = conn.execute("SELECT pg_try_advisory_lock(hashtext(%s))", (f"cpgos:load:{dataset_key}",)).fetchone()[0]
+        if not got:
+            raise LoadInProgressError(f"another {dataset_key} load is already running against this database")
         try:
-            with conn.transaction():
-                store_quarantine()
-                loaded = 0 if pg_granularity == "none" else _write_postgres(conn, stage_csv, ver, pg_granularity)
-                _finish(conn, run_id, "succeeded", rows_in, loaded, n_bad, None, in_tx=True)
-        except Exception as exc:
-            _finish(conn, run_id, "failed", rows_in, 0, n_bad, f"{type(exc).__name__}: {exc}")
-            raise
+            yield
+        finally:
+            conn.execute("SELECT pg_advisory_unlock(hashtext(%s))", (f"cpgos:load:{dataset_key}",))
+    return _lock()
 
-    return LoadReport(run_id, "succeeded", rows_in, loaded, n_bad, skipped, None, fmt, pg_granularity,
-                      parquet_path, parquet_rows, notes)
+
+def discover_stores(sales_p: Path) -> list[str]:
+    """Distinct store codes in file order, reading one line at a time."""
+    seen: dict[str, None] = {}
+    with sales_p.open(newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        if header is None or "store_id" not in header:
+            raise M5FormatError("sales file is missing column 'store_id'")
+        i = header.index("store_id")
+        for row in reader:
+            if i < len(row):
+                seen.setdefault(row[i], None)
+    return list(seen)
+
+
+def _completed_stores(conn: psycopg.Connection, sales_sha: str, pg_granularity: str) -> set[str]:
+    rows = conn.execute(
+        """SELECT r.scope FROM ingestion_run r JOIN dataset_version d USING (dataset_version_id)
+           WHERE d.dataset_key = 'm5' AND d.sha256 = %s AND r.status = 'succeeded'
+             AND coalesce(r.scope->>'pg_granularity', 'week') = %s""",
+        (sales_sha, pg_granularity),
+    ).fetchall()
+    done: set[str] = set()
+    for (scope,) in rows:
+        if not scope.get("partial"):
+            return {"*"}  # a full single-pass load covers every store
+        if "limit_series" not in scope:
+            done.update(scope.get("stores", []))
+    return done
+
+
+def load_m5_by_store(
+    conn: psycopg.Connection,
+    data_dir: Path,
+    *,
+    origin: str = "real",
+    license_: str = "Kaggle competition rules",
+    stores: list[str] | None = None,
+    pg_granularity: str = "week",
+    parquet_root: Path | None = PROCESSED_ROOT,
+    memory_limit: str = "1GB",
+    threads: int = 2,
+    force: bool = False,
+    progress=print,
+) -> list[LoadReport]:
+    """Default way to load M5: one store at a time, resumable, one load at a time.
+
+    Memory is bounded by the size of one store (verified: ~1.1 GB), not by the
+    whole dataset. Stores that already loaded successfully from the same file
+    are skipped, so re-running after a failure resumes where it stopped.
+    """
+    import uuid
+
+    sales_p = data_dir / "sales_train_evaluation.csv"
+    with dataset_lock(conn, "m5"):
+        stale = mark_stale_runs(conn, "m5")
+        if stale:
+            progress(f"Marked {stale} earlier run(s) as interrupted (they never finished).")
+        targets = stores or discover_stores(sales_p)
+        done = set() if force else _completed_stores(conn, sha256_file(sales_p), pg_granularity)
+        todo = [st for st in targets if "*" not in done and st not in done]
+        if len(todo) < len(targets):
+            progress(f"Skipping {len(targets) - len(todo)} store(s) already loaded from this exact file.")
+        batch_id = uuid.uuid4().hex[:8]
+        reports: list[LoadReport] = []
+        for i, st in enumerate(todo, start=1):
+            rep = load_m5(conn, data_dir, origin=origin, license_=license_, stores=[st],
+                          batch={"id": batch_id, "part": i, "of": len(todo)},
+                          pg_granularity=pg_granularity, parquet_root=parquet_root,
+                          memory_limit=memory_limit, threads=threads)
+            reports.append(rep)
+            progress(f"[{i}/{len(todo)}] {st}: {rep.status}, {rep.rows_in:,} rows, "
+                     f"{rep.rows_quarantined:,} quarantined")
+            if rep.status != "succeeded":
+                progress(f"Stopped at {st}: {rep.failure_reason}. Re-run to resume; finished stores are skipped.")
+                break
+        return reports
 
 
 def _finish(conn, run_id, status, rows_in, loaded, quarantined, reason, in_tx=False) -> None:
