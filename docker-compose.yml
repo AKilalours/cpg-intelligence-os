@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cpgos
+      POSTGRES_PASSWORD: cpgos_local_only
+      POSTGRES_DB: cpgos
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cpgos"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

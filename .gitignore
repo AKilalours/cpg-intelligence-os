@@ -1,0 +1,11 @@
+# Raw and processed datasets are never committed (licenses + size).
+data/raw/
+data/processed/
+data/datasets.lock.json
+data/license_acceptance.yaml
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.DS_Store

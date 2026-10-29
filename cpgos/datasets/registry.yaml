@@ -1,0 +1,130 @@
+# Real open datasets used by CPG Intelligence OS.
+#
+# Rules:
+# - Raw data is never committed. scripts/download_data.py fetches it.
+# - Nothing downloads until you accept its license in data/license_acceptance.yaml.
+# - First download pins a SHA-256 in data/datasets.lock.json; later runs verify it,
+#   so a silently changed upstream file is caught instead of skewing results.
+# - license_verified: false means "read the terms yourself before use";
+#   it is a deliberate flag, not a guess dressed up as fact.
+#
+# method:
+#   http    -> direct public URL
+#   kaggle  -> needs the Kaggle CLI and a joined competition
+#   manual  -> gated (form / registration); place files in data/raw/<key>/ yourself
+#   bundled -> small reference table shipped in this repo
+
+datasets:
+  m5:
+    title: M5 Forecasting (Walmart)
+    modules: [forecasting]
+    origin: real
+    method: kaggle
+    kaggle_competition: m5-forecasting-accuracy
+    files: [calendar.csv, sell_prices.csv, sales_train_evaluation.csv]
+    landing_page: https://www.kaggle.com/competitions/m5-forecasting-accuracy
+    license: Kaggle competition rules
+    license_verified: false
+    notes: >
+      ~30k intermittent item-store daily series with weekly prices and calendar events.
+      Has NO promotion flag; any promo signal derived from price drops must be stored
+      with promo_flag_source='derived_price_drop'.
+
+  favorita:
+    title: Corporacion Favorita Grocery Sales Forecasting
+    modules: [forecasting, promotions]
+    origin: real
+    method: kaggle
+    kaggle_competition: favorita-grocery-sales-forecasting
+    landing_page: https://www.kaggle.com/competitions/favorita-grocery-sales-forecasting
+    license: Kaggle competition rules
+    license_verified: false
+    notes: Real grocery sales with an onpromotion flag. Second benchmark for cross-dataset model selection.
+
+  docile:
+    title: DocILE business documents
+    modules: [document_ai, agent_eval]
+    origin: real
+    method: manual
+    landing_page: https://docile.rossum.ai/
+    code: https://github.com/rossumai/docile
+    license: Research use via dataset access request form
+    license_verified: true
+    notes: >
+      6.7k annotated real business documents with layout cluster labels, 100k synthetic,
+      ~1M unlabeled. Test set includes zero-shot and few-shot layouts. Request access first.
+
+  fatura:
+    title: FATURA multi-layout invoices
+    modules: [document_ai]
+    origin: real_template_generated
+    method: http
+    url: https://zenodo.org/records/10371464/files/FATURA2.zip?download=1
+    landing_page: https://zenodo.org/records/10371464
+    license: See Zenodo record
+    license_verified: false
+    notes: >
+      10k invoices from 50 templates with an official unseen-template split.
+      Template-generated, so report it separately from DocILE and never call it scanned real-world mail.
+
+  cuad:
+    title: Contract Understanding Atticus Dataset
+    modules: [document_ai]
+    origin: real
+    method: manual
+    landing_page: https://github.com/TheAtticusProject/cuad
+    license: See repository
+    license_verified: false
+    notes: Real commercial contracts with clause labels. Used to test clause extraction for promotion agreements.
+
+  open_food_facts:
+    title: Open Food Facts products
+    modules: [entity_resolution]
+    origin: real
+    method: http
+    url: https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz
+    landing_page: https://world.openfoodfacts.org/data
+    license: ODbL (database), share-alike obligations apply
+    license_verified: false
+    notes: Messy real brand and product names keyed by barcode. Joined to USDA by GTIN to build ground-truth match pairs.
+
+  usda_branded_foods:
+    title: USDA FoodData Central Branded Foods
+    modules: [entity_resolution]
+    origin: real
+    method: manual
+    landing_page: https://fdc.nal.usda.gov/download-datasets/
+    license: See FoodData Central terms
+    license_verified: false
+    notes: Branded products with GTIN and brand owner. File name changes per release, so download manually.
+
+  dunnhumby_breakfast:
+    title: dunnhumby Breakfast at the Frat
+    modules: [promotions, forecasting]
+    origin: real
+    method: manual
+    landing_page: https://www.dunnhumby.com/source-files/
+    license: dunnhumby Source Files terms (registration)
+    license_verified: false
+    notes: 156 weeks of store-week sales with base vs shelf price and feature/display flags.
+
+  dunnhumby_complete_journey:
+    title: dunnhumby The Complete Journey
+    modules: [promotions]
+    origin: real
+    method: manual
+    landing_page: https://www.dunnhumby.com/source-files/
+    license: dunnhumby Source Files terms (registration)
+    license_verified: false
+    notes: Household transactions plus causal display/mailer data, campaigns and coupons.
+
+  kehe_deduction_codes:
+    title: KeHE published deduction code prefixes
+    modules: [reconciliation]
+    origin: real
+    method: bundled
+    file: cpgos/datasets/kehe_deduction_codes.csv
+    landing_page: https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+    license: Facts transcribed from public supplier documentation; source URL kept per row
+    license_verified: true
+    notes: Small reference table, hand-transcribed with per-row source links. Extend only from published sources.

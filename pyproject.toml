@@ -1,0 +1,24 @@
+[project]
+name = "cpgos"
+version = "0.1.0"
+description = "CPG Intelligence OS: evidence-grounded AI for CPG financial operations and commercial planning"
+requires-python = ">=3.10"
+dependencies = [
+  "psycopg[binary]>=3.1",
+  "pydantic>=2.6",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["cpgos*"]

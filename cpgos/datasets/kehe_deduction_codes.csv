@@ -1,0 +1,14 @@
+code,description,code_family,source_url
+IA,Invoice adjustments,adjustment,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+A,Ad,promotion,https://supplierwiki.supplypike.com/articles/kehe-deductions-and-invoice-prefixes
+AA,Albertsons ad,promotion,https://supplierwiki.supplypike.com/articles/kehe-deductions-and-invoice-prefixes
+AG,Gladson imaging,other,https://supplierwiki.supplypike.com/articles/kehe-deductions-and-invoice-prefixes
+U,Coupon,promotion,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+UH,HEB coupon,promotion,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+V,Vendor return,spoils_returns,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+VR,Vendor return,spoils_returns,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+W,Direct ship,other,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+WG,Walmart spoils,spoils_returns,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+WP,Walmart promos,promotion,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+XPP,Price protection,pricing,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
+Y,Display (DPI prefix),promotion,https://www.spscommerce.com/community/articles/kehe-deductions-and-invoice-prefixes
