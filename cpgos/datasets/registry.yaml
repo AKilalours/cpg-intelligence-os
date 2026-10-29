@@ -67,8 +67,8 @@ datasets:
     method: http
     url: https://zenodo.org/records/10371464/files/FATURA2.zip?download=1
     landing_page: https://zenodo.org/records/10371464
-    license: See Zenodo record
-    license_verified: false
+    license: CC BY 4.0 (Zenodo record 10371464, v2; FATURA2.zip, 690.7 MB, md5 4c9404462f22c5241eb1a290a02eb2a2)
+    license_verified: true
     notes: >
       10k invoices from 50 templates with an official unseen-template split.
       Template-generated, so report it separately from DocILE and never call it scanned real-world mail.
