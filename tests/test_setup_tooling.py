@@ -142,3 +142,21 @@ def test_old_node_with_nvm_switches_automatically(tmp_path):
     assert r.returncode == 0, r.stderr
     assert "Switching to Node 22 with nvm" in r.stdout and "Using Node v22.11.0" in r.stdout
     assert "next-dev-started" in r.stdout
+
+
+def test_makefile_never_depends_on_the_executable_bit():
+    # Regression: an in-place edit dropped serve.sh's executable bit and
+    # `make web` failed with "Permission denied".
+    makefile = (config.REPO_ROOT / "Makefile").read_text()
+    calls = [line.strip() for line in makefile.splitlines() if "scripts/" in line and ".sh" in line]
+    assert calls, "expected the Makefile to call shell scripts"
+    assert all(c.startswith("bash scripts/") for c in calls), calls
+
+
+def test_shell_scripts_are_tracked_as_executable():
+    r = subprocess.run(["git", "ls-files", "-s", "scripts"], capture_output=True, text=True,
+                       cwd=config.REPO_ROOT)
+    if r.returncode != 0:
+        pytest.skip("not a git checkout")
+    modes = {line.split()[-1]: line.split()[0] for line in r.stdout.splitlines() if line.endswith(".sh")}
+    assert modes and all(m == "100755" for m in modes.values()), modes

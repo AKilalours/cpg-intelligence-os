@@ -205,3 +205,11 @@ installed, switches to the pinned version automatically (installing it once);
 otherwise it stops with the exact fix. CI reads the same `.nvmrc`, so CI,
 the sandbox, and the Mac run the same Node. Tests simulate Node 18 with and
 without nvm and assert that npm is never run on an unsupported Node.
+
+## 29. Make never depends on a file's executable bit
+`make web` failed with "Permission denied": an in-place edit (`sed -i`) made
+during a test-of-the-test dropped `serve.sh`'s executable bit, and the commit
+recorded the downgrade (100755 to 100644). The Makefile now runs every script
+as `bash scripts/...`, so the bit no longer matters; a test asserts that, plus
+that every script is still tracked as executable, and the commit step refuses
+any 100755 to 100644 change.

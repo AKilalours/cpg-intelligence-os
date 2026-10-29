@@ -27,13 +27,13 @@ setup: $(PY) .env  ## Create .venv, install the exact locked packages, create .e
 	@echo "Setup done. Next: make db"
 
 lock:  ## Re-resolve requirements.lock (needs uv), then run tests on Python 3.10 and 3.12
-	./scripts/lock.sh
+	bash scripts/lock.sh
 
 doctor:  ## Check every prerequisite and print fixes
 	@if [ -x $(PY) ]; then $(PY) -m cpgos.doctor; else $(PYTHON) -m cpgos.doctor; fi
 
 db: .env  ## Start Docker (Colima) and Postgres, then apply migrations
-	./scripts/dev_db.sh
+	bash scripts/dev_db.sh
 	$(MAKE) migrate
 
 migrate: $(PY)  ## Apply database migrations
@@ -52,7 +52,7 @@ test: $(PY)  ## Run the backend tests (needs a reachable Postgres)
 	$(PY) -m pytest
 
 api: $(PY)  ## Run the API (port from .env, default 8100)
-	./scripts/serve.sh api
+	bash scripts/serve.sh api
 
 web:  ## Run the UI (port from .env, default 3100)
-	./scripts/serve.sh web
+	bash scripts/serve.sh web
