@@ -10,3 +10,6 @@ __pycache__/
 .venv/
 .DS_Store
 data/_to_delete/
+*.egg-info/
+build/
+dist/
