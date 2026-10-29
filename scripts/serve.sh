@@ -47,14 +47,16 @@ ensure_node() {
 case "$kind" in
   api)
     echo "API: http://localhost:$api_port/api/health"
-    CPGOS_CORS_ORIGINS="http://localhost:$web_port" exec .venv/bin/python -m uvicorn cpgos.api.app:app --port "$api_port" --reload
+    CPGOS_CORS_ORIGINS="http://127.0.0.1:$web_port,http://localhost:$web_port" exec .venv/bin/python -m uvicorn cpgos.api.app:app --port "$api_port" --reload
     ;;
   web)
     cd web
     ensure_node
     [ -d node_modules ] && [ node_modules -nt package-lock.json ] || npm install
-    echo "UI: http://localhost:$web_port   (reading the API at http://127.0.0.1:$api_port)"
-    CPGOS_API_URL="http://127.0.0.1:$api_port" exec npx next dev -p "$web_port"
+    echo "UI: http://127.0.0.1:$web_port   (this machine only; reading the API at http://127.0.0.1:$api_port)"
+    # Bind to this machine only: without -H, Next.js listens on every network interface,
+    # so anyone on the same Wi-Fi could open the app.
+    CPGOS_API_URL="http://127.0.0.1:$api_port" exec npx next dev -H 127.0.0.1 -p "$web_port"
     ;;
   *) echo "usage: serve.sh api|web" >&2; exit 2 ;;
 esac

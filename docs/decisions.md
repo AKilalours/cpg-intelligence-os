@@ -213,3 +213,11 @@ recorded the downgrade (100755 to 100644). The Makefile now runs every script
 as `bash scripts/...`, so the bit no longer matters; a test asserts that, plus
 that every script is still tracked as executable, and the commit step refuses
 any 100755 to 100644 change.
+
+## 30. Local servers listen on this machine only; React 19
+`next dev` printed `Network: http://192.168.1.168:3100`: by default it listens
+on every network interface, so anyone on the same Wi-Fi could open the app.
+The UI now binds to 127.0.0.1 (verified: the only listening address is
+127.0.0.1:3100), matching the API. A test guards both. Also upgraded React 18
+to 19.3.1, which Next.js 16 deprecated and Next.js 17 removes; verified with
+0 vulnerabilities, type check, build, and all six pages serving real data.

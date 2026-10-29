@@ -160,3 +160,11 @@ def test_shell_scripts_are_tracked_as_executable():
         pytest.skip("not a git checkout")
     modes = {line.split()[-1]: line.split()[0] for line in r.stdout.splitlines() if line.endswith(".sh")}
     assert modes and all(m == "100755" for m in modes.values()), modes
+
+
+def test_servers_listen_on_this_machine_only():
+    # Regression: next dev listened on every interface, so the UI was reachable
+    # from the local network (e.g. http://192.168.1.168:3100).
+    serve = (config.REPO_ROOT / "scripts" / "serve.sh").read_text()
+    assert "next dev -H 127.0.0.1" in serve
+    assert "--host" not in serve  # uvicorn defaults to 127.0.0.1; never widen it here
