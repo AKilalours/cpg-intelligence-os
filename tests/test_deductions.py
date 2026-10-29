@@ -130,3 +130,16 @@ def test_evaluation_replays_after_reconcile_and_report_is_hidden_from_engine(con
         conn.execute("SET LOCAL ROLE cpgos_engine")
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute("SELECT 1 FROM eval.report")
+
+
+def test_reconcile_twice_writes_nothing_new(conn, dup_world):
+    # Regression: running reconcile a second time wrote a second, identical
+    # assessment, calculation, and audit event for every deduction.
+    got = ded.assess_all(conn)
+    assert ded.save(conn, got) == len(got)
+    counts = lambda: conn.execute(
+        """SELECT (SELECT count(*) FROM deduction_assessment), (SELECT count(*) FROM calculation),
+                  (SELECT count(*) FROM audit_event)""").fetchone()
+    before = counts()
+    assert ded.save(conn, ded.assess_all(conn)) == 0
+    assert counts() == before

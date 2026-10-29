@@ -64,11 +64,12 @@ def cmd_reconcile(conn) -> int:
     with conn.transaction():
         conn.execute("SET LOCAL ROLE cpgos_engine")
         assessed = deductions.assess_all(conn)
-    deductions.save(conn, assessed)
+    written = deductions.save(conn, assessed)
     verdicts: dict[str, int] = {}
     for a in assessed:
         verdicts[a.verdict] = verdicts.get(a.verdict, 0) + 1
-    print(json.dumps({"cash_application": counts, "deductions_assessed": len(assessed), "verdicts": verdicts}, indent=1))
+    print(json.dumps({"cash_application": counts, "deductions_assessed": len(assessed),
+                      "assessments_written": written, "verdicts": verdicts}, indent=1))
     return 0
 
 

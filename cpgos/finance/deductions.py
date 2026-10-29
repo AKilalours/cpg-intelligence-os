@@ -276,10 +276,29 @@ def simulate_recovery(assessments: list[Assessment], truth_recoverable: dict[int
 
 
 def save(conn: psycopg.Connection, assessments: list[Assessment]) -> int:
-    """Write assessments and their calculations as the engine role."""
+    """Write assessments and their calculations as the engine role.
+
+    Idempotent: a deduction whose latest assessment came from this engine version
+    with the same verdict, amounts, and evidence is skipped, so re-running
+    reconcile adds nothing. A new engine version or new evidence writes a new row.
+    Returns the number of assessments written.
+    """
+    import json
+    latest = {r[0]: r[1:] for r in conn.execute(
+        """SELECT DISTINCT ON (deduction_id) deduction_id, engine_version, verdict, supported_amount,
+                  recoverable_amount, evidence
+           FROM deduction_assessment ORDER BY deduction_id, assessment_id DESC""")}
+
+    def same(a: Assessment) -> bool:
+        prev = latest.get(a.deduction_id)
+        canon = lambda e: json.dumps(e, sort_keys=True, default=str)
+        return prev is not None and prev[0] == ENGINE_VERSION and prev[1] == a.verdict \
+            and prev[2] == a.supported and prev[3] == a.recoverable and canon(prev[4]) == canon(a.evidence)
+
+    todo = [a for a in assessments if not same(a)]
     with conn.transaction():
         conn.execute("SET LOCAL ROLE cpgos_engine")
-        for a in assessments:
+        for a in todo:
             calc = conn.execute(
                 """INSERT INTO calculation (kind, formula_version, inputs, result, currency, computed_by)
                    VALUES ('deduction_recoverable', %s, %s, %s, 'USD', 'cpgos.finance.deductions.assess_all')
@@ -296,4 +315,4 @@ def save(conn: psycopg.Connection, assessments: list[Assessment]) -> int:
                    VALUES ('system', %s, 'deduction_assessed', %s)""",
                 (ENGINE_VERSION, Jsonb({"deduction_id": a.deduction_id, "verdict": a.verdict,
                                         "recoverable": str(a.recoverable)})))
-    return len(assessments)
+    return len(todo)
