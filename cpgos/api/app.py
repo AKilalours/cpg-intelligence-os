@@ -19,6 +19,7 @@ from psycopg.rows import dict_row
 from cpgos import config
 from cpgos.api import schemas as s
 from cpgos.datasets.registry import ACCEPT_PATH, load_registry
+from cpgos.finance import deductions as ded
 
 app = FastAPI(title="CPG Intelligence OS API", version="0.1.0")
 app.add_middleware(
@@ -45,15 +46,22 @@ def health(conn: psycopg.Connection = Depends(get_conn)) -> s.Health:
     return s.Health(database="ok", migrations_applied=names)
 
 
+def _as_of(conn: psycopg.Connection):
+    """Deadlines are measured against the financial world's clock, not the wall clock:
+    the world ends in 2016, so 'due in 14 days' against today would always be zero."""
+    return conn.execute("SELECT coalesce(max(as_of_date), current_date) AS d FROM world_clock").fetchone()["d"]
+
+
 @app.get("/api/overview", response_model=s.Overview)
 def overview(conn: psycopg.Connection = Depends(get_conn)) -> s.Overview:
+    as_of = _as_of(conn)
     exp = conn.execute(
         """SELECT
              count(*) FILTER (WHERE status IN ('open','investigating','disputed')) AS open_deductions,
              coalesce(sum(amount) FILTER (WHERE status IN ('open','investigating','disputed')), 0) AS open_deduction_amount,
              count(*) FILTER (WHERE status IN ('open','investigating')
-                              AND dispute_deadline BETWEEN current_date AND current_date + 14) AS deductions_due_14d
-           FROM deduction"""
+                              AND dispute_deadline BETWEEN %(d)s AND %(d)s::date + 14) AS deductions_due_14d
+           FROM deduction""", {"d": as_of}
     ).fetchone()
     cash = conn.execute(
         """SELECT
@@ -73,7 +81,7 @@ def overview(conn: psycopg.Connection = Depends(get_conn)) -> s.Overview:
              (SELECT count(*) FROM quarantined_row) AS quarantined_rows"""
     ).fetchone()
     return s.Overview(
-        exposure=s.Exposure(**exp, **cash),
+        exposure=s.Exposure(as_of=as_of, **exp, **cash),
         coverage=s.DataCoverage(**cov),
         recent_runs=_runs(conn, limit=10),
     )
@@ -125,25 +133,114 @@ def datasets(conn: psycopg.Connection = Depends(get_conn)) -> list[s.DatasetStat
     return out
 
 
+_DEDUCTION_SQL = """
+    SELECT d.deduction_id, d.claim_number, p.name AS partner, c.code, c.code_family,
+           d.amount, d.deduction_date, d.dispute_deadline,
+           (d.dispute_deadline - %(as_of)s::date) AS days_to_deadline, d.status,
+           st.external_code AS store, d.raw_reason,
+           a.verdict, a.rule, a.supported_amount, a.recoverable_amount,
+           a.engine_version, a.evidence, a.calculation_id, a.created_at AS assessed_at
+    FROM deduction d
+    JOIN trading_partner p USING (partner_id)
+    LEFT JOIN deduction_code c USING (deduction_code_id)
+    LEFT JOIN store st ON st.store_id = d.store_id
+    LEFT JOIN LATERAL (SELECT * FROM deduction_assessment x WHERE x.deduction_id = d.deduction_id
+                       ORDER BY x.assessment_id DESC LIMIT 1) a ON true
+"""
+
+
 @app.get("/api/deductions", response_model=list[s.Deduction])
 def deductions(
     status: str | None = Query(None, pattern="^[a-z_]+$"),
+    verdict: str | None = Query(None, pattern="^[a-z_]+$"),
+    order: str = Query("priority", pattern="^(priority|deadline|amount)$"),
     limit: int = Query(100, ge=1, le=1000),
     conn: psycopg.Connection = Depends(get_conn),
 ):
+    """The deduction queue. order=priority uses the engine's own queue rule
+    (cpgos.finance.deductions.priority_key), so the UI and the evaluation rank
+    claims identically."""
+    as_of = _as_of(conn)
     rows = conn.execute(
-        """SELECT d.deduction_id, d.claim_number, p.name AS partner, c.code, c.code_family,
-                  d.amount, d.deduction_date, d.dispute_deadline,
-                  (d.dispute_deadline - current_date) AS days_to_deadline, d.status
-           FROM deduction d
-           JOIN trading_partner p USING (partner_id)
-           LEFT JOIN deduction_code c USING (deduction_code_id)
-           WHERE (%(status)s::text IS NULL OR d.status = %(status)s)
-           ORDER BY d.dispute_deadline NULLS LAST, d.amount DESC
-           LIMIT %(limit)s""",
-        {"status": status, "limit": limit},
+        _DEDUCTION_SQL + """
+        WHERE (%(status)s::text IS NULL OR d.status = %(status)s)
+          AND (%(verdict)s::text IS NULL OR a.verdict = %(verdict)s)""",
+        {"status": status, "verdict": verdict, "as_of": as_of},
     ).fetchall()
-    return [s.Deduction(**r) for r in rows]
+
+    def as_assessment(r):
+        return ded.Assessment(r["deduction_id"], r["claim_number"], r["code"] or "", r["raw_reason"] or "", r["amount"],
+                              r["deduction_date"], r["dispute_deadline"], r["verdict"] or "needs_evidence", r["rule"] or "",
+                              r["supported_amount"], r["recoverable_amount"] or 0)
+
+    ranked = {a.deduction_id: i for i, a in enumerate(ded.queue([as_assessment(r) for r in rows], as_of), start=1)}
+    for r in rows:
+        r["priority_rank"] = ranked[r["deduction_id"]] if r["verdict"] else None
+    if order == "priority":
+        rows.sort(key=lambda r: (r["priority_rank"] is None, r["priority_rank"] or 0))
+    elif order == "deadline":
+        rows.sort(key=lambda r: (r["dispute_deadline"] is None, r["dispute_deadline"] or as_of, -r["amount"]))
+    else:
+        rows.sort(key=lambda r: (-r["amount"], r["deduction_id"]))
+    return [s.Deduction(**r) for r in rows[:limit]]
+
+
+@app.get("/api/deductions/{deduction_id}", response_model=s.DeductionDetail)
+def deduction_detail(deduction_id: int, conn: psycopg.Connection = Depends(get_conn)):
+    r = conn.execute(_DEDUCTION_SQL + " WHERE d.deduction_id = %(id)s",
+                     {"id": deduction_id, "as_of": _as_of(conn)}).fetchone()
+    if r is None:
+        raise HTTPException(404, f"No deduction {deduction_id}")
+    return s.DeductionDetail(**r)
+
+
+@app.get("/api/finance/cash-application", response_model=s.CashAppSummary)
+def cash_application(limit: int = Query(50, ge=1, le=500), conn: psycopg.Connection = Depends(get_conn)):
+    counts = conn.execute(
+        """WITH cash AS (
+               SELECT r.remittance_line_id FROM remittance_line r
+               WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0),
+           latest AS (
+               SELECT DISTINCT ON (remittance_line_id) remittance_line_id, status, applied_amount
+               FROM cash_application ORDER BY remittance_line_id, cash_application_id DESC)
+           SELECT count(*) AS cash_lines,
+                  count(*) FILTER (WHERE l.status = 'approved') AS auto_applied,
+                  count(*) FILTER (WHERE l.status = 'proposed') AS in_review,
+                  count(*) FILTER (WHERE l.status IS NULL OR l.status NOT IN ('approved', 'proposed')) AS unmatched,
+                  coalesce(sum(l.applied_amount) FILTER (WHERE l.status = 'approved'), 0) AS applied_amount
+           FROM cash c LEFT JOIN latest l USING (remittance_line_id)""").fetchone()
+    unapplied = conn.execute(
+        """SELECT (SELECT coalesce(sum(amount), 0) FROM payment)
+                - (SELECT coalesce(sum(applied_amount), 0) FROM cash_application WHERE status = 'approved') AS u""").fetchone()["u"]
+    review = conn.execute(
+        """SELECT r.remittance_line_id, p.payment_reference, p.payment_date, r.raw_invoice_ref, r.net_amount AS amount,
+                  i.invoice_number AS suggested_invoice, c.confidence, c.match_explanation AS explanation
+           FROM cash_application c
+           JOIN remittance_line r USING (remittance_line_id) JOIN payment p USING (payment_id)
+           LEFT JOIN invoice i USING (invoice_id)
+           WHERE c.status = 'proposed'
+           ORDER BY r.net_amount DESC LIMIT %s""", (limit,)).fetchall()
+    unmatched = conn.execute(
+        """SELECT r.remittance_line_id, p.payment_reference, p.payment_date, r.raw_invoice_ref, r.net_amount AS amount,
+                  NULL AS suggested_invoice, NULL::numeric AS confidence, NULL::jsonb AS explanation
+           FROM remittance_line r JOIN payment p USING (payment_id)
+           WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0
+             AND NOT EXISTS (SELECT 1 FROM cash_application c WHERE c.remittance_line_id = r.remittance_line_id
+                             AND c.status IN ('approved', 'proposed'))
+           ORDER BY r.net_amount DESC LIMIT %s""", (limit,)).fetchall()
+    return s.CashAppSummary(**counts, unapplied_cash=unapplied,
+                            review_queue=[s.CashAppItem(**r) for r in review],
+                            unmatched_lines=[s.CashAppItem(**r) for r in unmatched])
+
+
+@app.get("/api/evaluation/latest", response_model=s.EvaluationReport | None)
+def latest_evaluation(kind: str = Query("phase2a", pattern="^[a-z0-9_]+$"), conn: psycopg.Connection = Depends(get_conn)):
+    """The most recent stored evaluation. Produced by `make eval-recon`; never computed here,
+    so a page load cannot run the engines or touch the answer key beyond reading a report."""
+    r = conn.execute(
+        """SELECT report_id, kind, code_version, created_at, body FROM eval.report
+           WHERE kind = %s ORDER BY report_id DESC LIMIT 1""", (kind,)).fetchone()
+    return s.EvaluationReport(**r) if r else None
 
 
 GRANULARITY = Query(None, pattern="^(day|week)$")

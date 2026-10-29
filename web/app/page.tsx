@@ -29,7 +29,7 @@ function Body({ data }: { data: Overview }) {
       <Section title="What needs attention">
         <div className="flex flex-wrap divide-x divide-rule border-y border-rule">
           <Figure value={money(e.open_deduction_amount)} label={`Open deductions (${count(e.open_deductions)})`} />
-          <Figure value={count(e.deductions_due_14d)} label="Disputes due in 14 days" due={e.deductions_due_14d > 0} />
+          <Figure value={count(e.deductions_due_14d)} label={`Disputes due in 14 days of ${e.as_of}`} due={e.deductions_due_14d > 0} />
           <Figure value={money(e.unapplied_cash)} label="Unapplied cash" />
           <Figure value={count(e.proposed_cash_applications)} label="Cash matches awaiting review" />
         </div>

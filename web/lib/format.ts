@@ -28,3 +28,19 @@ export function when(iso: string): string {
     month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
   });
 }
+
+// A rate with its evidence: "0 of 875 (95% CI 0.0 to 0.4%)".
+export function pct(x: number | null, digits = 1): string {
+  if (x === null) return "n/a";
+  // 0.9015 * 100 is 90.14999... in binary floating point; snap to 12 significant
+  // digits first so the displayed rounding matches the decimal the API sent.
+  const scaled = Number((x * 100).toPrecision(12));
+  const f = 10 ** digits;
+  return `${(Math.round(scaled * f) / f).toFixed(digits)}%`;
+}
+
+export function rateText(r: { k: number; n: number; ci95: [number, number] | null }): string {
+  if (r.n === 0) return "none to score";
+  const ci = r.ci95 ? ` (95% CI ${pct(r.ci95[0])} to ${pct(r.ci95[1])})` : "";
+  return `${count(r.k)} of ${count(r.n)}${ci}`;
+}

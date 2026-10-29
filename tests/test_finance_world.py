@@ -23,7 +23,7 @@ def sales_fixture(weeks=40):
                 if item == "FOODS_1_002" and store == "CA_1" and w in (20, 21):
                     p = Decimal("1.00")
                 # Varied units so invoice totals rarely repeat (real totals almost never do).
-                jitter = (w * 37 + sum(map(ord, item + store))) % 23
+                jitter = (w * 37 + sum(map(ord, item + store))) % 131
                 out.append(WeeklySale(store, region, item, "FOODS", item.rsplit("_", 1)[0], wk,
                                       base_units + jitter, p, 7))
     return out
@@ -67,7 +67,7 @@ def test_every_deduction_has_truth_and_valid_amount_never_exceeds_claim(conn, wo
 
 
 def test_valid_promo_deduction_equals_allowance_times_real_units(conn, world):
-    jit = lambda w: (w * 37 + sum(map(ord, "FOODS_1_002" + "CA_1"))) % 23
+    jit = lambda w: (w * 37 + sum(map(ord, "FOODS_1_002" + "CA_1"))) % 131
     real_units = (120 + jit(20)) + (120 + jit(21))
     amt = conn.execute("""SELECT d.amount FROM deduction d JOIN eval.gt_deduction g USING (deduction_id)
                           WHERE d.raw_reason LIKE 'WALMART PROMO%%' AND g.reason = 'valid'""").fetchall()
@@ -128,3 +128,16 @@ def test_every_invoice_due_before_as_of_gets_paid(conn):
                                AND NOT EXISTS (SELECT 1 FROM eval.gt_remittance_alloc g WHERE g.invoice_id = i.invoice_id)""",
                           (rep.as_of,)).fetchone()[0]
     assert unpaid == 0
+
+
+def test_no_deduction_disappears(conn):
+    # Regression: a week whose deductions exceeded its payments carried the whole batch
+    # forward all-or-nothing; the backlog snowballed and 67 of 86 deductions were never
+    # written. Every generated deduction is now either on a remittance or counted as pending.
+    load_deduction_codes(conn)
+    rep = build_world(conn, sales_fixture(), cfg(p_promo_unsupported=1.0, p_false_late_fee=0.3,
+                                                 p_false_shortage_invoice=0.3))
+    stored = conn.execute("SELECT count(*) FROM deduction").fetchone()[0]
+    assert stored == rep.deductions
+    assert rep.deductions + rep.deductions_pending == rep.deductions_generated
+    assert rep.deductions_pending <= 0.1 * rep.deductions_generated

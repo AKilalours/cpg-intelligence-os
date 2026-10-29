@@ -232,3 +232,41 @@ per load batch (1.2 s, concurrently, so readers are never blocked), and the
 API reads it: 9.2 ms, 1.8 ms, and 4.1 ms; the endpoints respond in 9-13 ms.
 Summary totals equal a live recount (6,719,161 rows, 66,927,173 units), and a
 test asserts the summary always matches the raw rows.
+
+## 32. Short payments go to a person, always
+On a remittance, "paid part of invoice A" and "typed A but meant a smaller
+invoice B" look identical. Posting short payments automatically produced
+wrong postings in the first version. They now go to review with the
+referenced invoice as the suggestion. Cost: 47 lines a person confirms.
+Benefit: 0 wrong automatic postings in 875 (95% CI up to 0.4%), against 5 for
+the baseline. Finance teams review short payments anyway, because a short
+payment usually hides a deduction.
+
+## 33. Never typo-correct a reference that exists
+Invoice numbers are sequential, so a real number is one edit away from its
+neighbours. Fuzzy matching now runs only when the reference names no invoice
+at all. A reference to an already-paid invoice goes to review as a possible
+duplicate payment.
+
+## 34. Deduction verdicts come from records, in claim order
+Every verdict cites records (promotion and retailer POS, receipt, shipment,
+invoiced value) and the arithmetic, stored as an append-only assessment and
+calculation. Claims are processed oldest first and each one uses up the
+support it is granted, so a duplicate is found because the allowance is
+already spent, not by comparing claim text.
+
+## 35. POS proof of performance is its own table
+Walmart weeks start on Saturday; the world's weeks are ISO weeks (Monday).
+Putting ISO-week rows into `sales_observation` beside the M5 Walmart-week rows
+would double count units in every weekly series, so retailer POS for
+scan-back checks lives in `retailer_pos_week`.
+
+## 36. Deadlines use the world's clock
+The financial world ends on 2016-05-22. "Due in 14 days" measured from today
+would always be zero, so the API measures deadlines from `world_clock`.
+
+## 37. Evaluation is stored, not computed on page load
+`make eval-recon` replays both engines from a clean ledger as the engine role,
+scores them against `eval.*`, and stores the result in `eval.report` with the
+code version and world. The UI reads the stored report, so opening a page can
+never run an engine or recompute against the answer key.

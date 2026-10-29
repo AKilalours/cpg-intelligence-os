@@ -56,3 +56,83 @@ with a role that can.
 - Deductions: false approval rate (accepting an invalid deduction), false
   dispute rate (disputing a valid one), recoverable dollars found, and dollars
   recovered in the top-k of the priority queue versus sorting by amount.
+
+## Results (report #1, world as of 2016-05-22)
+Reproduce with `make finance-world && make reconcile && make eval-recon`. The
+world: 60 real M5 FOODS items at 10 stores over 104 weeks; 1,040 invoices
+(50,834 lines), 111 promotions taken from real price drops, 100 checks, 984
+cash lines, 312 deductions (83 invalid). Every rate below is "k of n" with a
+95% Wilson interval, because the bad categories are small.
+
+### Cash application (automatic posting at confidence 0.90 or higher)
+| | This engine | Exact-reference baseline |
+|---|---|---|
+| Wrong among automatic postings | **0 of 875** (0.0% to 0.4%) | 5 of 876 (0.2% to 1.3%) |
+| Posted automatically | 875 of 984 (88.9%) | 876 of 984 (89.0%) |
+| Dollars posted correctly with no person | **90.2%** | 88.4% |
+| Sent to a person, with a suggestion | 109 (suggestion right 101 of 109) | 0 |
+| Left with nothing | **0** | 108 |
+
+By kind of remittance mess: clean 827/827 posted correctly; typos 48/50 fixed
+automatically (2 to review); wrong references 22/22 to review (baseline posted
+4 of them to the wrong invoice); missing references 38/38 to review with the
+right suggestion; short payments 47/47 to review.
+
+Two design rules carry the zero: a short payment is never posted automatically
+(on a remittance it looks exactly like a wrong reference to a larger invoice),
+and a reference to an invoice that is already fully paid is never "typo
+corrected" to its neighbour, because invoice numbers are sequential and one
+edit away from each other. Both were real wrong postings in the first version
+and both have regression tests.
+
+Residual risk, stated plainly: a wrong reference whose amount happens to equal
+the referenced invoice's open balance cannot be detected from the remittance
+alone. It happened 0 times in 984 real-anchored lines, because invoices with
+dozens of lines rarely share a total. The 3-item test fixture shared totals
+often, which is how the risk was found.
+
+### Deduction validation
+| | Result |
+|---|---|
+| Recoverable amount exact to the cent | 312 of 312 |
+| Invalid claims accepted (false approval) | 0 of 83 (0.0% to 4.4%) |
+| Valid claims disputed (false dispute) | 0 of 229 (0.0% to 1.7%) |
+| Recoverable dollars in the answer key | $4,044.46, all found |
+
+**How to read the 100%.** The validator checks claims against the same
+published terms the world was generated from (allowance times retailer POS
+units, the receipt, the shipment date, the 1% spoils allowance). A perfect
+score therefore proves the evidence lookups, the "already used" bookkeeping
+that catches duplicates, and the cent-level arithmetic. It does not prove that
+messy real claims are solved: in reality, backup is a PDF, the store or period
+is missing, and terms are negotiated per account. That is the job of Phase 2b
+(document extraction) and Phase 3 (the investigating agent), which will be
+scored on claims where this rule engine returns `needs_evidence`.
+
+### Recovery with limited review time
+Every policy uses the same validator; only the order of work changes. Disputes
+below $25 are skipped (analyst cost, an assumption), claims within 21 days of
+their deadline jump the queue, and a disputed claim is assumed to recover its
+true recoverable amount, the same for every policy.
+
+| Reviews a week | Engine order | Largest first | Oldest first |
+|---|---|---|---|
+| 1 | **$3,429.77** (98%) | $2,542.13 (73%) | $214.14 (6%) |
+| 2 | **$3,496.71** (100%) | $3,220.43 (92%) | $1,036.90 (30%) |
+| 3 | $3,496.71 (100%) | $3,496.71 (100%) | $2,731.07 (78%) |
+
+The ranking matters only when review time is scarce, which is the realistic
+case. At one review a week, largest-first lets $423.68 expire and oldest-first
+lets $2,105.47 expire; the engine order loses nothing to deadlines.
+
+The dollar amounts are small because the brand is small (60 items, 10 stores);
+the shares are the transferable result.
+
+### Generator bug found while building this
+The first generator carried a week's deductions forward all-or-nothing when
+they exceeded that week's checks. On small checks the backlog snowballed and
+67 of 86 deductions in the test world were never written. Deductions are now
+taken oldest first while the check stays positive, the rest wait, and the
+report counts `deductions_pending`; a test asserts generated = written +
+pending. The real-scale world was not affected (313 generated, 312 written,
+1 pending at the as-of date).

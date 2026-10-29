@@ -20,7 +20,7 @@ forecasting and promotion analytics.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Data foundation and product shell | **Done**, verified on full real M5 |
-| 2 | Document AI and reconciliation | Not started |
+| 2 | Document AI and reconciliation | **Reconciliation done** (2a); document AI next (2b) |
 | 3 | Agentic investigation | Not started |
 | 4 | Evaluation and production controls | Not started |
 | 5 | Forecasting and promotion analytics | Not started |
@@ -84,6 +84,31 @@ in [`docs/decisions.md`](docs/decisions.md) (entries 14, 16, 17, 20).
 | CI runs backend tests, web type check, and web build | Done |
 | Full real dataset processed within a fixed memory budget | Done (M5) |
 
+## Phase 2a results: reconciliation (measured)
+
+On a financial world generated on real M5 sales and published KeHE terms
+(1,040 invoices, 984 cash lines, 312 deductions; answer key hidden from the
+engines by a database role). Details and caveats:
+[`docs/phase2a_reconciliation.md`](docs/phase2a_reconciliation.md).
+
+| | This engine | Baseline |
+|---|---|---|
+| Wrong automatic cash postings | **0 of 875** (95% CI 0.0% to 0.4%) | 5 of 876 (exact reference only) |
+| Cash dollars posted correctly with no person | **90.2%** | 88.4% |
+| Cash lines left with no suggestion | **0** | 108 |
+| Deduction recoverable amounts exact to the cent | 312 of 312 | |
+| Recovered at 1 review a week | **$3,429.77 (98%)** | $2,542.13 largest first, $214.14 oldest first |
+
+The deduction validator applies the same terms the world was built from, so
+its perfect score proves the evidence lookups and arithmetic, not that messy
+real claims are solved; that is what Phases 2b and 3 are for.
+
+```bash
+make finance-world   # once per database, after make load-m5 (~20 s)
+make reconcile       # cash application + deduction validation, as the engine role
+make eval-recon      # replay both engines, score against the answer key, store the report
+```
+
 ## Data
 
 All data comes from public sources, downloaded locally and never committed.
@@ -143,6 +168,9 @@ Python in your shell can't be picked up by accident. `make help` lists everythin
 
 ## Limitations (current)
 
-- No models or agents yet; the UI marks which phase builds each module.
+- No learned models or agents yet: reconciliation is rules plus evidence, by
+  design, so later model and agent work has a measured baseline to beat.
+- Payments and deductions are generated (labeled `real_anchored_generated`);
+  no public dataset links real remittances to real invoices.
 - Several dataset licenses are flagged `license_verified: false` in the registry
   and must be read before use.

@@ -14,6 +14,7 @@ from decimal import Decimal
 
 import psycopg
 
+from cpgos.finance import cashapp, deductions
 from cpgos.finance.cashapp import Match
 
 
@@ -76,3 +77,85 @@ def score_cash_application(conn: psycopg.Connection, matches: list[Match]) -> di
                       "precision": round(ok / len(sel), 4) if sel else None, "wrong": len(sel) - ok})
     out["precision_coverage_curve"] = curve
     return out
+
+
+def score_deductions(conn: psycopg.Connection, assessments: list[deductions.Assessment]) -> dict:
+    """Verdicts and recoverable amounts against eval.gt_deduction."""
+    truth = {d: (v, Decimal(a) - Decimal(va), r) for d, v, va, r, a in conn.execute(
+        """SELECT g.deduction_id, g.is_valid, g.valid_amount, g.reason, d.amount
+           FROM eval.gt_deduction g JOIN deduction d USING (deduction_id)""")}
+    scored = [(a, truth[a.deduction_id]) for a in assessments if a.deduction_id in truth]
+    invalid = [(a, t) for a, t in scored if not t[0]]
+    valid = [(a, t) for a, t in scored if t[0]]
+    by_reason = defaultdict(lambda: {"n": 0, "verdict_correct": 0, "recoverable_exact": 0, "true_recoverable": Decimal(0)})
+    for a, t in scored:
+        b = by_reason[t[2]]
+        b["n"] += 1
+        b["verdict_correct"] += (a.verdict == "valid") == t[0]
+        b["recoverable_exact"] += a.recoverable == t[1]
+        b["true_recoverable"] += t[1]
+    return {
+        "deductions": len(scored),
+        "invalid_in_truth": len(invalid),
+        "recoverable_exact_to_the_cent": rate(sum(a.recoverable == t[1] for a, t in scored), len(scored)),
+        "false_approval": rate(sum(a.verdict == "valid" for a, _ in invalid), len(invalid)),
+        "false_dispute": rate(sum(a.verdict != "valid" for a, _ in valid), len(valid)),
+        "needs_evidence": rate(sum(a.verdict == "needs_evidence" for a, _ in scored), len(scored)),
+        "true_recoverable_total": str(sum((t[1] for _, t in scored), Decimal(0))),
+        "found_recoverable_total": str(sum((a.recoverable for a, _ in scored), Decimal(0))),
+        "by_reason": {k: {**v, "true_recoverable": str(v["true_recoverable"])} for k, v in sorted(by_reason.items())},
+    }
+
+
+def recovery_simulation(conn: psycopg.Connection, assessments: list[deductions.Assessment],
+                        capacities: tuple[int, ...] = (1, 2, 3, 5)) -> list[dict]:
+    truth = {d: Decimal(a) - Decimal(v) for d, a, v in conn.execute(
+        "SELECT g.deduction_id, d.amount, g.valid_amount FROM eval.gt_deduction g JOIN deduction d USING (deduction_id)")}
+    if not assessments:
+        return []
+    start = min(a.deduction_date for a in assessments)
+    end = conn.execute("SELECT max(as_of_date) FROM world_clock").fetchone()[0]
+    worth = sum((v for d, v in truth.items() if v > deductions.DISPUTE_HANDLING_COST), Decimal(0))
+    out = []
+    for cap in capacities:
+        row = {"reviews_per_week": cap, "disputable_recoverable": str(worth)}
+        for p in deductions.POLICIES:
+            r = deductions.simulate_recovery(assessments, truth, p, cap, start, end)
+            row[p] = {k: r[k] for k in ("recovered", "disputes", "false_disputes", "recoverable_lost_to_deadline")}
+            row[p]["share_of_disputable"] = round(float(Decimal(r["recovered"]) / worth), 4) if worth else None
+        out.append(row)
+    return out
+
+
+def phase2a_report(conn: psycopg.Connection) -> dict:
+    """Run both engines from a clean slate as cpgos_engine, then score them with the answer key."""
+    with conn.transaction():
+        conn.execute("SET LOCAL ROLE cpgos_engine")
+        full = cashapp.match_all(conn, "full", replay=True)
+        base = cashapp.match_all(conn, "exact_only", replay=True)
+        assessed = deductions.assess_all(conn)
+    world = conn.execute(
+        """SELECT d.dataset_version_id, d.file_name, w.as_of_date FROM dataset_version d
+           JOIN world_clock w USING (dataset_version_id) WHERE d.dataset_key = 'finance_world'
+           ORDER BY d.dataset_version_id DESC LIMIT 1""").fetchone()
+    return {
+        "world": {"dataset_version_id": world[0], "description": world[1], "as_of": str(world[2])} if world else None,
+        "cash_application": {"full": score_cash_application(conn, full),
+                             "exact_only_baseline": score_cash_application(conn, base),
+                             "auto_threshold": 0.90},
+        "deductions": score_deductions(conn, assessed),
+        "recovery_simulation": recovery_simulation(conn, assessed),
+        "assumptions": {"dispute_handling_cost": str(deductions.DISPUTE_HANDLING_COST),
+                        "urgent_days": deductions.URGENT_DAYS,
+                        "dispute_win": "a disputed claim recovers its true recoverable amount, for every policy alike"},
+    }
+
+
+def save_report(conn: psycopg.Connection, report: dict, code_version: str) -> int:
+    import json
+    from psycopg.types.json import Jsonb
+    body = json.loads(json.dumps(report, default=str))
+    ver = report["world"]["dataset_version_id"] if report.get("world") else None
+    return conn.execute(
+        "INSERT INTO eval.report (kind, dataset_version_id, code_version, body) VALUES ('phase2a', %s, %s, %s) RETURNING report_id",
+        (ver, code_version, Jsonb(body))).fetchone()[0]

@@ -7,10 +7,10 @@ PY     := $(VENV)/bin/python
 DATASET ?= m5
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon test api web
 
 help:  ## List commands
-	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
 
 $(PY):
 	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "Python 3.10+ is required; run: make setup PYTHON=python3.12")'
@@ -47,6 +47,15 @@ download: $(PY)  ## Download a dataset: make download DATASET=m5
 
 load-m5: $(PY)  ## Load real M5: daily to Parquet, weekly to Postgres
 	$(PY) scripts/load_data.py m5
+
+finance-world: $(PY)  ## Build the real-anchored financial world on loaded M5 (once per database)
+	$(PY) scripts/finance.py world
+
+reconcile: $(PY)  ## Cash application + deduction validation, written by the engine role
+	$(PY) scripts/finance.py reconcile
+
+eval-recon: $(PY)  ## Replay both engines, score against the hidden answer key, store the report
+	$(PY) scripts/finance.py evaluate
 
 test: $(PY)  ## Run the backend tests (needs a reachable Postgres)
 	$(PY) -m pytest

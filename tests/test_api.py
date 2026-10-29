@@ -1,3 +1,5 @@
+from datetime import date
+
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
@@ -111,3 +113,42 @@ def test_series_summary_matches_live_totals(client, conn):
            FROM sales_series_stats ORDER BY 1, 2, 3""").fetchall()
     assert summary == live and len(live) == 4
     assert client.get("/api/overview").json()["coverage"]["sales_observations"] == 13 + 3
+
+
+def test_finance_endpoints_on_a_reconciled_world(client, conn):
+    from decimal import Decimal
+
+    from cpgos.db import code_version
+    from cpgos.finance import cashapp, deductions
+    from cpgos.finance.evaluate import phase2a_report, save_report
+    from cpgos.finance.world import build_world
+    from tests.test_finance_world import cfg, sales_fixture
+
+    load_deduction_codes(conn)
+    rep = build_world(conn, sales_fixture(), cfg(p_promo_unsupported=1.0, p_false_late_fee=0.3))
+    cashapp.apply(conn, cashapp.match_all(conn, "full"))
+    deductions.save(conn, deductions.assess_all(conn))
+
+    # Deadlines count from the world's clock, not today's date.
+    assert client.get("/api/overview").json()["exposure"]["as_of"] == str(rep.as_of)
+
+    queue = client.get("/api/deductions", params={"limit": 1000}).json()
+    assert len(queue) == rep.deductions
+    assert [q["priority_rank"] for q in queue] == list(range(1, len(queue) + 1))
+    top = queue[0]
+    assert Decimal(top["recoverable_amount"]) > deductions.DISPUTE_HANDLING_COST and top["days_to_deadline"] >= 0
+    assert all(q["days_to_deadline"] == (date.fromisoformat(q["dispute_deadline"]) - rep.as_of).days for q in queue)
+
+    detail = client.get(f"/api/deductions/{top['deduction_id']}").json()
+    assert detail["evidence"] and detail["calculation_id"] and detail["engine_version"] == deductions.ENGINE_VERSION
+    assert client.get("/api/deductions/999999").status_code == 404
+
+    cash = client.get("/api/finance/cash-application").json()
+    assert cash["cash_lines"] == cash["auto_applied"] + cash["in_review"] + cash["unmatched"] > 0
+    assert all(item["suggested_invoice"] and item["explanation"] for item in cash["review_queue"])
+
+    assert client.get("/api/evaluation/latest").json() is None
+    save_report(conn, phase2a_report(conn), code_version())
+    body = client.get("/api/evaluation/latest").json()["body"]
+    assert body["cash_application"]["full"]["false_match_rate"]["k"] == 0
+    assert body["deductions"]["false_approval"]["k"] == 0

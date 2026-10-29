@@ -64,28 +64,32 @@ def within_one_edit(a: str, b: str) -> bool:
     return a[i:] == b[i + 1:]
 
 
-def _load(conn: psycopg.Connection, partner_id: int | None):
+def _load(conn: psycopg.Connection, partner_id: int | None, replay: bool = False):
+    """replay=True ignores decisions already in the ledger, so evaluation can re-run
+    the engine from a clean slate after `make reconcile` has written its decisions."""
     where = "AND p.partner_id = %(partner)s" if partner_id else ""
+    decided = "" if replay else """
+          AND NOT EXISTS (SELECT 1 FROM cash_application c
+                          WHERE c.remittance_line_id = r.remittance_line_id AND c.status IN ('proposed', 'approved'))"""
+    applied = "0" if replay else """coalesce((SELECT sum(applied_amount) FROM cash_application c
+                                          WHERE c.invoice_id = i.invoice_id AND c.status = 'approved'), 0)"""
     lines = conn.execute(f"""
         SELECT r.remittance_line_id, p.payment_date, r.net_amount, r.raw_invoice_ref, p.partner_id
         FROM remittance_line r JOIN payment p USING (payment_id)
-        WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0 {where}
-          AND NOT EXISTS (SELECT 1 FROM cash_application c
-                          WHERE c.remittance_line_id = r.remittance_line_id AND c.status IN ('proposed', 'approved'))
+        WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0 {where}{decided}
         ORDER BY p.payment_date, r.payment_id, r.line_number""", {"partner": partner_id}).fetchall()
     invoices = conn.execute(f"""
         SELECT i.invoice_id, i.invoice_number, i.partner_id, i.invoice_date,
-               i.total_amount - coalesce((SELECT sum(applied_amount) FROM cash_application c
-                                          WHERE c.invoice_id = i.invoice_id AND c.status = 'approved'), 0)
+               i.total_amount - {applied}
         FROM invoice i {"WHERE i.partner_id = %(partner)s" if partner_id else ""}""", {"partner": partner_id}).fetchall()
     return lines, invoices
 
 
 def match_all(conn: psycopg.Connection, strategy: str = "full", partner_id: int | None = None,
-              auto_threshold: float = 0.90) -> list[Match]:
+              auto_threshold: float = 0.90, replay: bool = False) -> list[Match]:
     if strategy not in STRATEGIES:
         raise ValueError(f"strategy must be one of {STRATEGIES}")
-    lines, invoices = _load(conn, partner_id)
+    lines, invoices = _load(conn, partner_id, replay)
     by_ref: dict[tuple[int, str], int] = {}
     info: dict[int, tuple[str, int, date]] = {}
     balance: dict[int, Decimal] = {}

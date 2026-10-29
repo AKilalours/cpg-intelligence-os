@@ -18,6 +18,7 @@ class Health(BaseModel):
 
 
 class Exposure(BaseModel):
+    as_of: date                     # the financial world's clock; today when no world is loaded
     open_deductions: int
     open_deduction_amount: Decimal
     deductions_due_14d: int
@@ -83,6 +84,20 @@ class Deduction(BaseModel):
     dispute_deadline: date | None
     days_to_deadline: int | None
     status: str
+    store: str | None = None
+    raw_reason: str | None = None
+    verdict: str | None = None
+    rule: str | None = None
+    supported_amount: Decimal | None = None
+    recoverable_amount: Decimal | None = None
+    priority_rank: int | None = None
+
+
+class DeductionDetail(Deduction):
+    engine_version: str | None
+    evidence: dict | None
+    calculation_id: int | None
+    assessed_at: datetime | None
 
 
 class SalesPoint(BaseModel):
@@ -108,3 +123,33 @@ class SeriesKey(BaseModel):
     category: str | None
     observations: int
     total_units: Decimal
+
+
+class CashAppItem(BaseModel):
+    remittance_line_id: int
+    payment_reference: str
+    payment_date: date
+    raw_invoice_ref: str | None
+    amount: Decimal
+    suggested_invoice: str | None
+    confidence: Decimal | None
+    explanation: dict | None
+
+
+class CashAppSummary(BaseModel):
+    cash_lines: int
+    auto_applied: int
+    in_review: int
+    unmatched: int
+    applied_amount: Decimal
+    unapplied_cash: Decimal
+    review_queue: list[CashAppItem]
+    unmatched_lines: list[CashAppItem]
+
+
+class EvaluationReport(BaseModel):
+    report_id: int
+    kind: str
+    code_version: str
+    created_at: datetime
+    body: dict

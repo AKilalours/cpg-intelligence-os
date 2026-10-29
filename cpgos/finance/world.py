@@ -96,6 +96,8 @@ class WorldReport:
     remittance_lines: int = 0
     deductions: int = 0
     deductions_invalid: int = 0
+    deductions_generated: int = 0
+    deductions_pending: int = 0      # claimed but not yet taken on a check by as_of (still in the backlog)
     noise_counts: dict = field(default_factory=dict)
 
 
@@ -209,6 +211,12 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
         rep = WorldReport(ver, as_of, len(skus), len(stores))
         by_key = {(s.store, s.item, s.week): s for s in sales}
 
+        # Retailer POS units per store, SKU, ISO week: the real M5 units, which are
+        # what a scan-back claim must be checked against.
+        with conn.cursor().copy("COPY retailer_pos_week (store_id, sku_id, week_start, units, dataset_version_id) FROM STDIN") as cp:
+            for s in sales:
+                cp.write_row((stores[s.store], skus[s.item], s.week, s.units, ver))
+
         # Wholesale price per SKU per quarter: share of the median real shelf price.
         share = Decimal(cfg.wholesale_share)
         q_prices: dict[tuple[str, tuple[int, int]], list[Decimal]] = {}
@@ -307,11 +315,12 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
         window = int(PUBLISHED_TERMS["dispute_window_days"][0])
         deductions = []      # dicts: code, amount, date, invoice, truth...
 
-        def add_ded(code, amount: Money, ddate, *, invoice=None, sku=None, units=None, p0=None, p1=None,
+        def add_ded(code, amount: Money, ddate, *, invoice=None, store=None, sku=None, units=None, p0=None, p1=None,
                     promotion=None, reason_text, valid: bool, valid_amount: Money, reason):
             if amount.amount <= 0 or ddate > as_of:
                 return
-            deductions.append(dict(code=code, amount=amount, date=ddate, invoice=invoice, sku=sku, units=units, p0=p0, p1=p1,
+            store = store or (invoice["store"] if invoice else None)
+            deductions.append(dict(code=code, amount=amount, date=ddate, invoice=invoice, store=store, sku=sku, units=units, p0=p0, p1=p1,
                                    promotion=promotion, reason_text=reason_text, valid=valid,
                                    valid_amount=valid_amount, reason=reason))
 
@@ -327,7 +336,7 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
             sold = sum(by_key[(store, item, w)].units for w in weeks if w0 <= w <= w1)
             correct = Money.of(allowance).times(sold)
             ddate = w1 + timedelta(days=6 + rng.randint(14, 45))
-            kw = dict(sku=skus[item], p0=w0, p1=w1 + timedelta(days=6), promotion=pid, reason_text="WALMART PROMO SCANBACK")
+            kw = dict(store=store, sku=skus[item], p0=w0, p1=w1 + timedelta(days=6), promotion=pid, reason_text="WALMART PROMO SCANBACK")
             if rng.random() < cfg.p_promo_overclaim:
                 claimed = int(sold * rng.uniform(1.10, 1.40)) + 1
                 add_ded("WP", Money.of(allowance).times(claimed), ddate, units=claimed, valid=False,
@@ -344,7 +353,7 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
                     w = rng.choice(calm)
                     units = by_key[(store, item, w)].units
                     add_ded("WP", Money.of(allowance).times(units), w + timedelta(days=6 + rng.randint(14, 45)),
-                            sku=skus[item], units=units, p0=w, p1=w + timedelta(days=6), promotion=None,
+                            store=store, sku=skus[item], units=units, p0=w, p1=w + timedelta(days=6), promotion=None,
                             reason_text="WALMART PROMO SCANBACK", valid=False, valid_amount=Money.of(0), reason="no_agreement")
 
         late_fee = Money.of(PUBLISHED_TERMS["late_shipment_fee"][0])
@@ -374,11 +383,12 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
             quarter_value[q] = quarter_value.get(q, Money.of(0)) + inv["total"]
         for (store, (yr, qi)), value in sorted(quarter_value.items()):
             q_end = date(yr + (qi == 3), 1 if qi == 3 else 3 * qi + 4, 1) - timedelta(days=1)
+            q_start = date(yr, 3 * qi + 1, 1)
             pct = Decimal(str(round(rng.uniform(0.005, 0.016), 4)))
             claim = value.times(pct)
             allowed = value.times(spoils_pct)
             ok = claim.amount <= allowed.amount
-            add_ded("WG", claim, q_end + timedelta(days=30), reason_text="WALMART SPOILS",
+            add_ded("WG", claim, q_end + timedelta(days=30), store=store, p0=q_start, p1=q_end, reason_text="WALMART SPOILS",
                     valid=ok, valid_amount=claim if ok else allowed, reason="valid" if ok else "over_allowance")
 
         # Payments: one check per Friday, paying invoices due that week; deductions taken on the next check.
@@ -389,11 +399,11 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
         noise_counts = {"clean": 0, "typo_ref": 0, "missing_ref": 0, "wrong_ref": 0, "partial": 0}
         friday = weeks[0] + timedelta(days=4)
         di = 0
+        backlog: list[dict] = []     # deductions claimed but not yet taken on a check
         while friday <= as_of:
             due = [inv for inv in invoices if inv["id"] not in paid_invoices and inv["pay_on"] <= friday]
-            todays_deds = []
             while di < len(ded_rows) and ded_rows[di]["date"] <= friday:
-                todays_deds.append(ded_rows[di]); di += 1
+                backlog.append(ded_rows[di]); di += 1
             lines = []
             for inv in due:
                 paid_invoices.add(inv["id"])
@@ -414,24 +424,24 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
                         ref, noise = rng.choice(others)["number"], "wrong_ref"
                 noise_counts[noise] += 1
                 lines.append(("pay", inv, ref, amount, noise))
-            for d in todays_deds:
-                lines.append(("ded", d))
+            # Take deductions oldest first while the check stays positive; the rest wait for a
+            # later check. (Carrying the whole week's batch all-or-nothing let the backlog
+            # snowball until no check could absorb it, and 3 of 4 deductions were never written.)
+            total = Money.of(0)
+            for ln in lines:
+                total = total + ln[3]
+            waiting = []
+            for d in backlog:
+                if d["amount"].amount < total.amount:
+                    lines.append(("ded", d))
+                    total = total - d["amount"]
+                else:
+                    waiting.append(d)
+            backlog = waiting
             if not lines:
                 friday += timedelta(days=7)
                 continue
             pay_seq += rng.randint(1, 50)
-            total = Money.of(0)
-            for ln in lines:
-                total = total + (ln[3] if ln[0] == "pay" else -ln[1]["amount"])
-            if total.amount < 0:          # deductions exceed payments this week: carry them forward
-                di -= len(todays_deds)
-                lines = [ln for ln in lines if ln[0] == "pay"]
-                total = Money.of(0)
-                for ln in lines:
-                    total = total + ln[3]
-                if not lines:
-                    friday += timedelta(days=7)
-                    continue
             pid = _upsert(conn, """INSERT INTO payment (partner_id, payment_reference, payment_date, amount, dataset_version_id)
                                    VALUES (%s, %s, %s, %s, %s) RETURNING payment_id""",
                           (kehe, f"ACH{pay_seq:08d}", friday, total.amount, ver))
@@ -454,17 +464,19 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
                     pay_seq += 1
                     did = _upsert(conn, """INSERT INTO deduction (claim_number, partner_id, remittance_line_id, deduction_code_id,
                                                raw_reason, amount, deduction_date, dispute_deadline, raw_invoice_ref, sku_id,
-                                               claimed_units, period_start, period_end, dataset_version_id)
-                                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING deduction_id""",
+                                               claimed_units, period_start, period_end, store_id, dataset_version_id)
+                                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING deduction_id""",
                                   (f"R-{rl:07d}", kehe, rl, codes[d["code"]], d["reason_text"], d["amount"].amount, d["date"],
                                    d["date"] + timedelta(days=window), d["invoice"]["number"] if d["invoice"] else None,
-                                   d["sku"], d["units"], d["p0"], d["p1"], ver))
+                                   d["sku"], d["units"], d["p0"], d["p1"], stores[d["store"]] if d["store"] else None, ver))
                     conn.execute("INSERT INTO eval.gt_deduction VALUES (%s, %s, %s, %s)",
                                  (did, d["valid"], d["valid_amount"].amount, d["reason"]))
                     rep.deductions += 1
                     rep.deductions_invalid += 0 if d["valid"] else 1
                 rem_count += 1
             friday += timedelta(days=7)
+        rep.deductions_generated = len(ded_rows)
+        rep.deductions_pending = len(backlog) + (len(ded_rows) - di)
         rep.remittance_lines = rem_count
         rep.noise_counts = noise_counts
     return rep
