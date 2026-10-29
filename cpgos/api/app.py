@@ -66,7 +66,7 @@ def overview(conn: psycopg.Connection = Depends(get_conn)) -> s.Overview:
         """SELECT
              (SELECT count(*) FROM dataset_version) AS dataset_versions,
              (SELECT count(*) FROM dataset_version WHERE data_origin = 'real') AS real_dataset_versions,
-             (SELECT count(*) FROM sales_observation) AS sales_observations,
+             (SELECT coalesce(sum(observations), 0) FROM sales_series_stats) AS sales_observations,
              (SELECT count(*) FROM product) AS skus,
              (SELECT count(*) FROM store) AS stores,
              (SELECT count(*) FROM source_document) AS source_documents,
@@ -157,7 +157,7 @@ def _granularity(conn: psycopg.Connection, requested: str | None) -> str | None:
     if requested:
         return requested
     row = conn.execute(
-        """SELECT granularity FROM sales_observation GROUP BY granularity
+        """SELECT granularity FROM sales_series_stats GROUP BY granularity
            ORDER BY (granularity = 'day') DESC LIMIT 1"""
     ).fetchone()
     return row["granularity"] if row else None
@@ -173,13 +173,12 @@ def series_keys(
     if g is None:
         return []
     rows = conn.execute(
-        """SELECT p.sku_code, st.external_code AS store, o.granularity, p.category,
-                  count(*) AS observations, sum(o.units) AS total_units
-           FROM sales_observation o
+        """SELECT p.sku_code, st.external_code AS store, x.granularity, p.category,
+                  x.observations, x.total_units
+           FROM sales_series_stats x
            JOIN product p USING (sku_id) JOIN store st USING (store_id)
-           WHERE o.granularity = %s
-           GROUP BY p.sku_code, st.external_code, o.granularity, p.category
-           ORDER BY total_units DESC LIMIT %s""",
+           WHERE x.granularity = %s
+           ORDER BY x.total_units DESC LIMIT %s""",
         (g, limit),
     ).fetchall()
     return [s.SeriesKey(**r) for r in rows]

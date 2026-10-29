@@ -94,3 +94,11 @@ def test_concurrent_loads_are_refused(conn, db_url, two_stores):
         with pytest.raises(LoadInProgressError):
             load_m5_by_store(conn, two_stores, progress=lambda m: None, **KW)
     assert conn.execute("SELECT count(*) FROM ingestion_run").fetchone()[0] == 0
+
+
+def test_by_store_refreshes_the_summary_once_at_the_end(conn, two_stores):
+    msgs = []
+    load_m5_by_store(conn, two_stores, progress=msgs.append, **KW)
+    assert sum("Refreshing the per-series summary" in m for m in msgs) == 1
+    n, units = conn.execute("SELECT sum(observations), sum(total_units) FROM sales_series_stats").fetchone()
+    assert (n, units) == (26, 44)

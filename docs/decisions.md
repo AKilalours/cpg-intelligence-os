@@ -221,3 +221,14 @@ The UI now binds to 127.0.0.1 (verified: the only listening address is
 127.0.0.1:3100), matching the API. A test guards both. Also upgraded React 18
 to 19.3.1, which Next.js 16 deprecated and Next.js 17 removes; verified with
 0 vulnerabilities, type check, build, and all six pages serving real data.
+
+## 31. Aggregate at load time, not on every page view
+With full M5 loaded, Planning took 7-8 s and Overview about 1.2 s on the Mac.
+Measured cause (sandbox, 6.7M weekly rows): picking daily vs weekly scanned
+the whole table (788 ms, run twice per Planning view), the top-series list
+summed all rows (1,817 ms), and Overview counted all rows (228 ms). A
+per-series summary (`sales_series_stats`, 30,490 rows) is now refreshed once
+per load batch (1.2 s, concurrently, so readers are never blocked), and the
+API reads it: 9.2 ms, 1.8 ms, and 4.1 ms; the endpoints respond in 9-13 ms.
+Summary totals equal a live recount (6,719,161 rows, 66,927,173 units), and a
+test asserts the summary always matches the raw rows.

@@ -270,6 +270,7 @@ def load_m5(
     parquet_root: Path | None = PROCESSED_ROOT,
     memory_limit: str = "1GB",
     threads: int = 2,
+    refresh_stats: bool = True,
 ) -> LoadReport:
     if pg_granularity not in {"day", "week", "none"}:
         raise ValueError("pg_granularity must be 'day', 'week', or 'none'")
@@ -414,6 +415,8 @@ def load_m5(
                 _finish(conn, run_id, "failed", rows_in, 0, n_bad, f"{type(exc).__name__}: {exc}")
                 raise
 
+        if refresh_stats and loaded:
+            refresh_series_stats(conn)
         return LoadReport(run_id, "succeeded", rows_in, loaded, n_bad, skipped, None, fmt, pg_granularity,
                           parquet_path, parquet_rows, notes)
     except BaseException as exc:
@@ -543,14 +546,25 @@ def load_m5_by_store(
             rep = load_m5(conn, data_dir, origin=origin, license_=license_, stores=[st],
                           batch={"id": batch_id, "part": i, "of": len(todo)},
                           pg_granularity=pg_granularity, parquet_root=parquet_root,
-                          memory_limit=memory_limit, threads=threads)
+                          memory_limit=memory_limit, threads=threads, refresh_stats=False)
             reports.append(rep)
             progress(f"[{i}/{len(todo)}] {st}: {rep.status}, {rep.rows_in:,} rows, "
                      f"{rep.rows_quarantined:,} quarantined")
             if rep.status != "succeeded":
                 progress(f"Stopped at {st}: {rep.failure_reason}. Re-run to resume; finished stores are skipped.")
                 break
+        if any(r.status == "succeeded" and r.rows_loaded for r in reports):
+            progress("Refreshing the per-series summary...")
+            refresh_series_stats(conn)
         return reports
+
+
+def refresh_series_stats(conn: psycopg.Connection) -> None:
+    """Rebuild the per-series summary the API reads (see migration 0005).
+
+    CONCURRENTLY keeps the old summary readable while the new one is built.
+    """
+    conn.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY sales_series_stats")
 
 
 def _finish(conn, run_id, status, rows_in, loaded, quarantined, reason, in_tx=False) -> None:

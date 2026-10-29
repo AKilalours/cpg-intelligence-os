@@ -97,3 +97,17 @@ def test_daily_and_weekly_rows_are_never_mixed(client, conn):
 
 def test_empty_sales_returns_no_keys(client):
     assert client.get("/api/sales/series-keys").json() == []
+
+
+def test_series_summary_matches_live_totals(client, conn):
+    # The summary must always equal recomputing from the raw rows.
+    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture", pg_granularity="day", parquet_root=None)
+    load_m5(conn, FIXTURES / "m5", origin="test_fixture", license_="fixture", pg_granularity="week", parquet_root=None)
+    live = conn.execute(
+        """SELECT sku_id, store_id, granularity, count(*), sum(units), min(obs_date), max(obs_date)
+           FROM sales_observation GROUP BY 1, 2, 3 ORDER BY 1, 2, 3""").fetchall()
+    summary = conn.execute(
+        """SELECT sku_id, store_id, granularity, observations, total_units, first_date, last_date
+           FROM sales_series_stats ORDER BY 1, 2, 3""").fetchall()
+    assert summary == live and len(live) == 4
+    assert client.get("/api/overview").json()["coverage"]["sales_observations"] == 13 + 3
