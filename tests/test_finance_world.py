@@ -22,8 +22,10 @@ def sales_fixture(weeks=40):
                 p = Decimal(price)
                 if item == "FOODS_1_002" and store == "CA_1" and w in (20, 21):
                     p = Decimal("1.00")
+                # Varied units so invoice totals rarely repeat (real totals almost never do).
+                jitter = (w * 37 + sum(map(ord, item + store))) % 23
                 out.append(WeeklySale(store, region, item, "FOODS", item.rsplit("_", 1)[0], wk,
-                                      base_units + (w % 7) * 3, p, 7))
+                                      base_units + jitter, p, 7))
     return out
 
 
@@ -65,8 +67,8 @@ def test_every_deduction_has_truth_and_valid_amount_never_exceeds_claim(conn, wo
 
 
 def test_valid_promo_deduction_equals_allowance_times_real_units(conn, world):
-    # Weeks 20 and 21 sold (50+... no: FOODS_1_002 base 120) units = (120 + (20 % 7) * 3) + (120 + (21 % 7) * 3)
-    real_units = (120 + (20 % 7) * 3) + (120 + (21 % 7) * 3)
+    jit = lambda w: (w * 37 + sum(map(ord, "FOODS_1_002" + "CA_1"))) % 23
+    real_units = (120 + jit(20)) + (120 + jit(21))
     amt = conn.execute("""SELECT d.amount FROM deduction d JOIN eval.gt_deduction g USING (deduction_id)
                           WHERE d.raw_reason LIKE 'WALMART PROMO%%' AND g.reason = 'valid'""").fetchall()
     assert amt == [(Decimal("0.15") * real_units,)]
