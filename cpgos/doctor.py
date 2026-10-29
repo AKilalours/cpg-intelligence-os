@@ -65,6 +65,20 @@ def _run(cmd: list[str], timeout: int = 10) -> subprocess.CompletedProcess | Non
         return None
 
 
+def check_node() -> Check:
+    if shutil.which("node") is None:
+        return Check("Node.js 20.9+ (UI only)", False, "node not found",
+                     "brew install node@20  (only needed for make web)", critical=False)
+    r = _run(["node", "--version"])
+    raw = (r.stdout.strip() if r and r.returncode == 0 else "").lstrip("v")
+    try:
+        ok = tuple(int(x) for x in raw.split(".")[:2]) >= (20, 9)
+    except ValueError:
+        ok = False
+    return Check("Node.js 20.9+ (UI only)", ok, raw or "unknown version",
+                 "upgrade Node to 20.9 or newer for make web", critical=False)
+
+
 def check_docker() -> Check:
     if shutil.which("docker") is None:
         return Check("Docker engine", False, "docker CLI not found",
@@ -147,7 +161,7 @@ def check_datasets() -> list[Check]:
 
 def run_checks() -> list[Check]:
     return [check_python(), check_project_env(), check_packages(), check_env_file(),
-            check_docker(), check_postgres(),
+            check_docker(), check_postgres(), check_node(),
             check_port("API", "CPGOS_API_PORT", 8100), check_port("UI", "CPGOS_WEB_PORT", 3100),
             *check_datasets()]
 

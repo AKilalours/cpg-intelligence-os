@@ -9,11 +9,13 @@ export const dynamic = "force-dynamic";
 
 type Search = { sku?: string; store?: string };
 
-export default async function PlanningPage({ searchParams }: { searchParams: Search }) {
+// Next.js 15+ passes URL parameters as a Promise.
+export default async function PlanningPage({ searchParams }: { searchParams: Promise<Search> }) {
+  const params = await searchParams;
   const keys = await api<SeriesKey[]>("/api/sales/series-keys?limit=25");
   const pick =
-    searchParams.sku && searchParams.store
-      ? { sku: searchParams.sku, store: searchParams.store }
+    params.sku && params.store
+      ? { sku: params.sku, store: params.store }
       : keys.ok && keys.data[0] ? { sku: keys.data[0].sku_code, store: keys.data[0].store } : null;
   const series = pick
     ? await api<SalesSeries>(`/api/sales/series?sku_code=${encodeURIComponent(pick.sku)}&store=${encodeURIComponent(pick.store)}`)

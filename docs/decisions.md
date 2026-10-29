@@ -179,3 +179,16 @@ Opening the UI at localhost:3000 showed Grafana: another program already held
 port 3000, and Next.js silently moved to 3001. Defaults are now 3100 (UI) and
 8100 (API), configurable in `.env`; `make web` and `make api` refuse to start
 on a busy port and name the program holding it; `make doctor` reports both.
+
+## 27. No known-vulnerable dependencies ship; audits run in CI
+`npm install` reported 1 critical and 1 high advisory: Next.js 14.2.35 had 25
+published advisories (including unauthenticated remote code execution in
+image optimization) with no fix on the 14.x line, plus a vulnerable PostCSS
+it bundled. Actual exposure was low (local development only, and none of the
+affected features were used), but shipping known-critical CVEs is not
+acceptable. Upgraded to Next.js 16.4.3 (Node 20.9+); the only code change was
+reading page `searchParams` asynchronously. Verified: 0 npm vulnerabilities,
+0 known Python vulnerabilities (pip-audit on requirements.lock), type check,
+build, and all six pages served with real data. CI now fails on high or
+critical advisories, Dependabot opens weekly update PRs, and `make doctor`
+checks the Node version.

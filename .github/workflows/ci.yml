@@ -35,6 +35,20 @@ jobs:
       - run: pip install -r requirements.lock && pip install --no-deps -e .
       - run: pytest
 
+  security-audit:
+    # Fails on known vulnerabilities in the exact locked versions we ship.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit && pip-audit -r requirements.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: cd web && npm ci && npm audit --audit-level=high
+
   backend-latest-deps:
     # Unpinned newest releases. Allowed to fail: it is an early warning that
     # requirements.lock needs a deliberate update, not a broken build.

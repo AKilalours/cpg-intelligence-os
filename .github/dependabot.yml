@@ -1,0 +1,16 @@
+# Weekly update pull requests. Each one runs the full CI (tests on Python 3.10
+# and 3.12, security audit, web build) before anything is merged.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
