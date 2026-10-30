@@ -45,7 +45,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pip-audit && pip-audit -r requirements.lock
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: web/.nvmrc
       - run: cd web && npm ci && npm audit --audit-level=high
@@ -84,7 +84,7 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: web/.nvmrc
           cache: npm
