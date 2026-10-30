@@ -13,7 +13,9 @@ OCR + rules was right only 3 of 19 times.
 
 Per field:
 - reader 1 and reader 2 agree                       -> accept ("two readers agree")
-- both are blank and the field is optional           -> accept as absent
+- both are blank, the field is optional, and none of
+  its labels is printed anywhere on the page         -> accept as absent (absence is verified,
+                                                        not assumed: version 1.1)
 - otherwise ask reader 3 (Claude) for the invoice; if it agrees with one of
   the others                                         -> accept that value
 - otherwise                                          -> a person decides, shown all candidates
@@ -28,7 +30,7 @@ from dataclasses import dataclass
 
 from cpgos.documents import normalize as nz
 
-POLICY_VERSION = "two-readers-1.0.0"
+POLICY_VERSION = "two-readers-1.1.0"
 REQUIRED = ("invoice_number", "invoice_date", "total")
 
 
@@ -41,20 +43,39 @@ class Decision:
     candidates: dict             # reader -> value
 
 
-def needs_third_reader(r1: dict, r2: dict) -> list[str]:
+def absence_vocabulary(rules_model) -> dict[str, list[str]]:
+    """Every label ever used for a field in training, including labels the learner set aside as
+    ambiguous (e.g. "BALANCE_DUE", which some layouts use for the total and others for the amount due)."""
+    vocab = {f: [lab for lab, _ in labs] for f, labs in rules_model.lexicon.items()}
+    for item in rules_model.trained_on.get("labels_reassigned_or_dropped", []):
+        if item.endswith(")") and " (" in item:
+            lab, f = item[:-1].rsplit(" (", 1)
+            vocab.setdefault(f, []).append(lab)
+    return vocab
+
+
+def labels_on_page(words, vocab: dict[str, list[str]]) -> set[str]:
+    """Fields whose label is printed somewhere on the page."""
+    from cpgos.documents.ocr import lines
+    from cpgos.documents.rules import label_pattern
+    text = "\n".join(t for t, _ in lines(words))
+    return {f for f, labs in vocab.items() if any(label_pattern(lab).search(text) for lab in labs)}
+
+
+def needs_third_reader(r1: dict, r2: dict, printed_labels: set[str] = frozenset()) -> list[str]:
     """Fields the first two readers did not settle."""
     out = []
     for f in nz.FIELD_TYPES:
         a, b = r1.get(f), r2.get(f)
         if a is not None and a == b:
             continue
-        if a is None and b is None and f not in REQUIRED:
+        if a is None and b is None and f not in REQUIRED and f not in printed_labels:
             continue
         out.append(f)
     return out
 
 
-def decide(r1: dict, r2: dict, r3: dict | None = None) -> list[Decision]:
+def decide(r1: dict, r2: dict, r3: dict | None = None, printed_labels: set[str] = frozenset()) -> list[Decision]:
     out = []
     for f in nz.FIELD_TYPES:
         a, b = r1.get(f), r2.get(f)
@@ -62,12 +83,13 @@ def decide(r1: dict, r2: dict, r3: dict | None = None) -> list[Decision]:
         cands = {k: v for k, v in (("rules", a), ("local_model", b), ("claude", c)) if v is not None}
         if a is not None and a == b:
             out.append(Decision(f, a, "accepted", "two readers agree", cands))
-        elif a is None and b is None and f not in REQUIRED and (r3 is None or c is None):
-            out.append(Decision(f, None, "accepted", "no reader found it; optional field", cands))
+        elif a is None and b is None and f not in REQUIRED and (r3 is None or c is None) and f not in printed_labels:
+            out.append(Decision(f, None, "accepted", "absent: no value and no label for it on the page", cands))
         elif c is not None and c in (a, b):
             out.append(Decision(f, c, "accepted", "third reader agrees with one of two", cands))
         else:
             reason = ("required field not found" if not cands and f in REQUIRED else
+                      "label printed but no value read" if not cands and f in printed_labels else
                       "readers disagree" if len(set(cands.values())) > 1 else
                       "only one reader found it" if cands else "no reader found it")
             out.append(Decision(f, None, "review", reason, cands))

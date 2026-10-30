@@ -218,6 +218,18 @@ def _gold(conn, gs: int, ids: list[int]) -> dict[int, dict]:
     return g
 
 
+def page_labels(conn: psycopg.Connection, raw_root: Path, ids: list[int]) -> dict[int, set[str]]:
+    """Per invoice, the fields whose label is printed on the page (from cached OCR)."""
+    from cpgos.documents import routing
+    with conn.transaction():
+        conn.execute("SET LOCAL ROLE cpgos_engine")
+        _, model = rules.load_model(conn)
+        docs = conn.execute("SELECT source_document_id, storage_key, sha256 FROM source_document "
+                            "WHERE source_document_id = ANY(%s)", (ids,)).fetchall()
+    vocab = routing.absence_vocabulary(model)
+    return {sid: routing.labels_on_page(ocr.ocr_image(raw_root / key, sha), vocab) for sid, key, sha in docs}
+
+
 def route(conn: psycopg.Connection, raw_root: Path, ids: list[int], local, claude=None, progress=print) -> dict:
     """Readers 1 and 2 for every invoice; Claude only for invoices with an unsettled field; then decide.
     claude=None decides without a third reader (to see how much Claude adds)."""
@@ -226,7 +238,8 @@ def route(conn: psycopg.Connection, raw_root: Path, ids: list[int], local, claud
     v1 = extraction.extract_documents(conn, raw_root, ids)["extractor_version"]
     v2 = run_tier2(conn, raw_root, ids, local, progress=lambda m: None)["extractor_version"]   # replays recordings
     r1, r2 = _values(conn, v1, ids), _values(conn, v2, ids)
-    need = [sid for sid in ids if routing.needs_third_reader(r1[sid], r2[sid])]
+    printed = page_labels(conn, raw_root, ids)
+    need = [sid for sid in ids if routing.needs_third_reader(r1[sid], r2[sid], printed[sid])]
     r3: dict = defaultdict(dict)
     third = {"invoices_needing_third_reader": len(need)}
     if claude is not None and need:
@@ -238,8 +251,10 @@ def route(conn: psycopg.Connection, raw_root: Path, ids: list[int], local, claud
                       "complete": run["failed_calls"] == 0 and not run.get("stopped_early"),
                       "usd_spent_this_run": str(budget.spent() - spent_before), "usd_spent_total": str(budget.spent()),
                       "usd_cap": str(budget.cap())})
-    decisions = {sid: routing.decide(r1[sid], r2[sid], r3.get(sid) if claude is not None else None) for sid in ids}
-    return {"reader_versions": {"rules": v1, "local_model": v2}, "third_reader": third, "decisions": decisions}
+    decisions = {sid: routing.decide(r1[sid], r2[sid], r3.get(sid) if claude is not None else None, printed[sid])
+                 for sid in ids}
+    return {"reader_versions": {"rules": v1, "local_model": v2}, "third_reader": third, "decisions": decisions,
+            "printed_labels": printed}
 
 
 def evaluate_routing(conn: psycopg.Connection, raw_root: Path, split: str, rounds: list[int], local, claude=None,
@@ -250,7 +265,8 @@ def evaluate_routing(conn: psycopg.Connection, raw_root: Path, split: str, round
     res = route(conn, raw_root, ids, local, claude, progress)
     gold = _gold(conn, gs, ids)
     with_third = routing.summarize(res["decisions"], gold)
-    without = routing.summarize({sid: routing.decide(*[_values(conn, v, [sid])[sid] for v in res["reader_versions"].values()])
+    without = routing.summarize({sid: routing.decide(*[_values(conn, v, [sid])[sid] for v in res["reader_versions"].values()],
+                                                     None, res["printed_labels"][sid])
                                  for sid in ids}, gold)
     wrong = [(sid, d.field_name, d.reason, d.value, gold[sid].get(d.field_name), d.candidates)
              for sid, ds in res["decisions"].items() for d in ds

@@ -41,7 +41,7 @@ def test_third_reader_alone_does_not_decide():
 
 def test_optional_absent_is_accepted_but_required_absent_is_not():
     s = _status(routing.decide({}, {}))
-    assert s["po_number"] == ("accepted", None, "no reader found it; optional field")
+    assert s["po_number"] == ("accepted", None, "absent: no value and no label for it on the page")
     assert s["total"][0] == "review" and s["total"][2] == "required field not found"
 
 
@@ -57,7 +57,7 @@ def test_summary_counts_wrong_acceptances_against_the_key():
                             {"invoice_number": "A", "invoice_date": "2008-03-20", "total": "1.00"})}
     s = routing.summarize(ds, {1: {"invoice_number": "A", "invoice_date": "2008-03-20", "total": "1.00", "po_number": "35"}})
     assert s["straight_through"]["k"] == 1
-    assert s["accepted_by_reason"]["wrong: no reader found it; optional field"] == 1     # a missed PO number
+    assert s["accepted_by_reason"]["wrong: absent: no value and no label for it on the page"] == 1   # a missed PO number
 
 
 # ---------- the spending cap ----------
@@ -124,3 +124,25 @@ def test_identical_rejections_stop_the_run_early(conn, monkeypatch):
             return None
     out = cascade.run_tier2(conn, __import__("pathlib").Path("."), ids, P(), progress=lambda m: None, extractor="claude")
     assert len(calls) == cascade.MAX_SAME_ERRORS and out["stopped_early"] == 1
+
+
+def test_absence_is_verified_not_assumed():
+    # Regression (calibration, layout 20): all three readers missed an amount due printed as
+    # "BALANCE_DUE : 299.40" and the rule accepted it as absent. A field whose label is printed
+    # on the page is never accepted as absent; a person checks it.
+    s = _status(routing.decide({}, {}, {}, printed_labels={"amount_due"}))
+    assert s["amount_due"][0] == "review" and s["amount_due"][2] == "label printed but no value read"
+    assert s["po_number"][0] == "accepted"                                       # no PO label: truly absent
+    assert "amount_due" in routing.needs_third_reader({}, {}, {"amount_due"})   # its label is printed: ask Claude
+    assert "amount_due" not in routing.needs_third_reader({}, {})                # no label: nothing to ask
+
+
+def test_absence_vocabulary_includes_labels_set_aside_as_ambiguous():
+    from cpgos.documents.rules import RulesModel
+    from tests.test_rules_extraction import words_of
+    m = RulesModel({}, {"amount_due": [("AMOUNT_DUE", 3)], "total": [("TOTAL", 20)]},
+                   trained_on={"labels_reassigned_or_dropped": ["BALANCE_DUE (amount_due)", "Due Date (invoice_date)"]})
+    vocab = routing.absence_vocabulary(m)
+    assert "BALANCE_DUE" in vocab["amount_due"] and "Due Date" in vocab["invoice_date"]
+    page = words_of(("TOTAL : 299.40 $", 0.6, 0.80, "1.1.1"), ("BALANCE_DUE : 299.40 $", 0.6, 0.85, "1.1.2"))
+    assert routing.labels_on_page(page, vocab) == {"amount_due", "total"}
