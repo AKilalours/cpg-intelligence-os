@@ -9,6 +9,7 @@ Usage:
     python scripts/documents.py extract        # OCR + rules on every document not yet extracted (engine role)
     python scripts/documents.py eval-extract   # score the frozen rules on known-layout test and holdout layouts
     python scripts/documents.py vlm-dev        # choose the local model's image scale on 20 fit-layout dev invoices
+    python scripts/documents.py eval-cascade   # tier 1 + local model on fixed holdout and calibration samples (resumable)
 
 Requires CPGOS_DATABASE_URL and FATURA in data/raw/fatura (make download DATASET=fatura).
 No language model is called by these commands.
@@ -179,17 +180,46 @@ def cmd_vlm_dev(conn) -> int:
     return 0
 
 
+def cmd_eval_cascade(conn) -> int:
+    from psycopg.types.json import Jsonb
+    from cpgos.documents import cascade
+    from cpgos.llm import LLMError, provider
+    if not _ocr_ready():
+        return 1
+    p = provider("ollama")
+    try:
+        print(f"model: {p.model} digest {str(p.digest())[:12]}")
+    except LLMError as e:
+        print(f"BLOCKED: {e}")
+        return 1
+    rep = cascade.evaluate(conn, RAW, p, progress=lambda m: print(m, flush=True))
+    body = json.loads(json.dumps(rep, default=str))
+    rid = conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES ('extraction_cascade', %s, %s) RETURNING report_id",
+                       (code_version(), Jsonb(body))).fetchone()[0]
+    def short(s):
+        return {k: s[k] for k in ("correct", "wrong", "abstained", "spurious")} | {
+            "precision": s["precision"]["rate"], "coverage": s["coverage"]["rate"]}
+    print(json.dumps({"report_id": rid, "minutes": rep["minutes"],
+                      **{split: {"invoices": rep[split]["invoices"], "tier1": short(rep[split]["tier1"]),
+                                 "tier2_alone": short(rep[split]["tier2"]), "cascade": short(rep[split]["cascade"]),
+                                 "tier2_filled": rep[split]["tier2_filled"], "readers_agree": rep[split]["readers_agree"]}
+                         for split in ("holdout", "calibration")}}, indent=1, default=str))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["load-fatura", "train-router", "eval-router", "route",
-                                        "learn-rules", "extract", "eval-extract", "vlm-dev"])
+                                        "learn-rules", "extract", "eval-extract", "vlm-dev",
+                                        "eval-cascade"])
     args = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
         return {"load-fatura": cmd_load_fatura, "train-router": cmd_train_router,
                 "eval-router": cmd_eval_router, "route": cmd_route, "learn-rules": cmd_learn_rules,
-                "extract": cmd_extract, "eval-extract": cmd_eval_extract, "vlm-dev": cmd_vlm_dev}[args.command](conn)
+                "extract": cmd_extract, "eval-extract": cmd_eval_extract, "vlm-dev": cmd_vlm_dev,
+                "eval-cascade": cmd_eval_cascade}[args.command](conn)
 
 
 if __name__ == "__main__":

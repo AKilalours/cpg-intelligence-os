@@ -202,3 +202,57 @@ def test_extraction_runs_as_engine_and_scores_with_the_key(conn, tmp_path, monke
         conn.execute("SET LOCAL ROLE cpgos_engine")
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute("UPDATE field_extraction SET value = 'x'")
+
+
+def test_cascade_policy_never_lets_the_model_overrule_tier1():
+    from cpgos.documents import cascade
+    got = cascade.combine({"total": "734.33", "seller_name": None, "po_number": None},
+                          {"total": "999.99", "seller_name": "Fernandez PLC", "po_number": None})
+    assert got == {"total": ("734.33", "tier1"), "seller_name": ("Fernandez PLC", "tier2"), "po_number": (None, "none")}
+
+
+def test_cascade_fills_blanks_only_with_grounded_values_and_resumes(conn, tmp_path, monkeypatch):
+    from cpgos.documents import cascade, vlm
+    from tests.test_documents_gold import _write_fixture
+    monkeypatch.setattr(F, "N_CALIBRATION_TEMPLATES", 1)
+    _write_fixture(tmp_path)
+    F.load_fatura(conn, tmp_path, origin="test_fixture")
+    rules.save_model(conn, rules.learn(conn))
+    monkeypatch.setattr(ocr, "engine_id", lambda: "fake-ocr")
+    monkeypatch.setattr(cascade, "SAMPLE_PER_LAYOUT", {"holdout": 2, "calibration": 2})
+    sha_to_doc = {sha: Path(key).stem for sha, key in conn.execute("SELECT sha256, storage_key FROM source_document")}
+
+    def page(stem):
+        t, i = (int(x) for x in stem.replace("Template", "").split("_Instance"))
+        # The total's label is unreadable ("T0TAL"), so tier 1 cannot read the total.
+        return t, i, words_of((f"INVOICE # INV{t}{i:03d}", 0.5, 0.05, "1.1.1"), (f"Date: {10 + i}-Mar-2008", 0.5, 0.08, "1.1.2"),
+                              (f"T0TAL {t}{i}.50 $", 0.5, 0.90, "2.1.1"))
+    monkeypatch.setattr(ocr, "ocr_many", lambda items, workers=None: [page(Path(p).stem)[2] for p, _ in items])
+    monkeypatch.setattr(ocr, "ocr_image", lambda path, sha: page(Path(path).stem)[2])
+    monkeypatch.setattr(vlm, "page_png", lambda path, scale=1.0: b"png")
+    calls = []
+
+    def fake_extract(prov, img, iid=None):
+        calls.append(iid)
+        t, i, _ = page(sha_to_doc[iid.split("@")[0]])
+        printed = f"{t}{i}.50" if i % 2 == 0 else "999.99"        # odd instances: a value that is not on the page
+        return [rules.Extraction("total", printed, printed, None, "vlm:fake", {"printed": printed})], {"seconds": 0.5}
+    monkeypatch.setattr(vlm, "extract", fake_extract)
+
+    class P:
+        name, model = "fake", "m"
+        def digest(self):
+            return "sha256:0123456789abcdef"
+
+    rep = cascade.evaluate(conn, tmp_path, P(), progress=lambda m: None)
+    for split in ("holdout", "calibration"):
+        r = rep[split]
+        assert r["invoices"] == 2
+        assert r["by_field"]["total"]["tier1"]["abstained"] == 2           # tier 1 could not read it
+        assert r["by_field"]["total"]["tier2"]["correct"] == 1             # the on-page value is kept
+        assert r["by_field"]["total"]["tier2"]["wrong"] == 0               # the off-page 999.99 was dropped
+        assert r["by_field"]["total"]["cascade"]["correct"] == 1
+        assert r["by_field"]["invoice_number"]["cascade"]["correct"] == 2  # tier 1 values stand
+    n = len(calls)
+    cascade.evaluate(conn, tmp_path, P(), progress=lambda m: None)
+    assert len(calls) == n and all(c.endswith("@png-x1.0") for c in calls)   # resumable: nothing re-run

@@ -7,7 +7,7 @@ PY     := $(VENV)/bin/python
 DATASET ?= m5
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -80,6 +80,9 @@ eval-extract: $(PY)  ## Score the frozen rules on known-layout test invoices and
 
 vlm-dev: $(PY)  ## Local vision model (Ollama) on 20 dev invoices at two image scales (needs ollama serve)
 	$(PY) scripts/documents.py vlm-dev
+
+eval-cascade: $(PY)  ## Tier 1 + local model on fixed samples, scored (about 1.5 h first time; resumable)
+	$(PY) scripts/documents.py eval-cascade
 
 test: $(PY)  ## Run the backend tests (needs a reachable Postgres)
 	$(PY) -m pytest
