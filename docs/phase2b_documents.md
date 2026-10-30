@@ -206,10 +206,16 @@ between design data and never-seen layouts, reported as measured.
 - Layout 10, seller: the name has no label, so absence cannot be checked on
   the page, and Claude was never asked.
 
-**Rule 1.2** (built, tested, not yet validated on fresh holdout): a field two
-model readers read alike is never accepted as absent even if OCR cannot
-confirm it; fields without labels always get the third reader before
-"absent" is accepted. Its holdout validation will use a third fresh round of
+**Rule 1.2** (built and tested; calibration report 12 plus a replay; not yet
+validated on fresh holdout): a value two model readers read alike that OCR
+could not find anywhere on the page is never accepted as absent; fields
+without labels always get the third reader before "absent" is accepted.
+
+A first version counted any agreeing, unconfirmed reading. On calibration
+it held back 20 invoices whose answer key has no buyer (both models read a
+ship-to name that OCR found, in the wrong role), dropping straight-through
+from 55.6% to 43.1%. Restricting it to values OCR could not find at all
+restored 55.6%, with 1,986 of 1,986 accepted values correct. Its holdout validation will use a third fresh round of
 invoices in Phase 4, so this 150-invoice set is not reused for a fix designed
 after seeing it.
 

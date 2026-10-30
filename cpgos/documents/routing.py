@@ -63,16 +63,29 @@ def unverifiable_absence(vocab: dict[str, list[str]]) -> set[str]:
     return set(nz.FIELD_TYPES) - set(vocab) - {"currency"}
 
 
-def seen_by_two(*readings: dict) -> set[str]:
-    """Fields where two model readers independently printed the same typed value, even though the
-    page scan could not confirm it (1.2; holdout layout 12: OCR dropped the tax line, both models
-    read 23.39). One unconfirmed reading is not evidence: the local model's discarded guesses are."""
+def seen_by_two(*readings: dict, not_found: tuple[set[str], ...] | None = None) -> set[str]:
+    """Fields where two model readers independently printed the same typed value that the page scan
+    could not find at all (1.2; holdout layout 12: OCR dropped the tax line, both models read 23.39).
+
+    not_found: per reading, the fields whose value OCR could not locate anywhere on the page. A value
+    OCR did find, but outside the field's labelled line, was rejected for its role, and two models
+    agreeing on the wrong role (e.g. a ship-to name as the buyer) is not evidence of presence: on
+    calibration that case held back 20 invoices whose answer key has no buyer. One unconfirmed
+    reading is never evidence."""
     out = set()
     for f in nz.FIELD_TYPES:
-        vals = [r.get(f) for r in readings if r.get(f) is not None]
+        idx = [i for i, r in enumerate(readings) if r.get(f) is not None
+               and (not_found is None or f in not_found[i])]
+        vals = [readings[i][f] for i in idx]
         if len(vals) >= 2 and len(set(vals)) < len(vals):
             out.add(f)
     return out
+
+
+def not_found_on_page(grounded_extractions) -> set[str]:
+    """Fields whose model value grounding could not locate anywhere on the page."""
+    return {e.field_name for e in grounded_extractions
+            if e.value is None and "not on page" in (e.signals.get("grounding") or "")}
 
 
 def labels_on_page(words, vocab: dict[str, list[str]]) -> set[str]:

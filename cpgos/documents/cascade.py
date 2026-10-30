@@ -114,16 +114,20 @@ def sample(conn: psycopg.Connection, round_: int = 1) -> dict[str, list[int]]:
     return out
 
 
-def _printed_typed(conn, ver: str, ids: list[int]) -> dict[int, dict[str, str]]:
-    """What a model reader printed, typed, before grounding (including values grounding discarded)."""
+def _printed_typed(conn, ver: str, ids: list[int]) -> tuple[dict[int, dict[str, str]], dict[int, set[str]]]:
+    """What a model reader printed, typed, before grounding; and the fields whose value grounding
+    could not find anywhere on the page."""
     from cpgos.documents import vlm
     out: dict[int, dict] = defaultdict(dict)
-    for sid, f, raw in conn.execute("SELECT source_document_id, field_name, raw_text FROM field_extraction "
-                                    "WHERE extractor_version = %s AND source_document_id = ANY(%s)", (ver, ids)):
+    missing: dict[int, set] = defaultdict(set)
+    for sid, f, raw, sig in conn.execute("SELECT source_document_id, field_name, raw_text, signals FROM field_extraction "
+                                         "WHERE extractor_version = %s AND source_document_id = ANY(%s)", (ver, ids)):
         v = vlm._typed(f, raw) if raw not in (None, "", "None", "null") else None
         if v is not None:
             out[sid][f] = v
-    return out
+            if "not on page" in ((sig or {}).get("grounding") or ""):
+                missing[sid].add(f)
+    return out, missing
 
 
 def _values(conn, ver: str, ids: list[int]) -> dict[int, dict[str, str | None]]:
@@ -254,7 +258,7 @@ def route(conn: psycopg.Connection, raw_root: Path, ids: list[int], local, claud
     with conn.transaction():
         conn.execute("SET LOCAL ROLE cpgos_engine")
         unverifiable = routing.unverifiable_absence(routing.absence_vocabulary(rules.load_model(conn)[1]))
-    p2 = _printed_typed(conn, v2, ids)
+    p2, nf2 = _printed_typed(conn, v2, ids)
     seen: dict[int, set] = defaultdict(set)
     need = [sid for sid in ids if routing.needs_third_reader(r1[sid], r2[sid], printed[sid], set(), unverifiable)]
     r3: dict = defaultdict(dict)
@@ -264,9 +268,9 @@ def route(conn: psycopg.Connection, raw_root: Path, ids: list[int], local, claud
         progress(f"third reader ({claude.model}) on {len(need)} of {len(ids)} invoices")
         run = run_tier2(conn, raw_root, need, claude, progress, extractor="claude")
         r3 = _values(conn, run["extractor_version"], need)
-        p3 = _printed_typed(conn, run["extractor_version"], need)
+        p3, nf3 = _printed_typed(conn, run["extractor_version"], need)
         for sid in need:
-            seen[sid] = routing.seen_by_two(p2[sid], p3[sid])
+            seen[sid] = routing.seen_by_two(p2[sid], p3[sid], not_found=(nf2[sid], nf3[sid]))
         third.update({"version": run["extractor_version"], "calls_failed": run["failed_calls"],
                       "complete": run["failed_calls"] == 0 and not run.get("stopped_early"),
                       "usd_spent_this_run": str(budget.spent() - spent_before), "usd_spent_total": str(budget.spent()),

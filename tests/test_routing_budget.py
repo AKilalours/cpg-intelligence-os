@@ -155,6 +155,10 @@ def test_presence_needs_two_witnesses():
     assert routing.seen_by_two({"tax": "23.39"}, {"tax": "23.39"}) == {"tax"}
     assert routing.seen_by_two({"tax": "23.39"}, {"tax": "99.00"}) == set()
     assert routing.seen_by_two({"subtotal": "734.33"}, {}) == set()
+    # Only values OCR could not find at all count: two models agreeing on a value OCR did find but in
+    # the wrong role (a ship-to name as the buyer) held back 20 calibration invoices with no buyer.
+    assert routing.seen_by_two({"tax": "23.39"}, {"tax": "23.39"}, not_found=({"tax"}, {"tax"})) == {"tax"}
+    assert routing.seen_by_two({"buyer_name": "Ann Lee"}, {"buyer_name": "Ann Lee"}, not_found=(set(), set())) == set()
     s = _status(routing.decide({}, {}, {}, seen={"tax"}))
     assert s["tax"][0] == "review" and "could not confirm" in s["tax"][2]
 
