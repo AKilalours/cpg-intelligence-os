@@ -180,3 +180,56 @@ def test_non_json_answer_is_an_error_not_a_guess(tmp_path):
 def test_schema_asks_for_every_field_and_nothing_else():
     assert set(vlm.SCHEMA["required"]) == set(vlm.FIELD_HELP) == set(vlm.nz.FIELD_TYPES)
     assert vlm.SCHEMA["additionalProperties"] is False
+
+
+# ---------- grounding: a model value counts only if it is on the page, in the right role ----------
+
+from tests.test_rules_extraction import words_of  # noqa: E402
+
+LEX = {"subtotal": [("SUB_TOTAL", 20)], "total": [("TOTAL", 20)], "buyer_name": [("Bill to", 21)],
+       "invoice_number": [("INVOICE #", 29)]}
+PAGE = words_of(("INVOICE # INV/30-14/832", 0.55, 0.05, "1.1.1"),
+                ("Address:16424 Timothy Mission", 0.05, 0.20, "2.1.1"),
+                ("Bill to:Denise Perez", 0.55, 0.20, "3.1.1"),
+                ("Total in words: seven hundred and thirt-", 0.03, 0.70, "4.1.1"),
+                ("SUB_TOTAL : 725.30 EUR", 0.60, 0.705, "5.1.1"),
+                ("y-four point three three", 0.03, 0.716, "4.1.2"),
+                ("TOTAL : 734.33 EUR", 0.60, 0.85, "5.1.2"))
+
+
+def _ex(field, printed):
+    from cpgos.documents.rules import Extraction
+    return Extraction(field, vlm._typed(field, printed), printed, None, "vlm:fake", {"printed": printed})
+
+
+@pytest.mark.parametrize("field,printed,kept,why", [
+    ("total", "734.33 EUR", True, "amount on page"),
+    ("total", "430.57", False, "amount not on page"),          # regression: the model computed a total
+    ("subtotal", "725.30", True, "amount on page"),             # regression: "TOTAL" inside "SUB_TOTAL" was a false role conflict
+    ("subtotal", "734.33", False, "labelled total"),            # regression: total copied into subtotal
+    ("buyer_name", "Denise Perez", True, "text match"),
+    # Known limitation: the seller's address line carries no learned label, so grounding cannot
+    # tell this is the wrong role. Calibrated confidence and the Claude tier must catch it.
+    ("buyer_name", "Timothy Mission", True, "text match"),
+    ("invoice_number", "INV/30-14/832", True, "id on page"),
+    ("invoice_number", "INV/99-99/999", False, "id not on page"),
+    ("currency", "EUR", True, "currency on page"),
+    ("currency", "USD", False, "currency not on page"),
+    ("total_in_words", "seven hundred and thirty-four point three three", True, "letters found"),   # wraps lines and columns
+])
+def test_grounding(field, printed, kept, why):
+    out = vlm.grounded([_ex(field, printed)], PAGE, LEX)[0]
+    assert (out.value is not None) == kept, out.signals
+    assert why in out.signals["grounding"]
+    if kept:
+        assert out.bbox is not None
+
+
+def test_image_identity_keys_survive_different_encoders():
+    # Regression: keys hashed encoded PNG bytes; another machine's encoder wrote different bytes for
+    # the same pixels, so recordings made on the Mac never replayed in the sandbox or CI.
+    a = LLMRequest("s", "read", [b"png-bytes-from-mac"], {"type": "object"}, image_ids=["abc@png-x1.0"])
+    b = LLMRequest("s", "read", [b"png-bytes-from-linux"], {"type": "object"}, image_ids=["abc@png-x1.0"])
+    assert base.request_key("p", "m", "d", a) == base.request_key("p", "m", "d", b)
+    c = LLMRequest("s", "read", [b"png-bytes-from-mac"], {"type": "object"}, image_ids=["abc@png-x2.0"])
+    assert base.request_key("p", "m", "d", a) != base.request_key("p", "m", "d", c)

@@ -147,7 +147,8 @@ def cmd_vlm_dev(conn) -> int:
         print(f"BLOCKED: {e}")
         return 1
     gs = conn.execute("SELECT max(gold_set_id) FROM eval.gold_set WHERE name = 'fatura_header_fields'").fetchone()[0]
-    docs = conn.execute("""SELECT s.source_document_id, s.storage_key FROM eval.doc_meta m JOIN source_document s USING (source_document_id)
+    docs = conn.execute("""SELECT s.source_document_id, s.storage_key, s.sha256 FROM eval.doc_meta m
+                           JOIN source_document s USING (source_document_id)
                            WHERE m.split_unseen = 'fit' AND m.split_seen = 'dev' ORDER BY m.doc_key""").fetchall()
     docs = random.Random(2026).sample(docs, 20)
     gold = defaultdict(dict)
@@ -157,8 +158,8 @@ def cmd_vlm_dev(conn) -> int:
     report = {}
     for scale in (1.0, 2.0):
         pairs, secs, errors, by_field = [], [], 0, defaultdict(list)
-        for i, (sid, key) in enumerate(docs, 1):
-            exs, meta = vlm.extract(p, vlm.page_png(RAW / key, scale))
+        for i, (sid, key, sha) in enumerate(docs, 1):
+            exs, meta = vlm.extract(p, vlm.page_png(RAW / key, scale), vlm.image_id(sha, scale))
             if "error" in meta:
                 errors += 1
             secs.append(meta.get("seconds") or 0)

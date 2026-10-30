@@ -96,6 +96,24 @@ def label_pattern(label: str) -> re.Pattern:
     return re.compile(r"(?<![A-Za-z0-9])" + body + tail, re.IGNORECASE)
 
 
+def label_hits(text: str, pats) -> list[tuple[int, int, str, str, int]]:
+    """Labels printed in a line, longest first, without overlaps: "TOTAL" inside "SUB_TOTAL" and
+    "Date" inside "Due Date" are not counted. pats: [(field, label, layouts, compiled pattern)].
+    Returns (start, end, field, label, layouts) sorted by position. Shared by every caller, so
+    the rules tier and the model grounding check can never disagree about what labels a line."""
+    hits = [(m.start(), m.end(), f, lab, n) for f, lab, n, p in pats for m in p.finditer(text)]
+    hits.sort(key=lambda h: (-(h[1] - h[0]), h[0]))
+    kept: list[tuple[int, int, str, str, int]] = []
+    for h in hits:
+        if not any(h[0] < k[1] and h[1] > k[0] for k in kept):
+            kept.append(h)
+    return sorted(kept)
+
+
+def lexicon_patterns(lexicon: dict) -> list[tuple[str, str, int, re.Pattern]]:
+    return [(f, lab, n, label_pattern(lab)) for f, labs in lexicon.items() for lab, n in labs]
+
+
 def value_after(field_name: str, rest: str) -> str | None:
     """The text after a label, if a value of the right kind starts right there."""
     kind = nz.FIELD_TYPES[field_name]
@@ -242,7 +260,7 @@ def extract_by_labels(model: RulesModel, words: list[Word]) -> list[Extraction]:
     Labels match whole words; a shorter label inside a longer matched one ("TOTAL" in
     "SUB_TOTAL", "Date" in "Due Date") does not count."""
     page = lines(words)
-    pats = [(f, lab, n, label_pattern(lab)) for f, labs in model.lexicon.items() for lab, n in labs]
+    pats = lexicon_patterns(model.lexicon)
     cands: dict[str, list[tuple]] = defaultdict(list)
     geo = [(min(w.bbox[0] for w in ws), min(w.bbox[1] for w in ws), max(w.bbox[3] for w in ws)) for _, ws in page]
 
@@ -263,14 +281,9 @@ def extract_by_labels(model: RulesModel, words: list[Word]) -> list[Extraction]:
         return t[:cut].strip()
 
     for li, (text, ws) in enumerate(page):
-        hits = [(m.start(), m.end(), f, lab, n) for f, lab, n, p in pats for m in p.finditer(text)]
-        hits.sort(key=lambda h: (-(h[1] - h[0]), h[0]))
-        taken: list[tuple[int, int]] = []
+        hits = label_hits(text, pats)
         follow = below_same_column(li)
         for start, end, f, lab, n_layouts in hits:
-            if any(start < e and end > s0 for s0, e in taken):
-                continue
-            taken.append((start, end))
             # A value stops where the next label begins: OCR often merges two columns into
             # one line ("BILL_TO: INVOICE ID INV57067424").
             nxt = min((h[0] for h in hits if h[0] >= end), default=len(text))

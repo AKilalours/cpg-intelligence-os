@@ -9,7 +9,9 @@ A model is never trusted to do arithmetic or format conversion.
 
 from __future__ import annotations
 
+import difflib
 import io
+import re
 
 from PIL import Image
 
@@ -70,9 +72,15 @@ def _typed(field_name: str, raw) -> str | None:
     return nz.normalize_field(field_name, raw)
 
 
-def extract(provider: Provider, image_bytes: bytes) -> tuple[list[Extraction], dict]:
+def image_id(source_sha256: str, scale: float = 1.0) -> str:
+    """Stable identity of a rendered page: same source and rendering = same id on every machine."""
+    return f"{source_sha256}@png-x{scale}"
+
+
+def extract(provider: Provider, image_bytes: bytes, image_id: str | None = None) -> tuple[list[Extraction], dict]:
     """All header fields from one page image, typed. Returns (extractions, call metadata)."""
-    req = LLMRequest(system=SYSTEM, prompt=PROMPT, images=[image_bytes], json_schema=SCHEMA, max_tokens=700)
+    req = LLMRequest(system=SYSTEM, prompt=PROMPT, images=[image_bytes], image_ids=[image_id] if image_id else [],
+                     json_schema=SCHEMA, max_tokens=700)
     try:
         r = provider.complete(req)
     except LLMError as e:
@@ -89,3 +97,123 @@ def extract(provider: Provider, image_bytes: bytes) -> tuple[list[Extraction], d
         out.append(Extraction(f, value, str(raw) if raw is not None else "", None, f"vlm:{r.provider}",
                               {"model": r.model, "printed": raw, "typed": value is not None or raw is None}))
     return out, meta
+
+
+# ---------- grounding: a model's value counts only if it can be found on the page ----------
+
+def _norm_tok(t: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", t.lower())
+
+
+def ground(field_name: str, printed: str | None, value: str | None, words) -> tuple[bool, list[float] | None, str]:
+    """Find a model-read value in the page's OCR words. Returns (found, box of the matching words, how).
+
+    Money and dates are compared as typed values (an OCR token that types to the same amount or
+    date); ids exactly or within one OCR slip; names and words as a close match of a run of words.
+    A value that is nowhere on the page (a computed total, an invented number) is not grounded."""
+    from cpgos.documents.ocr import lines
+    from cpgos.documents.rules import _DATE_PATTERNS, _union
+    if value is None:
+        return False, None, "no value"
+    kind = nz.FIELD_TYPES[field_name]
+    page = lines(words)
+    if kind == "currency":
+        for text, ws in page:
+            if nz.parse_currency(text) == value:
+                return True, _union(ws), "currency on page"
+        return False, None, "currency not on page"
+    if kind == "money" and field_name != "tax":
+        for w in words:
+            for tok in re.findall(r"\d[\d,.]*\d|\d", w.text):
+                if nz.parse_amount(tok, last=True) is not None and str(nz.parse_amount(tok, last=True)) == value:
+                    return True, w.bbox, "amount on page"
+        return False, None, "amount not on page"
+    if field_name == "tax":
+        parts = [p for p in re.split(r"\s*\+\s*", printed or "") if p] or [value]
+        boxes = []
+        for part in parts:
+            want = nz.parse_amount(part, last=True)
+            hit = next((w for w in words for tok in re.findall(r"\d[\d,.]*\d|\d", w.text)
+                        if want is not None and nz.parse_amount(tok, last=True) == want), None)
+            if hit is None:
+                return False, None, "tax amount not on page"
+            boxes.append(hit)
+        return True, _union(boxes), "every tax amount on page"
+    if kind == "date":
+        for text, ws in page:
+            for pat in _DATE_PATTERNS:
+                for m in re.finditer(pat, text):
+                    if nz.normalize_field(field_name, m.group(0)) == value:
+                        return True, _union(ws), "date on page"
+        return False, None, "date not on page"
+    if kind == "id":
+        want = _norm_tok(value)
+        for w in words:
+            got = _norm_tok(w.text)
+            if got.endswith(want) or (len(want) > 4 and difflib.SequenceMatcher(None, got[-len(want):], want).ratio() >= 0.9):
+                return True, w.bbox, "id on page"
+        return False, None, "id not on page"
+    # names, free text, amounts in words: a run of words that closely matches
+    target = " ".join(_norm_tok(t) for t in (printed or value).split() if _norm_tok(t))
+    n = max(1, len(target.split()))
+    best, best_ws = 0.0, None
+    for _, ws in page:
+        toks = [_norm_tok(w.text) for w in ws]
+        for i in range(len(ws)):
+            for j in range(i + max(1, n - 2), min(len(ws), i + n + 2) + 1):
+                r = difflib.SequenceMatcher(None, " ".join(t for t in toks[i:j] if t), target).ratio()
+                if r > best:
+                    best, best_ws = r, ws[i:j]
+    if kind == "money_words":
+        # Amounts in words wrap across lines and columns: compare the letters in order over the
+        # whole page, allowing breaks, and require most of the printed letters to be found.
+        want = re.sub(r"[^a-z]", "", (printed or "").lower())
+        have = re.sub(r"[^a-z]", "", " ".join(t for t, _ in page).lower())
+        found = sum(b.size for b in difflib.SequenceMatcher(None, have, want, autojunk=False).get_matching_blocks())
+        cover = found / len(want) if want else 0.0
+        return cover >= 0.9, _union(best_ws) if best_ws else None, f"letters found {cover:.2f}"
+    return (best >= 0.85, _union(best_ws) if best >= 0.85 else None, f"text match {best:.2f}")
+
+
+def role_conflict(field_name: str, box: list[float] | None, words, lexicon: dict | None) -> str | None:
+    """The other field whose printed label introduces the line where a value was found, if any.
+    A subtotal read from "TOTAL : 810.70", or a buyer read from the seller's "Address:" line,
+    is the right text in the wrong role."""
+    if not lexicon or box is None:
+        return None
+    from cpgos.documents.ocr import lines
+    from cpgos.documents.rules import label_hits, lexicon_patterns
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    for text, ws in lines(words):
+        if not any(w.bbox[0] <= cx <= w.bbox[2] and w.bbox[1] <= cy <= w.bbox[3] for w in ws):
+            continue
+        # position of the value's first word in the line text
+        start, pos = 0, None
+        for w in ws:
+            i = text.find(w.text, start)
+            if w.bbox[0] <= cx <= w.bbox[2] or w.bbox[0] >= box[0] - 1e-6:
+                pos = i
+                break
+            start = i + len(w.text)
+        pos = len(text) if pos is None else pos
+        before = [(h[1], h[2]) for h in label_hits(text, lexicon_patterns(lexicon)) if h[1] <= pos + 1]
+        if before:
+            owner = max(before)[1]
+            if owner != field_name and not (field_name == "currency"):
+                return owner
+        return None
+    return None
+
+
+def grounded(exs: list[Extraction], words, lexicon: dict | None = None) -> list[Extraction]:
+    """Keep only values found on the page, in the right role; record where, or why not."""
+    out = []
+    for e in exs:
+        ok, box, how = ground(e.field_name, e.signals.get("printed"), e.value, words)
+        if ok and nz.FIELD_TYPES[e.field_name] in ("money", "name", "text", "date", "id"):
+            other = role_conflict(e.field_name, box, words, lexicon)
+            if other:
+                ok, how = False, f"found on a line labelled {other}"
+        sig = {**e.signals, "grounded": ok, "grounding": how}
+        out.append(Extraction(e.field_name, e.value if ok else None, e.raw_text, box, e.path, sig))
+    return out

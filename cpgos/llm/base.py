@@ -12,8 +12,10 @@ Modes (CPGOS_LLM_MODE):
 
 A recording is keyed by everything that can change the answer: provider,
 model, the model's exact build (digest) when the provider reports one,
-prompt, image bytes, output schema, and sampling options. Secrets never
-enter a key or a recording.
+prompt, images, output schema, and sampling options. Images are identified
+by a stable id (source document hash + how it was rendered) when the caller
+gives one, because encoded bytes differ between machines for identical
+pixels. Secrets never enter a key or a recording.
 """
 
 from __future__ import annotations
@@ -49,6 +51,11 @@ class LLMRequest:
     temperature: float = 0.0
     max_tokens: int = 1024
     seed: int = 0
+    # Stable identity of each image, e.g. "<source sha256>@png-x1.0". Recording keys use it
+    # instead of the encoded bytes: PNG encoders on different machines write different bytes
+    # for identical pixels, which made recordings impossible to replay anywhere else.
+    # Last on purpose: adding it mid-list shifted every positional argument after it.
+    image_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -76,7 +83,7 @@ class Provider(Protocol):
 
 def request_key(provider: str, model: str, digest: str | None, req: LLMRequest) -> str:
     body = {"provider": provider, "model": model, "digest": digest, "system": req.system, "prompt": req.prompt,
-            "images": [hashlib.sha256(b).hexdigest() for b in req.images], "schema": req.json_schema,
+            "images": req.image_ids or [hashlib.sha256(b).hexdigest() for b in req.images], "schema": req.json_schema,
             "temperature": req.temperature, "max_tokens": req.max_tokens, "seed": req.seed}
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
@@ -161,6 +168,7 @@ class Recorder:
         out.parent.mkdir(parents=True, exist_ok=True)
         rec = {"request": {"system": req.system, "prompt": req.prompt, "schema": req.json_schema,
                            "images_sha256": [hashlib.sha256(b).hexdigest() for b in req.images],
+                           "image_ids": req.image_ids,
                            "temperature": req.temperature, "max_tokens": req.max_tokens, "seed": req.seed},
                "response": {k: v for k, v in asdict(r).items() if k not in ("replayed", "key")},
                "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
