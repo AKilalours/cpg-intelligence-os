@@ -223,13 +223,14 @@ def cmd_vlm_collect(conn) -> int:
         print(f"BLOCKED: {e}")
         return 1
     t = time.time()
-    out = cascade.collect(conn, RAW, p, round_=2, progress=lambda m: print(m, flush=True))
+    out = cascade.collect(conn, RAW, p, round_=ROUND, progress=lambda m: print(m, flush=True))
     print(json.dumps({"collected": {k: {x: v.get(x) for x in ("documents", "failed_calls")} for k, v in out.items()},
                       "minutes": round((time.time() - t) / 60, 1), "note": "no scores printed on purpose"}, indent=1))
     return 0
 
 
 SPLIT_ROUNDS = {"calibration": [1, 2], "holdout": [2]}   # holdout round 1 was seen during design
+ROUND = 2
 
 
 def _local_model():
@@ -275,7 +276,8 @@ def cmd_routing(conn, split: str, use_claude: bool) -> int:
     claude = provider("anthropic") if use_claude else None
     t = time.time()
     try:
-        rep = cascade.evaluate_routing(conn, RAW, split, SPLIT_ROUNDS[split], _local_model(), claude,
+        rounds = [ROUND] if (split == "holdout" and ROUND != 2) else SPLIT_ROUNDS[split]
+        rep = cascade.evaluate_routing(conn, RAW, split, rounds, _local_model(), claude,
                                        progress=lambda m: print(m, flush=True))
     except (BudgetExceeded, LLMError) as e:
         print(f"STOPPED: {e}")
@@ -297,10 +299,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--split", choices=["calibration", "holdout"], default="calibration")
     ap.add_argument("--no-claude", action="store_true", help="decide with the first two readers only")
+    ap.add_argument("--round", type=int, default=2, help="sample round (holdout round 3 scores routing 1.2)")
     ap.add_argument("command", choices=["load-fatura", "train-router", "eval-router", "route", "routing-estimate", "routing",
                                         "learn-rules", "extract", "eval-extract", "vlm-dev",
                                         "eval-cascade", "vlm-collect"])
     args = ap.parse_args()
+    global ROUND
+    ROUND = args.round
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)

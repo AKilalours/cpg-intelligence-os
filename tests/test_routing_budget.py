@@ -172,3 +172,17 @@ def test_unlabelled_fields_need_the_third_reader_before_absent():
     assert "seller_name" in routing.needs_third_reader({}, {}, unverifiable=unv)
     assert _status(routing.decide({}, {}, None, unverifiable=unv))["seller_name"][0] == "review"
     assert _status(routing.decide({}, {}, {}, unverifiable=unv))["seller_name"][0] == "accepted"   # Claude also found none
+
+
+def test_sample_rounds_never_overlap_and_round3_is_larger(conn, tmp_path, monkeypatch):
+    from cpgos.documents import cascade
+    from cpgos.documents import fatura as F
+    from tests.test_documents_gold import _write_fixture
+    monkeypatch.setattr(F, "N_CALIBRATION_TEMPLATES", 1)
+    _write_fixture(tmp_path, templates=(1, 2, 3, 4), per=60)
+    F.load_fatura(conn, tmp_path, origin="test_fixture")
+    r = {i: cascade.sample(conn, i)["holdout"] for i in (1, 2, 3)}
+    assert len(r[1]) == len(r[2]) == 15 and len(r[3]) == 30
+    assert not (set(r[1]) & set(r[2])) and not (set(r[1]) & set(r[3])) and not (set(r[2]) & set(r[3]))
+    assert cascade.sample(conn, 3)["calibration"] == []
+    assert cascade.sample(conn, 2) == cascade.sample(conn, 2)                    # deterministic

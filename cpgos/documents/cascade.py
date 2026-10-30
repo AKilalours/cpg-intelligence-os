@@ -30,6 +30,7 @@ GROUNDING_VERSION = "ground-2.0.0"
 SAMPLE_SEED = 2026
 MAX_SAME_ERRORS = 3              # identical rejected requests in a row before a run stops
 SAMPLE_PER_LAYOUT = {"holdout": 15, "calibration": 10}
+ROUND_SIZES = {1: SAMPLE_PER_LAYOUT, 2: SAMPLE_PER_LAYOUT, 3: {"holdout": 30, "calibration": 0}}
 
 
 def tier2_version(provider, rules_model_id: int) -> str:
@@ -88,29 +89,32 @@ def run_tier2(conn: psycopg.Connection, raw_root: Path, doc_ids: list[int], prov
 
 
 def sample(conn: psycopg.Connection, round_: int = 1) -> dict[str, list[int]]:
-    """A fixed random sample per layout from each unseen split (the model is too slow for every invoice).
+    """Fixed random samples per layout from each unseen split; rounds never overlap.
 
-    Round 2 draws different invoices from the same layouts, disjoint from round 1. It exists because
-    round 1's holdout results were seen while redesigning grounding and routing on calibration data;
-    the redesigned cascade is scored on round-2 holdout invoices that nothing had read before."""
+    Each round exists because the previous one was seen while redesigning:
+    round 1 scored cascade 1.0; round 2 scored routing 1.1 (designed after
+    seeing round 1); round 3, twice as large, scores routing 1.2 (designed
+    after seeing round 2). Rounds 1 and 2 are drawn exactly as before."""
     out = {}
-    for split, k in SAMPLE_PER_LAYOUT.items():
+    for split in ("holdout", "calibration"):
+        k = ROUND_SIZES.get(round_, SAMPLE_PER_LAYOUT).get(split, 0)
         rows = conn.execute("SELECT layout_id, source_document_id FROM eval.doc_meta WHERE split_unseen = %s "
                             "ORDER BY layout_id, doc_key", (split,)).fetchall()
         by = defaultdict(list)
         for lid, sid in rows:
             by[lid].append(sid)
-        rng = random.Random(SAMPLE_SEED)
-        first = {lid: rng.sample(by[lid], min(k, len(by[lid]))) for lid in sorted(by)}
-        if round_ == 1:
-            out[split] = sorted(sid for ids in first.values() for sid in ids)
-            continue
-        rng2 = random.Random(SAMPLE_SEED + round_)
+        taken = {lid: set() for lid in by}
         picked = []
-        for lid in sorted(by):
-            rest = [sid for sid in by[lid] if sid not in set(first[lid])]
-            picked += rng2.sample(rest, min(k, len(rest)))
-        out[split] = sorted(picked)
+        for r in range(1, round_ + 1):
+            kr = ROUND_SIZES.get(r, SAMPLE_PER_LAYOUT).get(split, 0)
+            rng = random.Random(SAMPLE_SEED) if r == 1 else random.Random(SAMPLE_SEED + r)
+            picked = []
+            for lid in sorted(by):
+                pool = by[lid] if r == 1 else [sid for sid in by[lid] if sid not in taken[lid]]
+                got = rng.sample(pool, min(kr, len(pool)))
+                taken[lid] |= set(got)
+                picked += got
+        out[split] = sorted(picked) if k else []
     return out
 
 
@@ -218,6 +222,8 @@ def collect(conn: psycopg.Connection, raw_root: Path, provider, round_: int, pro
     out = {}
     for split, ids in sample(conn, round_).items():
         progress(f"round {round_} {split}: tier 1 on {len(ids)} invoices")
+        if not ids:
+            continue
         out[f"{split}_tier1"] = extraction.extract_documents(conn, raw_root, ids)
         progress(f"round {round_} {split}: model on {len(ids)} invoices")
         out[f"{split}_tier2"] = run_tier2(conn, raw_root, ids, provider, progress)
