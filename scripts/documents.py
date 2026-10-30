@@ -8,6 +8,7 @@ Usage:
     python scripts/documents.py learn-rules    # learn field areas and label vocabulary from fit layouts
     python scripts/documents.py extract        # OCR + rules on every document not yet extracted (engine role)
     python scripts/documents.py eval-extract   # score the frozen rules on known-layout test and holdout layouts
+    python scripts/documents.py vlm-dev        # choose the local model's image scale on 20 fit-layout dev invoices
 
 Requires CPGOS_DATABASE_URL and FATURA in data/raw/fatura (make download DATASET=fatura).
 No language model is called by these commands.
@@ -132,17 +133,62 @@ def cmd_eval_extract(conn) -> int:
     return 0
 
 
+def cmd_vlm_dev(conn) -> int:
+    """Image scale for the local vision model, decided on fit-layout dev invoices only."""
+    import random
+    from collections import defaultdict
+    from psycopg.types.json import Jsonb
+    from cpgos.documents import vlm
+    from cpgos.llm import LLMError, provider
+    p = provider("ollama")
+    try:
+        print(f"model: {p.model} digest {str(p.digest())[:12]}")
+    except LLMError as e:
+        print(f"BLOCKED: {e}")
+        return 1
+    gs = conn.execute("SELECT max(gold_set_id) FROM eval.gold_set WHERE name = 'fatura_header_fields'").fetchone()[0]
+    docs = conn.execute("""SELECT s.source_document_id, s.storage_key FROM eval.doc_meta m JOIN source_document s USING (source_document_id)
+                           WHERE m.split_unseen = 'fit' AND m.split_seen = 'dev' ORDER BY m.doc_key""").fetchall()
+    docs = random.Random(2026).sample(docs, 20)
+    gold = defaultdict(dict)
+    for sid, f, v in conn.execute("SELECT source_document_id, field_name, value FROM eval.doc_gold WHERE gold_set_id = %s "
+                                  "AND source_document_id = ANY(%s)", (gs, [d[0] for d in docs])):
+        gold[sid][f] = v
+    report = {}
+    for scale in (1.0, 2.0):
+        pairs, secs, errors, by_field = [], [], 0, defaultdict(list)
+        for i, (sid, key) in enumerate(docs, 1):
+            exs, meta = vlm.extract(p, vlm.page_png(RAW / key, scale))
+            if "error" in meta:
+                errors += 1
+            secs.append(meta.get("seconds") or 0)
+            got = {e.field_name: e.value for e in exs}
+            for f in vlm.FIELD_HELP:
+                pairs.append((gold[sid].get(f), got.get(f)))
+                by_field[f].append((gold[sid].get(f), got.get(f)))
+            print(f"  scale {scale}: {i}/20 ({meta.get('seconds')} s{', replayed' if meta.get('replayed') else ''})", flush=True)
+        s = extraction._score(pairs)
+        report[f"scale_{scale}"] = {"fields": {k: s[k] for k in ("correct", "wrong", "abstained", "spurious")},
+                                    "precision": s["precision"], "coverage": s["coverage"], "failed_calls": errors,
+                                    "seconds_per_invoice": round(sum(secs) / len(secs), 1),
+                                    "seller_name": extraction._score(by_field["seller_name"])["coverage"]}
+    rid = conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES ('vlm_dev', %s, %s) RETURNING report_id",
+                       (code_version(), Jsonb(json.loads(json.dumps({"model": p.model, **report}, default=str))))).fetchone()[0]
+    print(json.dumps({"report_id": rid, "model": p.model, **report}, indent=1, default=str))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["load-fatura", "train-router", "eval-router", "route",
-                                        "learn-rules", "extract", "eval-extract"])
+                                        "learn-rules", "extract", "eval-extract", "vlm-dev"])
     args = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
         return {"load-fatura": cmd_load_fatura, "train-router": cmd_train_router,
                 "eval-router": cmd_eval_router, "route": cmd_route, "learn-rules": cmd_learn_rules,
-                "extract": cmd_extract, "eval-extract": cmd_eval_extract}[args.command](conn)
+                "extract": cmd_extract, "eval-extract": cmd_eval_extract, "vlm-dev": cmd_vlm_dev}[args.command](conn)
 
 
 if __name__ == "__main__":
