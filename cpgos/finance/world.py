@@ -25,7 +25,7 @@ import psycopg
 
 from cpgos.money import Money, to_decimal
 
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"   # 1.1: claim numbers from the world's own line count, not database ids
 BRAND = "Northfield Pantry Co."      # fictional; owns anonymized M5 FOODS items
 DISTRIBUTOR = "KeHE"
 RETAILER = "Walmart (M5)"
@@ -99,6 +99,12 @@ class WorldReport:
     deductions_generated: int = 0
     deductions_pending: int = 0      # claimed but not yet taken on a check by as_of (still in the backlog)
     noise_counts: dict = field(default_factory=dict)
+
+
+def claim_number(remittance_ordinal: int) -> str:
+    """Claim number = the remittance line's position in this world (1, 2, ...). Version 1.0 used the
+    database id, so a database whose ids did not start at 1 got different claim numbers."""
+    return f"R-{remittance_ordinal:07d}"
 
 
 def _cents(x: Decimal) -> Decimal:
@@ -466,7 +472,7 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
                                                raw_reason, amount, deduction_date, dispute_deadline, raw_invoice_ref, sku_id,
                                                claimed_units, period_start, period_end, store_id, dataset_version_id)
                                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING deduction_id""",
-                                  (f"R-{rl:07d}", kehe, rl, codes[d["code"]], d["reason_text"], d["amount"].amount, d["date"],
+                                  (claim_number(rem_count + 1), kehe, rl, codes[d["code"]], d["reason_text"], d["amount"].amount, d["date"],
                                    d["date"] + timedelta(days=window), d["invoice"]["number"] if d["invoice"] else None,
                                    d["sku"], d["units"], d["p0"], d["p1"], stores[d["store"]] if d["store"] else None, ver))
                     conn.execute("INSERT INTO eval.gt_deduction VALUES (%s, %s, %s, %s)",

@@ -4,7 +4,8 @@ Usage:
     python scripts/finance.py world       # build the real-anchored world from the loaded M5 Parquet (once per database)
     python scripts/finance.py reconcile   # cash application + deduction validation, written as cpgos_engine
     python scripts/finance.py evaluate    # replay both engines, score against eval.*, store the report
-    python scripts/finance.py evidence    # damage the evidence realistically, once (see cpgos/finance/evidence.py)
+    python scripts/finance.py evidence    # hide or mis-key evidence realistically, once (see cpgos/finance/evidence.py)
+    python scripts/finance.py restore-evidence  # repair records that evidence-1.0.0 altered (verified, all or nothing)
 
 No LLM is called by any of these. Requires CPGOS_DATABASE_URL and a completed `make load-m5`.
 """
@@ -24,7 +25,7 @@ from cpgos.preflight import require_packages  # noqa: E402  (stdlib only)
 
 require_packages()
 
-from cpgos.db import code_version, connect, migrate  # noqa: E402
+from cpgos.db import code_version, connect, database_url, migrate  # noqa: E402
 from cpgos.finance import cashapp, deductions, evidence  # noqa: E402
 from cpgos.finance.evaluate import phase2a_report, save_report  # noqa: E402
 from cpgos.finance.world import WorldConfig, build_world, weekly_sales_from_parquet  # noqa: E402
@@ -79,6 +80,19 @@ def cmd_evidence(conn) -> int:
     return 0
 
 
+def cmd_restore_evidence(conn) -> int:
+    """Undo evidence-1.0.0's changes to the records, verified against a rebuilt world."""
+    cfg = WorldConfig()
+    pq = _parquet_dir()
+
+    def rebuild(tmp):
+        load_deduction_codes(tmp)
+        build_world(tmp, weekly_sales_from_parquet(pq, cfg.weeks, cfg.n_skus, cfg.seed), cfg,
+                    source_note=f"M5 parquet {pq.name}")
+    print(json.dumps(evidence.restore_v1(conn, database_url(), rebuild), indent=1, default=str))
+    return 0
+
+
 def cmd_evaluate(conn) -> int:
     report = phase2a_report(conn)
     rid = save_report(conn, report, code_version())
@@ -104,13 +118,13 @@ def cmd_evaluate(conn) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["world", "reconcile", "evaluate", "evidence"])
+    ap.add_argument("command", choices=["world", "reconcile", "evaluate", "evidence", "restore-evidence"])
     args = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
         return {"world": cmd_world, "reconcile": cmd_reconcile, "evaluate": cmd_evaluate,
-                "evidence": cmd_evidence}[args.command](conn)
+                "evidence": cmd_evidence, "restore-evidence": cmd_restore_evidence}[args.command](conn)
 
 
 if __name__ == "__main__":

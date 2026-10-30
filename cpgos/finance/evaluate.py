@@ -106,9 +106,7 @@ def score_deductions(conn: psycopg.Connection, assessments: list[deductions.Asse
     truth = {d: (v, Decimal(a) - Decimal(va), r) for d, v, va, r, a in conn.execute(
         """SELECT g.deduction_id, g.is_valid, g.valid_amount, g.reason, d.amount
            FROM eval.gt_deduction g JOIN deduction d USING (deduction_id)""")}
-    store = dict(conn.execute("SELECT deduction_id, store_id FROM deduction"))
-    for ref, det in conn.execute("SELECT ref, detail FROM eval.gt_evidence WHERE kind = 'claim_store_missing'"):
-        store[int(ref)] = det["store_id"]             # the true store of a claim that arrived without one
+    store = dict(conn.execute("SELECT deduction_id, store_id FROM deduction"))     # the true store (records are never altered)
     region = {sid: code[:2] for sid, code in conn.execute("SELECT store_id, external_code FROM store")}
     scored = [(a, truth[a.deduction_id]) for a in assessments if a.deduction_id in truth]
     by_reason = defaultdict(lambda: {"n": 0, "verdict_correct": 0, "needs_evidence": 0, "true_recoverable": Decimal(0)})
@@ -163,8 +161,12 @@ def phase2a_report(conn: psycopg.Connection) -> dict:
         """SELECT d.dataset_version_id, d.file_name, w.as_of_date FROM dataset_version d
            JOIN world_clock w USING (dataset_version_id) WHERE d.dataset_key = 'finance_world'
            ORDER BY d.dataset_version_id DESC LIMIT 1""").fetchone()
+    from cpgos.finance import evidence
+    ev = conn.execute("SELECT report FROM finance_evidence WHERE version = %s", (evidence.EVIDENCE_VERSION,)).fetchone()
     return {
-        "world": {"dataset_version_id": world[0], "description": world[1], "as_of": str(world[2])} if world else None,
+        "world": {"dataset_version_id": world[0], "description": world[1], "as_of": str(world[2]),
+                  "fingerprint": evidence.world_fingerprint(conn, world[0])} if world else None,
+        "evidence": {k: ev[0].get(k) for k in ("version", "changes", "damage_fingerprint")} if ev else None,
         "cash_application": {"full": score_cash_application(conn, full),
                              "exact_only_baseline": score_cash_application(conn, base),
                              "auto_threshold": 0.90},

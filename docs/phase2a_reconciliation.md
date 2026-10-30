@@ -141,34 +141,74 @@ pending. The real-scale world was not affected (313 generated, 312 written,
 
 The first checker scored 312 of 312 because it read perfect evidence made by
 the same rules that made the claims, like grading with the answer key the
-student learned from. `make finance-evidence` now damages only the evidence
-the checker can see, once, with its own seed (invoices, payments, cash
+student learned from. `make finance-evidence` now hides or mis-keys part of
+the evidence the checker can see, with its own seed (invoices, payments, cash
 application, and the answer key are unchanged), and logs every change in
-`eval.gt_evidence`:
+`eval.gt_evidence`.
 
-| Damage | Assumed rate | Count in the world |
+### Evidence 2.0: an overlay, decided by business key
+
+Evidence 1.0 had two flaws, found when her Mac and the sandbox disagreed
+(claims without a store: 8 vs 21; valid claims disputed: 1 vs 4):
+
+1. **It depended on database ids.** It walked records in id order drawing
+   random numbers in sequence, so different ids, or one extra row, changed
+   which records were damaged. Worse, the world generator itself named
+   claims after a database id (`R-<remittance_line_id>`), so a database whose
+   sequences had moved (a failed first build is enough) had different claim
+   numbers. Now each record's fate is a hash of the seed and its business
+   key (store code, item code, week, invoice and line number, claim number),
+   and claim numbers come from the world's own line count (generator 1.1.0).
+2. **It altered the system of record**: it deleted receipts and promotions
+   and blanked dates and stores. Now the damage is an overlay (schema
+   `evidence`) and the checker reads schema `observed`, the records with the
+   overlay applied. Like a photocopy with pages left out: the original stays
+   complete. The engine role can no longer read the originals, the overlay,
+   or a claim's true store.
+
+`make finance-restore-evidence` repairs a database 1.0 altered. It rebuilds
+the world in a temporary database, refuses unless the rebuilt world has the
+same fingerprint, renumbers claims to the 1.1 scheme, copies the original
+values back by business key, and commits only if every repaired table then
+equals the rebuild exactly. On the sandbox it repaired 6,474 records, exactly
+the number 1.0 had logged, kind by kind.
+
+Every run prints a **world fingerprint** and a **damage fingerprint**. Two
+machines with equal fingerprints ran the same data with the same damage, so
+their scores must be identical. A regression test builds the same world in
+two databases whose ids differ by thousands and requires identical damage and
+identical verdicts, claim by claim.
+
+| Damage | Assumed rate | Count in the world (2.0) |
 |---|---|---|
-| Retailer POS week missing | 3% | 1,868 of 62,400 weeks |
-| Retailer POS week restated by 1-3% | 5% | 2,456 weeks |
-| Receipt line never scanned | 4% | 2,089 of 50,834 lines |
-| Delivery date not keyed | 3% | 31 of 1,040 shipments |
+| Retailer POS week missing | 3% | 1,851 of 62,400 weeks |
+| Retailer POS week restated by 1-3% | 5% | 2,430 weeks |
+| Receipt line never scanned | 4% | 1,999 of 50,834 lines |
+| Delivery date not keyed | 3% | 28 of 1,040 shipments |
 | Promotion missing from the calendar | 2% | 1 of 111 |
-| Promotion end date keyed a week off | 4% | 8 |
-| Claim arrives without its store | 3% | 21 of 312 claims |
+| Promotion end date keyed a week off | 4% | 4 |
+| Claim arrives without its store | 3% | 5 of 312 claims |
 
-Checker 2.0: a missing POS week, receipt, delivery date, or store gives
-"needs evidence" instead of a verdict; a scan-back claim within 3% of what
-the POS supports is accepted (restatements are at most 3%; over-claims are
-10-40%). A first version had a $1.00 minimum tolerance, which approved four
-over-claims of 20-100% on claims under $4; it is now 5 cents (rounding only).
-Settings were chosen on California stores and reported on Texas and Wisconsin.
+World fingerprint `0834b215e579b907`, damage fingerprint `c59dd7410efe855a`.
+
+### Checker 2.0 results
+
+A missing POS week, receipt, delivery date, or store gives "needs evidence"
+instead of a verdict; a scan-back claim within 3% of what the POS supports is
+accepted (restatements are at most 3%; over-claims are 10-40%). A first
+version had a $1.00 minimum tolerance, which approved four over-claims of
+20-100% on claims under $4; it is now 5 cents (rounding only). Settings were
+chosen on California stores and reported on Texas and Wisconsin. The rules
+were not changed after the switch to evidence 2.0.
 
 | Region | Claims | Needs evidence | Invalid claims approved | Valid claims disputed | Exact when decided |
 |---|---|---|---|---|---|
-| California (design) | 142 | 10 | 0 of 41 | 0 of 91 | 131 of 132 |
-| Texas + Wisconsin (report) | 170 | 15 | **0 of 35** | **4 of 120** | 151 of 155 |
+| California (design) | 142 | 14 | 0 of 41 | 0 of 87 | 125 of 128 |
+| Texas + Wisconsin (report) | 170 | 10 | **0 of 39** | **2 of 121** | 158 of 160 |
 
-The four wrongly disputed claims are exactly the damage data alone cannot
-reveal: three promotions whose end date was keyed a week early, and one
-promotion missing from the calendar. Reading the signed promotion agreements
-is the Phase 3 agent's job.
+The two wrongly disputed claims are damage the records alone cannot reveal:
+R-0000268, whose promotion is missing from the calendar, and R-0000357, whose
+promotion end date was keyed a week early. Reading the signed promotion
+agreements is the Phase 3 agent's job. (The evidence 1.0 numbers, 0 of 35 and
+4 of 120, are withdrawn: they were measured on altered records that differed
+by machine.)

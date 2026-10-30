@@ -96,13 +96,15 @@ engines by a database role). Details and caveats:
 | Wrong automatic cash postings | **0 of 875** (95% CI 0.0% to 0.4%) | 5 of 876 (exact reference only) |
 | Cash dollars posted correctly with no person | **90.2%** | 88.4% |
 | Cash lines left with no suggestion | **0** | 108 |
-| Deductions on imperfect evidence (report region): invalid claims approved | **0 of 35** | |
-| Valid claims disputed | 4 of 120 (calendar typos the Phase 3 agent will read past) | |
-| Recovered at 1 review a week | **$3,429.77 (98%)** | $2,542.13 largest first, $214.14 oldest first |
+| Deductions on imperfect evidence (report region): invalid claims approved | **0 of 39** | |
+| Valid claims disputed | 2 of 121 (calendar gaps the Phase 3 agent will read past) | |
+| Recovered at 1 review a week | **$3,408.41 (all that unlimited reviews recover)** | $2,542.13 largest first, $214.14 oldest first |
 
 The deduction checker is scored on deliberately imperfect evidence (missing
 POS weeks, unscanned receipts, calendar typos), tuned on California stores
-and reported on Texas and Wisconsin.
+and reported on Texas and Wisconsin. The damage is an overlay decided by
+business keys, so every machine gets the same damage and the same score
+(world and damage fingerprints are printed to prove it).
 
 ```bash
 make finance-world   # once per database, after make load-m5 (~20 s)

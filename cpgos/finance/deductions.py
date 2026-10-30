@@ -1,6 +1,6 @@
 """Deduction validation and recovery prioritization.
 
-Every verdict comes from records, never from a model: the promotion agreement
+Every verdict comes from records (schema "observed": what the business can see), never from a model: the promotion agreement
 and retailer POS for scan-backs, the receipt for shortages, the shipment for
 late fees, and invoiced value for spoils. Each assessment carries the record
 ids and values it used, so a reviewer (or the agent in Phase 3) can check the
@@ -104,7 +104,7 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
         """SELECT d.deduction_id, d.claim_number, d.partner_id, coalesce(c.code, ''), coalesce(d.raw_reason, ''),
                   d.amount, d.deduction_date, d.dispute_deadline, d.raw_invoice_ref, d.sku_id, d.claimed_units,
                   d.period_start, d.period_end, d.store_id
-           FROM deduction d LEFT JOIN deduction_code c USING (deduction_code_id)
+           FROM observed.deduction d LEFT JOIN deduction_code c USING (deduction_code_id)
            WHERE %(p)s::bigint IS NULL OR d.partner_id = %(p)s
            ORDER BY d.deduction_date, d.deduction_id""", {"p": partner_id}).fetchall()
 
@@ -128,7 +128,7 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
             else:
                 promos = conn.execute(
                     """SELECT p.promotion_id, p.start_date, p.end_date, p.allowance_per_unit
-                       FROM promotion p JOIN promotion_sku ps USING (promotion_id)
+                       FROM observed.promotion p JOIN observed.promotion_sku ps USING (promotion_id)
                        WHERE p.partner_id = %s AND p.store_id = %s AND ps.sku_id = %s
                          AND p.start_date <= %s AND p.end_date >= %s
                        ORDER BY p.start_date""", (partner, store, sku, p1, p0)).fetchall()
@@ -142,7 +142,7 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                     for pid, s0, s1, allowance in promos:
                         lo, hi = max(s0, p0), min(s1, p1)
                         pos_units, weeks_found = conn.execute(
-                            """SELECT coalesce(sum(units), 0), count(*) FROM retailer_pos_week
+                            """SELECT coalesce(sum(units), 0), count(*) FROM observed.retailer_pos_week
                                WHERE store_id = %s AND sku_id = %s AND week_start BETWEEN %s AND %s""",
                             (store, sku, lo, hi)).fetchone()
                         weeks_expected = _iso_weeks(lo, hi)
@@ -186,7 +186,7 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
             elif kind == "shortage":
                 line = conn.execute(
                     """SELECT il.invoice_line_id, il.quantity, il.unit_price, r.units_received
-                       FROM invoice_line il LEFT JOIN receipt_line r USING (invoice_line_id)
+                       FROM invoice_line il LEFT JOIN observed.receipt_line r USING (invoice_line_id)
                        WHERE il.invoice_id = %s AND il.sku_id = %s""", (inv[0], sku)).fetchone()
                 if line is None or line[3] is None:
                     a.rule = "shortage_no_receipt"
@@ -204,7 +204,7 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                                   "shipped_units": int(qty), "received_units": int(received), "unit_price": str(price),
                                   "claimed_units": units, "supported_amount": str(a.supported)}
             else:
-                ship = conn.execute("SELECT scheduled_date, delivered_date FROM shipment WHERE invoice_id = %s",
+                ship = conn.execute("SELECT scheduled_date, delivered_date FROM observed.shipment WHERE invoice_id = %s",
                                     (inv[0],)).fetchone()
                 if ship is None or ship[1] is None:
                     a.rule, a.evidence = "late_fee_no_delivery_record", {"invoice_id": inv[0]}
