@@ -418,3 +418,8 @@ A JSON number 89.100 is 89.1 to a parser and 89,100 rupiah on the receipt.
 Model output is parsed with numbers kept as literal text, and amounts must
 also be plausible for the currency, because arithmetic cannot detect a
 consistent scale error.
+
+## 61. An unexplained amount stops straight-through processing
+A receipt reading may skip a person only if every amount printed in its
+totals block has a known meaning. Unknown lines ("NET1 AMT", "ITEMS :1
+41,000") were behind most of the wrong acceptances on validation.

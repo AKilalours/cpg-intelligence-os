@@ -230,3 +230,34 @@ def test_reader_stops_after_three_identical_rejections(conn, tiny, tmp_path):
     p = Recorder(Scripted([err, err, err, GOOD]), "record", tmp_path / "c2")
     with pytest.raises(LLMError, match="identical rejections"):
         R.run_reader(conn, tiny, R.split_documents(conn, "validation") * 2, p, "claude", LABELS, progress=lambda *_: None)
+
+
+# ---------- validation report 17 ----------
+
+def test_cut_off_and_inflected_labels_still_match_but_short_words_must_be_exact():
+    labels = {"labels": {"change": ["KEMBALI", "CHANGE"], "total": ["TOTAL"], "tax": ["PB"]}}
+    assert R.classify("Kembal", labels) == "change" and R.classify("CHANGES", labels) == "change"
+    assert R.classify("PBX", labels) is None                                     # under 5 letters: exact only
+
+
+def test_an_unexplained_amount_in_the_totals_block_goes_to_a_person():
+    d = json.loads(json.dumps(GOOD))
+    d["totals"].insert(0, {"label": "NET1 AMT", "amount": "35.000"})               # a label no rule knows
+    ok, why = R.arithmetic(R.parse(d, LABELS))
+    assert ok is False and why["labels"] == ["NET1 AMT"]
+    d["totals"][0] = {"label": "TOTAL QTY 3", "amount": "3"}                       # a printed count is not money
+    assert R.arithmetic(R.parse(d, LABELS))[0] is True
+
+
+def test_an_addon_listed_as_its_own_line_is_the_same_money():
+    gold = body()
+    gold["items"][0]["sub_items"] = [{"name": "Extra Shot", "price": "1000"}]
+    read = json.loads(json.dumps(gold))
+    read["items"].append({"name": "Extra Shot", "quantity": None, "unit_price": None, "price": "1000"})
+    assert R.score_receipt(gold, read)["amounts_exact"] == 1
+
+
+def test_a_negative_or_zero_amount_is_never_mistaken_for_a_count():
+    assert not R._count_only({"label": "KEMBALIAN", "amount": "-11500"})
+    assert not R._count_only({"label": "DISCOUNT", "amount": "0"})
+    assert R._count_only({"label": "ITEMS: 4", "amount": "4"})

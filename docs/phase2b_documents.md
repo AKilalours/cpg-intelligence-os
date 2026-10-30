@@ -342,3 +342,41 @@ receipts whose key has a total and adds up.
 
 Report 16 stays on record as the result of prompt 1.0; prompt 2.0 needs a new
 validation run before any rule is chosen.
+
+### Validation report 17 (prompt 2.0) and the rule frozen for test
+
+Prompt 2.0 on the same 100 photos: totals F1 0.88 -> 0.96, receipts with every
+amount right 27 -> 73, and with the local model alone 63 of 70 straight-through
+receipts right (was 23 of 71). The 10 wrong-but-accepted receipts (under any
+rule) broke down as: cut-off or inflected labels ("Kembal", "CHANGES"), a
+subtotal printed beside "ITEMS :1" with no word of its own (33 of 541 train
+subtotals have none, so nothing reliable can be learned), a rare label
+("NET1 AMT"), an add-on written as its own line, one real model miss
+(receipt 0051: the card payment line skipped), and two answer-key gaps
+confirmed on the photos (0034 prints "VISA 283,338", which the key lacks;
+0096 prints the item "Choco Cheese 13,636", and the key has no items).
+
+Changes (reading version 1.2), each with a test:
+- printed counts ("TOTAL QTY 3", "ITEMS: 2") are recognised before labels are
+  classified, so a count is never a second total;
+- a label word cut short or inflected still matches (5+ letters);
+- **an amount in the totals block whose label no rule understands sends the
+  receipt to a person** (a bookkeeper does not sign off on an unexplained line);
+- an add-on may be folded into its line or listed separately: same money.
+
+Replayed from the recordings (no new model run):
+
+| Rule | Straight through | Amounts right when accepted |
+|---|---|---|
+| local model alone | 71 of 100 | 69 of 71 (95% CI 90-99%) |
+| local, then Claude | 83 of 100 | 80 of 83 (4 Claude reads not yet recorded) |
+| local, then Claude, or agreement | 87 of 100 | 83 of 87 |
+
+By the photos, 70 of the 71 local-alone acceptances are right (0096 is a key
+gap); scores stay against the official key.
+
+**Frozen for test: `local_then_claude`.** Every reading that skips a person,
+from either model, must add up, account for every printed amount, and look
+like rupiah. The agreement rule was rejected on principle: it accepts readings
+whose sums do not close, which is how 0094 ("OTHERS 7,280" read as a card)
+got through. Test is scored once, with this rule.

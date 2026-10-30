@@ -39,13 +39,16 @@ PROMPT_VERSION = "receipt-2.0.0"
 #      (equal to the total) on 33 of 100 validation receipts that print none (report 16).
 # read-1.1: amounts are read from the model's literal text. 1.0 read JSON numbers as floats, so "89.100"
 #      (89,100 rupiah) became 89.1; whole receipts shrank 1,000 times and still added up (report 16).
-READING_VERSION = "read-1.1"
+READING_VERSION = "read-1.2"   # 1.2: counts recognised first, cut-off labels match, unexplained-amount guard
 MAX_SIDE = 1280
 TOTALS = ("subtotal", "discount", "tax", "service", "total", "cash", "change", "card")
 UNSIGNED = ("discount", "change")         # printed with or without a minus sign; compared as amounts
 NAME_MATCH = 0.8                          # item names: similarity of letters and digits (OCR-style slips allowed)
 POLICIES = ("local_alone", "local_then_claude", "local_then_claude_or_agreement")
-FROZEN_POLICY: str | None = None          # set from the validation results, before test is scored
+# Frozen from validation (reports 17 and 331), before test was read: every reading that skips a person must
+# add up, account for every printed amount, and look like rupiah, whichever model read it. The agreement rule
+# was rejected because it accepts readings whose sums do not close (validation 0094: "OTHERS" read as a card).
+FROZEN_POLICY: str | None = "local_then_claude"
 
 SYSTEM = ("You transcribe shop receipts photographed in Indonesia. Copy text and amounts exactly as printed, keeping "
           "the dots and commas in amounts (for example 60.000 or 45,000.00). Never compute, infer, or repeat a value "
@@ -109,8 +112,10 @@ def parse(data: dict, labels: dict) -> dict:
     lines = []
     for t in data.get("totals") or []:
         if isinstance(t, dict):
-            label = str(t.get("label") or "")
-            lines.append({"label": label, "amount": _amount(t.get("amount")), "field": classify(label, labels)})
+            ln = {"label": str(t.get("label") or ""), "amount": _amount(t.get("amount"))}
+            # "TOTAL QTY 3" names a count, not the total: counts are recognised before labels are classified.
+            ln["field"] = None if _count_only(ln) else classify(ln["label"], labels)
+            lines.append(ln)
     fields, conflicts = {}, []
     for f in TOTALS:
         amounts = {ln["amount"] for ln in lines if ln["field"] == f and ln["amount"] is not None}
@@ -148,6 +153,15 @@ def to_receipt(body: dict) -> cord.Receipt:
     return r
 
 
+UNEXPLAINED_GUARD = True       # an amount nobody can account for sends the receipt to a person (validation report 17)
+
+
+def _count_only(line: dict) -> bool:
+    """'TOTAL QTY 3', 'ITEMS: 2': a printed count, not money (amount equals the number in the label, or is small)."""
+    nums = re.findall(r"\d+", line["label"] or "")
+    return line["amount"] is not None and (line["amount"] in nums or Decimal(0) < Decimal(line["amount"]) < 100)
+
+
 MIN_TOTAL = Decimal(1000)        # no receipt in CORD totals under Rp 1,000; the smallest coin in use is Rp 100
 
 
@@ -165,6 +179,12 @@ def arithmetic(body: dict | None) -> tuple[bool, dict]:
     total = body["fields"].get("total")
     if total is not None and Decimal(total) < MIN_TOTAL:
         return False, {"reason": "total under Rp 1,000"}
+    unexplained = [ln["label"] for ln in body.get("totals_lines", [])
+                   if ln["field"] is None and ln["amount"] not in (None, "0") and not _count_only(ln)]
+    if UNEXPLAINED_GUARD and unexplained:
+        return False, {"reason": "an amount in the totals block has a label no rule understands", "labels": unexplained}
+    if body.get("conflicts"):
+        return False, {"reason": "a field is printed twice with different amounts", "fields": body["conflicts"]}
     checks = cord.audit(to_receipt(body))
     decided = {k: v for k, v in checks.items() if v is not None}
     ok = body["fields"].get("total") is not None and bool(decided) and "fails" not in decided.values()
@@ -224,20 +244,38 @@ def load_labels(raw_root: Path, path: Path = LABELS_FILE) -> dict:
     return lab
 
 
+PREFIX_MIN = 5          # a printed word cut short or inflected still matches: "KEMBAL" ~ "KEMBALI", "CHANGES" ~ "CHANGE"
+
+
+def _word_match(a: str, b: str) -> bool:
+    return a == b or (min(len(a), len(b)) >= PREFIX_MIN and (a.startswith(b) or b.startswith(a)))
+
+
+def _contains(words: list[str], lab: list[str]) -> bool:
+    n = len(lab)
+    return any(all(_word_match(words[i + k], lab[k]) for k in range(n)) for i in range(len(words) - n + 1))
+
+
 def classify(label: str, labels: dict) -> str | None:
     """The field a printed label names: an exact learned label, else the longest learned label inside it
-    (whole words), so "SUBTOTAL" is never "TOTAL" and "TOTAL KEMBALIAN" is change. One field per line."""
+    (whole words, cut-off words allowed), so "SUBTOTAL" is never "TOTAL" and "TOTAL KEMBALIAN" is change.
+    One field per line; a tie between fields gives no field."""
     t = norm_label(label)
     if not t:
         return None
-    best = None
+    words = t.split()
+    hits = []
     for f, labs in labels["labels"].items():
         for lab in labs:
             if lab == t:
                 return f
-            if f" {lab} " in f" {t} " and (best is None or len(lab) > len(best[0])):
-                best = (lab, f)
-    return best[1] if best else None
+            if _contains(words, lab.split()):
+                hits.append((len(lab), f))
+    if not hits:
+        return None
+    top = max(n for n, _ in hits)
+    fields = {f for n, f in hits if n == top}
+    return fields.pop() if len(fields) == 1 else None
 
 
 # ---------- running the readers ----------
@@ -357,6 +395,12 @@ def _money_lines(items: list[dict]) -> list[str]:
     return sorted(str(i.get("price")) for i in items if i.get("price") not in (None, "0"))
 
 
+def _key_money_lines(items: list[dict]) -> list[list[str]]:
+    """The key's line amounts, with priced add-ons either inside their line or as lines of their own."""
+    addons = [{"price": x.get("price")} for i in items for x in i.get("sub_items") or []]
+    return [_money_lines(items), _money_lines(items + addons)]
+
+
 def score_receipt(g: dict, p: dict | None) -> dict:
     p = p or {"fields": {}, "items": []}
     out = Counter()
@@ -377,7 +421,7 @@ def score_receipt(g: dict, p: dict | None) -> dict:
     out["items_read"] = len(read_items)
     out["items_correct"] = sum(item_correct(a, b) for a, b in pairs)
     amounts_ok = out["wrong"] == out["missed"] == out["spurious"] == 0 and \
-        _money_lines(g["items"]) == _money_lines(read_items)
+        _money_lines(read_items) in _key_money_lines(g["items"])
     out["amounts_exact"] = int(amounts_ok)
     out["fully_exact"] = int(amounts_ok and out["items_correct"] == len(g["items"]) == len(read_items))
     return out
