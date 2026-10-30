@@ -26,10 +26,17 @@ from psycopg.types.json import Jsonb
 
 from cpgos.money import Money
 
-ENGINE_VERSION = "deductions-1.0.0"
+ENGINE_VERSION = "deductions-2.0.0"
 
 # Assumptions, stated where they are used and shown in the docs.
 DISPUTE_HANDLING_COST = Decimal("25.00")   # analyst time per dispute; below this a dispute loses money
+# Retailer POS feeds get restated after the fact by a few percent. A scan-back claim within this
+# tolerance of what the POS supports is accepted, not disputed. Chosen on California stores only;
+# reported on Texas and Wisconsin (see docs/phase2a_reconciliation.md).
+SCAN_BACK_TOLERANCE_PCT = Decimal("0.03")   # restatements are at most 3% (evidence.py); over-claims are 10-40%
+# Only cent rounding below that. A $1.00 floor (first version) approved four over-claims of 20-100%
+# on claims under $4 in the design region.
+SCAN_BACK_TOLERANCE_MIN = Decimal("0.05")
 URGENT_DAYS = 21                            # claims this close to the dispute deadline jump the queue
 
 
@@ -79,6 +86,12 @@ def _kind(code: str, reason: str) -> str:
     return "unknown"
 
 
+def _iso_weeks(lo: date, hi: date) -> int:
+    """ISO weeks (Monday starts) whose start falls in [lo, hi]."""
+    first = lo + timedelta(days=(7 - lo.weekday()) % 7)
+    return 0 if first > hi else (hi - first).days // 7 + 1
+
+
 def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[Assessment]:
     """Assess every deduction in claim order. Order matters: the first claim
     against a promotion, receipt line, or shipment uses up the support for it,
@@ -125,20 +138,33 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                     a.evidence = {"searched": {"store_id": store, "sku_id": sku, "period": [str(p0), str(p1)]},
                                   "promotions_found": 0}
                 else:
-                    support, used = Money.of(0), []
+                    support, used, gaps = Money.of(0), [], []
                     for pid, s0, s1, allowance in promos:
                         lo, hi = max(s0, p0), min(s1, p1)
-                        pos_units = conn.execute(
-                            """SELECT coalesce(sum(units), 0) FROM retailer_pos_week
+                        pos_units, weeks_found = conn.execute(
+                            """SELECT coalesce(sum(units), 0), count(*) FROM retailer_pos_week
                                WHERE store_id = %s AND sku_id = %s AND week_start BETWEEN %s AND %s""",
-                            (store, sku, lo, hi)).fetchone()[0]
+                            (store, sku, lo, hi)).fetchone()
+                        weeks_expected = _iso_weeks(lo, hi)
+                        if weeks_found < weeks_expected:
+                            gaps.append({"promotion_id": pid, "weeks_expected": weeks_expected, "weeks_in_pos": weeks_found})
                         earned = Money.of(allowance).times(int(pos_units))
                         remaining = earned.amount - used_promo[pid]
                         support = support + Money.of(max(remaining, Decimal(0)))
                         used.append({"promotion_id": pid, "allowance_per_unit": str(allowance), "pos_units": int(pos_units),
                                      "earned": str(earned.amount), "already_accepted": str(used_promo[pid])})
                     a.supported = support.amount
+                    if gaps:
+                        # A missing POS week makes a valid claim look over-claimed: ask for the data instead.
+                        a.verdict, a.recoverable, a.rule = "needs_evidence", Decimal(0), "scan_back_pos_incomplete"
+                        a.evidence = {"promotions": used, "pos_gaps": gaps, "claimed_amount": str(amount)}
+                        out.append(a)
+                        continue
                     a.verdict, a.recoverable = _verdict(amount, a.supported)
+                    tol = max(SCAN_BACK_TOLERANCE_MIN, (amount * SCAN_BACK_TOLERANCE_PCT).quantize(Decimal("0.01")))
+                    within = Decimal(0) < a.recoverable <= tol
+                    if within:
+                        a.verdict, a.recoverable = "valid", Decimal(0)
                     take = amount - a.recoverable
                     for u in used:                          # consume support in promotion order
                         room = Decimal(u["earned"]) - Decimal(u["already_accepted"])
@@ -146,7 +172,8 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                         used_promo[u["promotion_id"]] += step
                         take -= step
                     a.rule = ("scan_back_duplicate" if a.verdict == "invalid" and any(Decimal(u["already_accepted"]) > 0 for u in used)
-                              else "scan_back_overclaim" if a.recoverable > 0 else "scan_back_supported")
+                              else "scan_back_overclaim" if a.recoverable > 0
+                              else "scan_back_within_tolerance" if within else "scan_back_supported")
                     a.evidence = {"promotions": used, "claimed_units": units, "claimed_amount": str(amount),
                                   "supported_amount": str(a.supported)}
 

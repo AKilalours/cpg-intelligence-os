@@ -79,30 +79,55 @@ def score_cash_application(conn: psycopg.Connection, matches: list[Match]) -> di
     return out
 
 
+DESIGN_REGIONS = ("CA",)              # deduction checker 2.0 was tuned on California stores only
+REPORT_REGIONS = ("TX", "WI")         # and is reported on Texas and Wisconsin
+
+
+def _deduction_block(scored) -> dict:
+    """scored: [(assessment, (is_valid, true_recoverable, reason))]. A claim sent for more evidence is
+    neither approved nor disputed; it is counted on its own, not as a mistake or a success."""
+    decided = [(a, t) for a, t in scored if a.verdict != "needs_evidence"]
+    invalid = [(a, t) for a, t in decided if not t[0]]
+    valid = [(a, t) for a, t in decided if t[0]]
+    return {
+        "deductions": len(scored),
+        "needs_evidence": rate(len(scored) - len(decided), len(scored)),
+        "recoverable_exact_to_the_cent_when_decided": rate(sum(a.recoverable == t[1] for a, t in decided), len(decided)),
+        "false_approval": rate(sum(a.verdict == "valid" for a, _ in invalid), len(invalid)),
+        "false_dispute": rate(sum(a.verdict in ("invalid", "partially_valid") for a, _ in valid), len(valid)),
+        "true_recoverable_total": str(sum((t[1] for _, t in scored), Decimal(0))),
+        "found_recoverable_total": str(sum((a.recoverable for a, _ in scored), Decimal(0))),
+    }
+
+
 def score_deductions(conn: psycopg.Connection, assessments: list[deductions.Assessment]) -> dict:
-    """Verdicts and recoverable amounts against eval.gt_deduction."""
+    """Verdicts and recoverable amounts against eval.gt_deduction, overall, for the design region,
+    and for the report region; plus which kind of evidence damage touched each mistake."""
     truth = {d: (v, Decimal(a) - Decimal(va), r) for d, v, va, r, a in conn.execute(
         """SELECT g.deduction_id, g.is_valid, g.valid_amount, g.reason, d.amount
            FROM eval.gt_deduction g JOIN deduction d USING (deduction_id)""")}
+    store = dict(conn.execute("SELECT deduction_id, store_id FROM deduction"))
+    for ref, det in conn.execute("SELECT ref, detail FROM eval.gt_evidence WHERE kind = 'claim_store_missing'"):
+        store[int(ref)] = det["store_id"]             # the true store of a claim that arrived without one
+    region = {sid: code[:2] for sid, code in conn.execute("SELECT store_id, external_code FROM store")}
     scored = [(a, truth[a.deduction_id]) for a in assessments if a.deduction_id in truth]
-    invalid = [(a, t) for a, t in scored if not t[0]]
-    valid = [(a, t) for a, t in scored if t[0]]
-    by_reason = defaultdict(lambda: {"n": 0, "verdict_correct": 0, "recoverable_exact": 0, "true_recoverable": Decimal(0)})
+    by_reason = defaultdict(lambda: {"n": 0, "verdict_correct": 0, "needs_evidence": 0, "true_recoverable": Decimal(0)})
     for a, t in scored:
         b = by_reason[t[2]]
         b["n"] += 1
-        b["verdict_correct"] += (a.verdict == "valid") == t[0]
-        b["recoverable_exact"] += a.recoverable == t[1]
+        b["needs_evidence"] += a.verdict == "needs_evidence"
+        b["verdict_correct"] += a.verdict != "needs_evidence" and (a.verdict == "valid") == t[0]
         b["true_recoverable"] += t[1]
+    mistakes = [{"claim": a.claim_number, "rule": a.rule, "truth": t[2], "verdict": a.verdict,
+                 "region": region.get(store.get(a.deduction_id))}
+                for a, t in scored if a.verdict != "needs_evidence" and (a.verdict == "valid") != t[0]]
     return {
-        "deductions": len(scored),
-        "invalid_in_truth": len(invalid),
-        "recoverable_exact_to_the_cent": rate(sum(a.recoverable == t[1] for a, t in scored), len(scored)),
-        "false_approval": rate(sum(a.verdict == "valid" for a, _ in invalid), len(invalid)),
-        "false_dispute": rate(sum(a.verdict != "valid" for a, _ in valid), len(valid)),
-        "needs_evidence": rate(sum(a.verdict == "needs_evidence" for a, _ in scored), len(scored)),
-        "true_recoverable_total": str(sum((t[1] for _, t in scored), Decimal(0))),
-        "found_recoverable_total": str(sum((a.recoverable for a, _ in scored), Decimal(0))),
+        **_deduction_block(scored),
+        "design_region": {"regions": list(DESIGN_REGIONS), **_deduction_block(
+            [(a, t) for a, t in scored if region.get(store.get(a.deduction_id)) in DESIGN_REGIONS])},
+        "report_region": {"regions": list(REPORT_REGIONS), **_deduction_block(
+            [(a, t) for a, t in scored if region.get(store.get(a.deduction_id)) in REPORT_REGIONS])},
+        "mistakes": mistakes,
         "by_reason": {k: {**v, "true_recoverable": str(v["true_recoverable"])} for k, v in sorted(by_reason.items())},
     }
 

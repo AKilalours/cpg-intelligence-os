@@ -143,3 +143,51 @@ def test_reconcile_twice_writes_nothing_new(conn, dup_world):
     before = counts()
     assert ded.save(conn, ded.assess_all(conn)) == 0
     assert counts() == before
+
+
+# ---------- imperfect evidence (fix for a circular test) ----------
+
+from cpgos.finance import evidence as EV  # noqa: E402
+
+
+def test_evidence_damage_is_logged_once_and_hidden_from_the_engine(conn, dup_world):
+    cfg = EV.EvidenceConfig(p_pos_week_missing=0.2, p_receipt_missing=0.2, p_delivery_date_missing=0.2,
+                            p_claim_store_missing=0.2)
+    rep = EV.degrade(conn, cfg)
+    assert rep["changes"] > 0 and rep["pos_weeks"]["missing"] > 0
+    assert EV.degrade(conn, cfg)["already_applied"] is True                       # once per world
+    n = conn.execute("SELECT count(*) FROM eval.gt_evidence").fetchone()[0]
+    assert n == rep["changes"]
+    with conn.transaction():
+        conn.execute("SET LOCAL ROLE cpgos_engine")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("SELECT 1 FROM eval.gt_evidence")
+
+
+def test_missing_evidence_gives_needs_evidence_never_a_dispute(conn, dup_world):
+    EV.degrade(conn, EV.EvidenceConfig(p_pos_week_missing=1.0, p_receipt_missing=1.0, p_delivery_date_missing=1.0,
+                                       p_pos_week_restated=0, p_promo_missing=0, p_promo_end_shifted=0, p_claim_store_missing=0))
+    truth = {d: v for d, v in conn.execute("SELECT deduction_id, is_valid FROM eval.gt_deduction")}
+    got = ded.assess_all(conn)
+    # With every POS week, receipt, and delivery date gone, nothing about scan-backs, shortages,
+    # or late fees can be proven: none of those claims may be approved or disputed.
+    for a in got:
+        if a.rule.startswith(("scan_back", "shortage", "late_fee")) and not a.rule.endswith("no_agreement"):
+            assert a.verdict == "needs_evidence", (a.claim_number, a.rule)
+    assert any(a.rule == "scan_back_pos_incomplete" for a in got)
+    assert not any(a.verdict in ("invalid", "partially_valid") and truth[a.deduction_id] for a in got
+                   if not a.rule.endswith("no_agreement"))
+
+
+def test_restatement_tolerance_is_proportional():
+    # Regression: a $1.00 floor approved over-claims of 20-100% on claims under $4.
+    assert ded.SCAN_BACK_TOLERANCE_MIN <= Decimal("0.05")
+    tol = lambda amount: max(ded.SCAN_BACK_TOLERANCE_MIN, (amount * ded.SCAN_BACK_TOLERANCE_PCT).quantize(Decimal("0.01")))
+    assert tol(Decimal("3.68")) == Decimal("0.11")          # a $0.92 over-claim is not "within tolerance"
+    assert tol(Decimal("262.08")) == Decimal("7.86")        # a 3% POS restatement is
+
+
+def test_iso_week_count():
+    assert ded._iso_weeks(date(2015, 3, 2), date(2015, 3, 8)) == 1
+    assert ded._iso_weeks(date(2015, 3, 2), date(2015, 3, 29)) == 4
+    assert ded._iso_weeks(date(2015, 3, 3), date(2015, 3, 8)) == 0

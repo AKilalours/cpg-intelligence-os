@@ -136,3 +136,39 @@ taken oldest first while the check stays positive, the rest wait, and the
 report counts `deductions_pending`; a test asserts generated = written +
 pending. The real-scale world was not affected (313 generated, 312 written,
 1 pending at the as-of date).
+
+## Fix: the deduction checker now earns its score (checker 2.0)
+
+The first checker scored 312 of 312 because it read perfect evidence made by
+the same rules that made the claims, like grading with the answer key the
+student learned from. `make finance-evidence` now damages only the evidence
+the checker can see, once, with its own seed (invoices, payments, cash
+application, and the answer key are unchanged), and logs every change in
+`eval.gt_evidence`:
+
+| Damage | Assumed rate | Count in the world |
+|---|---|---|
+| Retailer POS week missing | 3% | 1,868 of 62,400 weeks |
+| Retailer POS week restated by 1-3% | 5% | 2,456 weeks |
+| Receipt line never scanned | 4% | 2,089 of 50,834 lines |
+| Delivery date not keyed | 3% | 31 of 1,040 shipments |
+| Promotion missing from the calendar | 2% | 1 of 111 |
+| Promotion end date keyed a week off | 4% | 8 |
+| Claim arrives without its store | 3% | 21 of 312 claims |
+
+Checker 2.0: a missing POS week, receipt, delivery date, or store gives
+"needs evidence" instead of a verdict; a scan-back claim within 3% of what
+the POS supports is accepted (restatements are at most 3%; over-claims are
+10-40%). A first version had a $1.00 minimum tolerance, which approved four
+over-claims of 20-100% on claims under $4; it is now 5 cents (rounding only).
+Settings were chosen on California stores and reported on Texas and Wisconsin.
+
+| Region | Claims | Needs evidence | Invalid claims approved | Valid claims disputed | Exact when decided |
+|---|---|---|---|---|---|
+| California (design) | 142 | 10 | 0 of 41 | 0 of 91 | 131 of 132 |
+| Texas + Wisconsin (report) | 170 | 15 | **0 of 35** | **4 of 120** | 151 of 155 |
+
+The four wrongly disputed claims are exactly the damage data alone cannot
+reveal: three promotions whose end date was keyed a week early, and one
+promotion missing from the calendar. Reading the signed promotion agreements
+is the Phase 3 agent's job.

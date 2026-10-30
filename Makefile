@@ -8,7 +8,7 @@ DATASET ?= m5
 ROUND ?= 2
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world finance-evidence reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -51,6 +51,9 @@ load-m5: $(PY)  ## Load real M5: daily to Parquet, weekly to Postgres
 
 finance-world: $(PY)  ## Build the real-anchored financial world on loaded M5 (once per database)
 	$(PY) scripts/finance.py world
+
+finance-evidence: $(PY)  ## Make deduction evidence realistically imperfect (once per world)
+	$(PY) scripts/finance.py evidence
 
 reconcile: $(PY)  ## Cash application + deduction validation, written by the engine role
 	$(PY) scripts/finance.py reconcile

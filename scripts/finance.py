@@ -4,6 +4,7 @@ Usage:
     python scripts/finance.py world       # build the real-anchored world from the loaded M5 Parquet (once per database)
     python scripts/finance.py reconcile   # cash application + deduction validation, written as cpgos_engine
     python scripts/finance.py evaluate    # replay both engines, score against eval.*, store the report
+    python scripts/finance.py evidence    # damage the evidence realistically, once (see cpgos/finance/evidence.py)
 
 No LLM is called by any of these. Requires CPGOS_DATABASE_URL and a completed `make load-m5`.
 """
@@ -24,7 +25,7 @@ from cpgos.preflight import require_packages  # noqa: E402  (stdlib only)
 require_packages()
 
 from cpgos.db import code_version, connect, migrate  # noqa: E402
-from cpgos.finance import cashapp, deductions  # noqa: E402
+from cpgos.finance import cashapp, deductions, evidence  # noqa: E402
 from cpgos.finance.evaluate import phase2a_report, save_report  # noqa: E402
 from cpgos.finance.world import WorldConfig, build_world, weekly_sales_from_parquet  # noqa: E402
 from cpgos.ingest.reference import load_deduction_codes  # noqa: E402
@@ -73,6 +74,11 @@ def cmd_reconcile(conn) -> int:
     return 0
 
 
+def cmd_evidence(conn) -> int:
+    print(json.dumps(evidence.degrade(conn), indent=1, default=str))
+    return 0
+
+
 def cmd_evaluate(conn) -> int:
     report = phase2a_report(conn)
     rid = save_report(conn, report, code_version())
@@ -82,9 +88,14 @@ def cmd_evaluate(conn) -> int:
           f"  baseline {base['false_match_rate']['k']}/{base['auto_applied']['k']}")
     print(f"                  dollars posted correctly without a person: full {ca['dollars_auto_applied_correctly']['share']}"
           f"  baseline {base['dollars_auto_applied_correctly']['share']}")
-    print(f"deductions        recoverable exact to the cent: {d['recoverable_exact_to_the_cent']['k']}/{d['deductions']}"
-          f"  false approvals {d['false_approval']['k']}/{d['false_approval']['n']}"
-          f"  false disputes {d['false_dispute']['k']}/{d['false_dispute']['n']}")
+    for name in ("design_region", "report_region"):
+        b = d[name]
+        print(f"deductions {name} {'+'.join(b['regions'])}: {b['deductions']} claims, needs evidence {b['needs_evidence']['k']},"
+              f" false approvals {b['false_approval']['k']}/{b['false_approval']['n']},"
+              f" false disputes {b['false_dispute']['k']}/{b['false_dispute']['n']},"
+              f" exact when decided {b['recoverable_exact_to_the_cent_when_decided']['k']}/{b['recoverable_exact_to_the_cent_when_decided']['n']}")
+    for m in d["mistakes"]:
+        print(f"  mistake: {m}")
     for row in report["recovery_simulation"]:
         print(f"recovery @ {row['reviews_per_week']}/week  engine ${row['engine']['recovered']}"
               f"  largest-first ${row['largest_amount']['recovered']}  oldest-first ${row['oldest_first']['recovered']}")
@@ -93,12 +104,13 @@ def cmd_evaluate(conn) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["world", "reconcile", "evaluate"])
+    ap.add_argument("command", choices=["world", "reconcile", "evaluate", "evidence"])
     args = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
-        return {"world": cmd_world, "reconcile": cmd_reconcile, "evaluate": cmd_evaluate}[args.command](conn)
+        return {"world": cmd_world, "reconcile": cmd_reconcile, "evaluate": cmd_evaluate,
+                "evidence": cmd_evidence}[args.command](conn)
 
 
 if __name__ == "__main__":
