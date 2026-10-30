@@ -161,3 +161,59 @@ no printed label; without them coverage is about 94%. The 284 wrong answers
 on never-seen layouts (1.9%) are the risk the next steps must catch:
 calibrated confidence decides which answers may skip review, and the model
 tiers re-read the rest. The holdout errors were not used to change any rule.
+
+## Steps 4 to 6: the cascade, Claude as a third reader, and the two-readers rule
+
+Analogy: a bank's four-eyes rule. A payment leaves without a manager only
+when two people keyed the same amount independently. Here three readers fail
+in different ways: OCR + rules misreads characters, the local vision model
+(qwen2.5vl:7b on the Mac) confuses roles and sometimes invents values, and
+Claude Sonnet 5.5 is asked only when the first two have not settled a field.
+
+**Grounding.** A model value counts only if OCR finds it on the page, on a
+line carrying the field's own label (an OCR slip of about one character is
+tolerated), it is not a sum, and a name looks like a name. Designed on dev
+and calibration invoices after the local model, ungrounded, answered 29
+fields wrong or absent from the invoice on 20 dev invoices.
+
+**Measured facts that set the rule** (first cascade run, report 8): when OCR
++ rules and the local model agree they were right on 1,067 of 1,067 holdout
+and 462 of 462 calibration fields; when they disagreed, OCR + rules was right
+3 of 19 times. So agreement is accepted, and disagreement goes to the third
+reader, never to tier 1 by default.
+
+**Official one-time score** (rule 1.1, frozen before scoring; 150 fresh
+invoices from the 10 never-seen layouts, round 2, disjoint from round 1 which
+was seen during design; report 11; $0.61 of Claude)
+
+| | Two readers only | With Claude as third reader |
+|---|---|---|
+| Invoices straight through (no person) | 8% | **55.3%** (83 of 150) |
+| Fields a person checks, per invoice | 1.61 | **0.69** |
+| Accepted values correct | 98.4% | **98.5%** (1,819 of 1,846) |
+| ... values filled in automatically | | **1,219 of 1,219** (95% CI >= 99.7%) |
+| ... fields accepted as absent | | 600 of 627 |
+
+Every value the system filled in was right. All 27 mistakes are fields
+accepted as absent that were printed: the seller name on one layout and the
+tax on another. Calibration had shown 100% with rule 1.1, so this is the gap
+between design data and never-seen layouts, reported as measured.
+
+**Diagnosed after scoring (numbers above unchanged):**
+- Layout 12, tax: OCR dropped the whole tax line. The local model and Claude
+  both read 23.39 correctly, grounding (which depends on OCR) discarded both,
+  and the rule accepted "no tax".
+- Layout 10, seller: the name has no label, so absence cannot be checked on
+  the page, and Claude was never asked.
+
+**Rule 1.2** (built, tested, not yet validated on fresh holdout): a field two
+model readers read alike is never accepted as absent even if OCR cannot
+confirm it; fields without labels always get the third reader before
+"absent" is accepted. Its holdout validation will use a third fresh round of
+invoices in Phase 4, so this 150-invoice set is not reused for a fix designed
+after seeing it.
+
+**Cost and limits.** Claude costs about $0.004 per invoice that needs it
+($2 / $10 per million input / output tokens); a hard cap refuses any call
+whose worst case could pass CPGOS_LLM_BUDGET_USD. The local model takes about
+16 to 23 s per invoice on an M4 MacBook Pro; Claude about 2 s.

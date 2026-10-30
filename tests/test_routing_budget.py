@@ -146,3 +146,25 @@ def test_absence_vocabulary_includes_labels_set_aside_as_ambiguous():
     assert "BALANCE_DUE" in vocab["amount_due"] and "Due Date" in vocab["invoice_date"]
     page = words_of(("TOTAL : 299.40 $", 0.6, 0.80, "1.1.1"), ("BALANCE_DUE : 299.40 $", 0.6, 0.85, "1.1.2"))
     assert routing.labels_on_page(page, vocab) == {"amount_due", "total"}
+
+
+def test_presence_needs_two_witnesses():
+    # Regression (holdout layout 12, diagnosed after scoring): OCR dropped the tax line, so grounding
+    # discarded both models' correct "23.39" and 1.1 accepted "no tax". Two model readers printing the
+    # same value now block "absent"; one unconfirmed model guess does not.
+    assert routing.seen_by_two({"tax": "23.39"}, {"tax": "23.39"}) == {"tax"}
+    assert routing.seen_by_two({"tax": "23.39"}, {"tax": "99.00"}) == set()
+    assert routing.seen_by_two({"subtotal": "734.33"}, {}) == set()
+    s = _status(routing.decide({}, {}, {}, seen={"tax"}))
+    assert s["tax"][0] == "review" and "could not confirm" in s["tax"][2]
+
+
+def test_unlabelled_fields_need_the_third_reader_before_absent():
+    # Regression (holdout layout 10, diagnosed after scoring): the seller name has no label, so its
+    # absence could not be checked, and Claude was never asked before "no seller" was accepted.
+    from cpgos.documents.rules import RulesModel
+    unv = routing.unverifiable_absence(routing.absence_vocabulary(RulesModel({}, {"total": [("TOTAL", 1)]})))
+    assert "seller_name" in unv and "total" not in unv
+    assert "seller_name" in routing.needs_third_reader({}, {}, unverifiable=unv)
+    assert _status(routing.decide({}, {}, None, unverifiable=unv))["seller_name"][0] == "review"
+    assert _status(routing.decide({}, {}, {}, unverifiable=unv))["seller_name"][0] == "accepted"   # Claude also found none

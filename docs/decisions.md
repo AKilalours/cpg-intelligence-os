@@ -340,3 +340,31 @@ than patched, because patching them would turn the holdout into training data.
 OCR results are cached and stored with the Tesseract version, page mode, and
 scale. Two machines with different Tesseract versions produce two clearly
 labelled results instead of one silently mixed one.
+
+## 48. A model must show where it read a value
+The local model read 96% of fields but invented totals and confused roles.
+Every model value is grounded on the page by OCR, in its field's own labelled
+line, or discarded.
+
+## 49. Two readers must agree before a value skips review
+Agreement between independent readers was right on every one of 1,529
+fields; disagreement went the other way. The rule accepts agreement, asks a
+third reader otherwise, and sends the rest to a person with all candidates.
+
+## 50. Absence must be verified, and presence needs two witnesses
+1.0 accepted "no reader found it" as proof of absence (10 wrong on
+calibration). 1.1 requires that no label for the field is printed. Holdout
+showed two more holes, both from depending on OCR alone: a line OCR dropped
+and a field without a label. 1.2 blocks "absent" when two model readers read
+the same value and asks the third reader for unlabelled fields.
+
+## 51. Paid calls have a hard cap and a ledger
+Every Claude call is checked against a dollar cap using its worst case
+before it is sent, and its real cost is logged. The first live run sent an
+outdated parameter; it cost nothing, and runs now stop after 3 identical
+rejections and never report a failed third reader as a result.
+
+## 52. A holdout is scored once per rule
+Round-1 holdout results were seen while redesigning, so the redesigned rule
+was scored on round 2. Rule 1.2, designed after seeing round 2, will be
+scored on round 3.

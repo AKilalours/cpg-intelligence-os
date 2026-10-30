@@ -120,6 +120,9 @@ On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):
 | New layouts flagged as new, clean and scan-like | **4,000 of 4,000** |
 | Tier 1 (OCR + rules), known layouts: precision / coverage | **99.2% / 99.1%** |
 | Tier 1, never-seen layouts: precision / coverage | **98.1% / 84.0%** (seller names left to the models) |
+| Full cascade on never-seen layouts: invoices with no human needed | **55.3%** (Claude as third reader; $0.004 per invoice) |
+| Values filled in automatically that were correct | **1,219 of 1,219** (95% CI >= 99.7%) |
+| Fields wrongly accepted as absent | 27 of 627 (diagnosed; fix 1.2 awaits a fresh holdout round) |
 
 Details, rejected experiments, and caveats: [`docs/phase2b_documents.md`](docs/phase2b_documents.md).
 

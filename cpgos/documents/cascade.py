@@ -114,6 +114,18 @@ def sample(conn: psycopg.Connection, round_: int = 1) -> dict[str, list[int]]:
     return out
 
 
+def _printed_typed(conn, ver: str, ids: list[int]) -> dict[int, dict[str, str]]:
+    """What a model reader printed, typed, before grounding (including values grounding discarded)."""
+    from cpgos.documents import vlm
+    out: dict[int, dict] = defaultdict(dict)
+    for sid, f, raw in conn.execute("SELECT source_document_id, field_name, raw_text FROM field_extraction "
+                                    "WHERE extractor_version = %s AND source_document_id = ANY(%s)", (ver, ids)):
+        v = vlm._typed(f, raw) if raw not in (None, "", "None", "null") else None
+        if v is not None:
+            out[sid][f] = v
+    return out
+
+
 def _values(conn, ver: str, ids: list[int]) -> dict[int, dict[str, str | None]]:
     out: dict[int, dict] = defaultdict(dict)
     for sid, f, v in conn.execute("SELECT source_document_id, field_name, value FROM field_extraction "
@@ -239,7 +251,12 @@ def route(conn: psycopg.Connection, raw_root: Path, ids: list[int], local, claud
     v2 = run_tier2(conn, raw_root, ids, local, progress=lambda m: None)["extractor_version"]   # replays recordings
     r1, r2 = _values(conn, v1, ids), _values(conn, v2, ids)
     printed = page_labels(conn, raw_root, ids)
-    need = [sid for sid in ids if routing.needs_third_reader(r1[sid], r2[sid], printed[sid])]
+    with conn.transaction():
+        conn.execute("SET LOCAL ROLE cpgos_engine")
+        unverifiable = routing.unverifiable_absence(routing.absence_vocabulary(rules.load_model(conn)[1]))
+    p2 = _printed_typed(conn, v2, ids)
+    seen: dict[int, set] = defaultdict(set)
+    need = [sid for sid in ids if routing.needs_third_reader(r1[sid], r2[sid], printed[sid], set(), unverifiable)]
     r3: dict = defaultdict(dict)
     third = {"invoices_needing_third_reader": len(need)}
     if claude is not None and need:
@@ -247,14 +264,18 @@ def route(conn: psycopg.Connection, raw_root: Path, ids: list[int], local, claud
         progress(f"third reader ({claude.model}) on {len(need)} of {len(ids)} invoices")
         run = run_tier2(conn, raw_root, need, claude, progress, extractor="claude")
         r3 = _values(conn, run["extractor_version"], need)
+        p3 = _printed_typed(conn, run["extractor_version"], need)
+        for sid in need:
+            seen[sid] = routing.seen_by_two(p2[sid], p3[sid])
         third.update({"version": run["extractor_version"], "calls_failed": run["failed_calls"],
                       "complete": run["failed_calls"] == 0 and not run.get("stopped_early"),
                       "usd_spent_this_run": str(budget.spent() - spent_before), "usd_spent_total": str(budget.spent()),
                       "usd_cap": str(budget.cap())})
-    decisions = {sid: routing.decide(r1[sid], r2[sid], r3.get(sid) if claude is not None else None, printed[sid])
+    decisions = {sid: routing.decide(r1[sid], r2[sid], r3.get(sid) if claude is not None and sid in need else None,
+                                     printed[sid], seen[sid], unverifiable)
                  for sid in ids}
     return {"reader_versions": {"rules": v1, "local_model": v2}, "third_reader": third, "decisions": decisions,
-            "printed_labels": printed}
+            "printed_labels": printed, "seen": seen, "unverifiable": unverifiable}
 
 
 def evaluate_routing(conn: psycopg.Connection, raw_root: Path, split: str, rounds: list[int], local, claude=None,
@@ -266,7 +287,7 @@ def evaluate_routing(conn: psycopg.Connection, raw_root: Path, split: str, round
     gold = _gold(conn, gs, ids)
     with_third = routing.summarize(res["decisions"], gold)
     without = routing.summarize({sid: routing.decide(*[_values(conn, v, [sid])[sid] for v in res["reader_versions"].values()],
-                                                     None, res["printed_labels"][sid])
+                                                     None, res["printed_labels"][sid], set(), res["unverifiable"])
                                  for sid in ids}, gold)
     wrong = [(sid, d.field_name, d.reason, d.value, gold[sid].get(d.field_name), d.candidates)
              for sid, ds in res["decisions"].items() for d in ds

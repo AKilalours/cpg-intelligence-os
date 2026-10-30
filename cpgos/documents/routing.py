@@ -13,9 +13,12 @@ OCR + rules was right only 3 of 19 times.
 
 Per field:
 - reader 1 and reader 2 agree                       -> accept ("two readers agree")
-- both are blank, the field is optional, and none of
-  its labels is printed anywhere on the page         -> accept as absent (absence is verified,
-                                                        not assumed: version 1.1)
+- both are blank, the field is optional, none of its
+  labels is printed on the page, and no two model
+  readers read the same unconfirmed value            -> accept as absent (absence is verified,
+                                                        not assumed: versions 1.1, 1.2)
+  For fields without labels (seller name) absence cannot be checked on the page, so the third
+  reader is always asked first (1.2).
 - otherwise ask reader 3 (Claude) for the invoice; if it agrees with one of
   the others                                         -> accept that value
 - otherwise                                          -> a person decides, shown all candidates
@@ -30,7 +33,7 @@ from dataclasses import dataclass
 
 from cpgos.documents import normalize as nz
 
-POLICY_VERSION = "two-readers-1.1.0"
+POLICY_VERSION = "two-readers-1.2.0"
 REQUIRED = ("invoice_number", "invoice_date", "total")
 
 
@@ -54,6 +57,24 @@ def absence_vocabulary(rules_model) -> dict[str, list[str]]:
     return vocab
 
 
+def unverifiable_absence(vocab: dict[str, list[str]]) -> set[str]:
+    """Fields with no learned label (e.g. seller_name): their absence cannot be checked on the page,
+    so the third reader must be asked before accepting it (1.2; holdout layout 10's seller)."""
+    return set(nz.FIELD_TYPES) - set(vocab) - {"currency"}
+
+
+def seen_by_two(*readings: dict) -> set[str]:
+    """Fields where two model readers independently printed the same typed value, even though the
+    page scan could not confirm it (1.2; holdout layout 12: OCR dropped the tax line, both models
+    read 23.39). One unconfirmed reading is not evidence: the local model's discarded guesses are."""
+    out = set()
+    for f in nz.FIELD_TYPES:
+        vals = [r.get(f) for r in readings if r.get(f) is not None]
+        if len(vals) >= 2 and len(set(vals)) < len(vals):
+            out.add(f)
+    return out
+
+
 def labels_on_page(words, vocab: dict[str, list[str]]) -> set[str]:
     """Fields whose label is printed somewhere on the page."""
     from cpgos.documents.ocr import lines
@@ -62,20 +83,25 @@ def labels_on_page(words, vocab: dict[str, list[str]]) -> set[str]:
     return {f for f, labs in vocab.items() if any(label_pattern(lab).search(text) for lab in labs)}
 
 
-def needs_third_reader(r1: dict, r2: dict, printed_labels: set[str] = frozenset()) -> list[str]:
+def needs_third_reader(r1: dict, r2: dict, printed_labels: set[str] = frozenset(),
+                       seen: set[str] = frozenset(), unverifiable: set[str] = frozenset()) -> list[str]:
     """Fields the first two readers did not settle."""
     out = []
     for f in nz.FIELD_TYPES:
         a, b = r1.get(f), r2.get(f)
         if a is not None and a == b:
             continue
-        if a is None and b is None and f not in REQUIRED and f not in printed_labels:
+        if (a is None and b is None and f not in REQUIRED and f not in printed_labels and f not in seen
+                and f not in unverifiable):
             continue
         out.append(f)
     return out
 
 
-def decide(r1: dict, r2: dict, r3: dict | None = None, printed_labels: set[str] = frozenset()) -> list[Decision]:
+def decide(r1: dict, r2: dict, r3: dict | None = None, printed_labels: set[str] = frozenset(),
+           seen: set[str] = frozenset(), unverifiable: set[str] = frozenset()) -> list[Decision]:
+    """seen: fields two model readers read alike but the page scan could not confirm (see seen_by_two);
+    such a field is never accepted as absent (1.2)."""
     out = []
     for f in nz.FIELD_TYPES:
         a, b = r1.get(f), r2.get(f)
@@ -83,12 +109,15 @@ def decide(r1: dict, r2: dict, r3: dict | None = None, printed_labels: set[str] 
         cands = {k: v for k, v in (("rules", a), ("local_model", b), ("claude", c)) if v is not None}
         if a is not None and a == b:
             out.append(Decision(f, a, "accepted", "two readers agree", cands))
-        elif a is None and b is None and f not in REQUIRED and (r3 is None or c is None) and f not in printed_labels:
+        elif (a is None and b is None and f not in REQUIRED and (r3 is None or c is None)
+              and f not in printed_labels and f not in seen and not (f in unverifiable and r3 is None)):
             out.append(Decision(f, None, "accepted", "absent: no value and no label for it on the page", cands))
         elif c is not None and c in (a, b):
             out.append(Decision(f, c, "accepted", "third reader agrees with one of two", cands))
         else:
             reason = ("required field not found" if not cands and f in REQUIRED else
+                      "two readers saw a value the page scan could not confirm" if not cands and f in seen else
+                      "absence cannot be checked without a third reader" if not cands and f in unverifiable else
                       "label printed but no value read" if not cands and f in printed_labels else
                       "readers disagree" if len(set(cands.values())) > 1 else
                       "only one reader found it" if cands else "no reader found it")
