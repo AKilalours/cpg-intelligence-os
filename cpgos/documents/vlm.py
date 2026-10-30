@@ -205,15 +205,71 @@ def role_conflict(field_name: str, box: list[float] | None, words, lexicon: dict
     return None
 
 
+def _fuzzy_label(text: str, labels) -> list:
+    """The field's label printed with an OCR slip ("T0TAL" for "TOTAL"): a run of the line's letters
+    and digits at least 80% similar to a label of 4+ characters. Exact matches are found earlier."""
+    sq = re.sub(r"[^a-z0-9]", "", text.lower())
+    for lab, _ in labels:
+        want = re.sub(r"[^a-z0-9]", "", lab.lower())
+        if len(want) < 4:
+            continue
+        for n in (len(want) - 1, len(want), len(want) + 1):
+            for i in range(0, max(0, len(sq) - n) + 1):
+                if difflib.SequenceMatcher(None, sq[i:i + n], want).ratio() >= 0.8:
+                    return [lab]
+    return []
+
+
+def own_label_near(field_name: str, box: list[float] | None, words, lexicon: dict | None) -> bool:
+    """Positive evidence of role: one of the field's own learned labels is printed on the value's
+    line before it, or on the line just above in the same column (e.g. "BILL_TO:" over a name)."""
+    if not lexicon or box is None or field_name not in lexicon:
+        return False
+    from cpgos.documents.ocr import lines
+    from cpgos.documents.rules import COLUMN_TOLERANCE, MAX_LINE_GAP, label_hits, lexicon_patterns
+    pats = lexicon_patterns(lexicon)
+    for text, ws in lines(words):
+        x0, y0, x1, y1 = min(w.bbox[0] for w in ws), min(w.bbox[1] for w in ws), max(w.bbox[2] for w in ws), max(w.bbox[3] for w in ws)
+        own = [h for h in label_hits(text, pats) if h[2] == field_name] or _fuzzy_label(text, lexicon[field_name])
+        if not own:
+            continue
+        same_line = y0 - 0.004 <= (box[1] + box[3]) / 2 <= y1 + 0.004 and x0 <= box[0] + 1e-6
+        above = abs(x0 - box[0]) <= COLUMN_TOLERANCE * 3 and 0 <= box[1] - y1 <= MAX_LINE_GAP
+        if same_line or above:
+            return True
+    return False
+
+
+def plausible(field_name: str, printed: str | None, value: str | None) -> str | None:
+    """Reasons a model value cannot be a faithful copy, or None."""
+    p = (printed or "").strip()
+    if field_name != "tax" and "+" in p:
+        return "contains a sum: the model added numbers instead of copying one"
+    if nz.FIELD_TYPES[field_name] in ("name", "text"):
+        if len(re.findall(r"[A-Za-z]", value or "")) < 3 or re.match(r"\s*\d", value or ""):
+            return "not a plausible name"
+    return None
+
+
 def grounded(exs: list[Extraction], words, lexicon: dict | None = None) -> list[Extraction]:
-    """Keep only values found on the page, in the right role; record where, or why not."""
+    """Keep only values that are a faithful copy, found on the page, in the right role.
+
+    Version 2 (designed on calibration invoices): a field that normally carries a printed label
+    must have its own label next to the value (positive evidence), not merely no conflicting one;
+    a value containing a sum is refused; names must look like names."""
     out = []
     for e in exs:
-        ok, box, how = ground(e.field_name, e.signals.get("printed"), e.value, words)
+        bad = plausible(e.field_name, e.signals.get("printed"), e.value) if e.value is not None else None
+        if bad:
+            ok, box, how = False, None, bad
+        else:
+            ok, box, how = ground(e.field_name, e.signals.get("printed"), e.value, words)
         if ok and nz.FIELD_TYPES[e.field_name] in ("money", "name", "text", "date", "id"):
             other = role_conflict(e.field_name, box, words, lexicon)
             if other:
                 ok, how = False, f"found on a line labelled {other}"
+            elif lexicon and e.field_name in lexicon and not own_label_near(e.field_name, box, words, lexicon):
+                ok, how = False, "no label for this field next to the value"
         sig = {**e.signals, "grounded": ok, "grounding": how}
         out.append(Extraction(e.field_name, e.value if ok else None, e.raw_text, box, e.path, sig))
     return out

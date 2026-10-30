@@ -208,9 +208,9 @@ def _ex(field, printed):
     ("subtotal", "725.30", True, "amount on page"),             # regression: "TOTAL" inside "SUB_TOTAL" was a false role conflict
     ("subtotal", "734.33", False, "labelled total"),            # regression: total copied into subtotal
     ("buyer_name", "Denise Perez", True, "text match"),
-    # Known limitation: the seller's address line carries no learned label, so grounding cannot
-    # tell this is the wrong role. Calibrated confidence and the Claude tier must catch it.
-    ("buyer_name", "Timothy Mission", True, "text match"),
+    # Regression (grounding 2.0): the seller's address was accepted as the buyer because nothing
+    # contradicted it; a labelled field now needs its own label next to the value.
+    ("buyer_name", "Timothy Mission", False, "no label for this field"),
     ("invoice_number", "INV/30-14/832", True, "id on page"),
     ("invoice_number", "INV/99-99/999", False, "id not on page"),
     ("currency", "EUR", True, "currency on page"),
@@ -233,3 +233,30 @@ def test_image_identity_keys_survive_different_encoders():
     assert base.request_key("p", "m", "d", a) == base.request_key("p", "m", "d", b)
     c = LLMRequest("s", "read", [b"png-bytes-from-mac"], {"type": "object"}, image_ids=["abc@png-x2.0"])
     assert base.request_key("p", "m", "d", a) != base.request_key("p", "m", "d", c)
+
+
+def test_model_sums_are_refused():
+    # Regression (calibration): the model summed line items into a subtotal ("107.32 + 128.30 + 22.80");
+    # the last number was on the page, so the sum passed as a "grounded" subtotal.
+    out = vlm.grounded([_ex("subtotal", "107.32 + 128.30 + 725.30")], PAGE, LEX)[0]
+    assert out.value is None and "sum" in out.signals["grounding"]
+
+
+def test_unlabelled_number_is_not_an_invoice_number():
+    # Regression (calibration): a bare number elsewhere on the page was accepted as the invoice number.
+    page = PAGE + words_of(("030063", 0.05, 0.95, "9.1.1"))
+    out = vlm.grounded([_ex("invoice_number", "030063")], page, LEX)[0]
+    assert out.value is None and "no label" in out.signals["grounding"]
+
+
+@pytest.mark.parametrize("printed", ["8", "66636 Hernandez Loaf Suite 714"])
+def test_implausible_names_are_refused(printed):
+    out = vlm.grounded([_ex("seller_name", printed)], PAGE + words_of((printed, 0.05, 0.6, "8.1.1")), LEX)[0]
+    assert out.value is None and "plausible" in out.signals["grounding"]
+
+
+def test_label_with_an_ocr_slip_still_counts_as_the_fields_own():
+    # The case the model is for: OCR mangled the label, so tier 1 could not read the field.
+    page = PAGE + words_of(("T0TAL : 512.00 EUR", 0.60, 0.92, "6.1.1"))
+    out = vlm.grounded([_ex("total", "512.00")], page, LEX)[0]
+    assert out.value == "512.00"

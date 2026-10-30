@@ -26,7 +26,7 @@ from cpgos.documents import extraction, ocr, rules, vlm
 from cpgos.finance.evaluate import rate
 
 POLICY_VERSION = "cascade-1.0.0"
-GROUNDING_VERSION = "ground-1.0.0"
+GROUNDING_VERSION = "ground-2.0.0"
 SAMPLE_SEED = 2026
 SAMPLE_PER_LAYOUT = {"holdout": 15, "calibration": 10}
 
@@ -76,8 +76,12 @@ def run_tier2(conn: psycopg.Connection, raw_root: Path, doc_ids: list[int], prov
     return {"extractor_version": ver, "to_run": len(docs), **dict(stats)}
 
 
-def sample(conn: psycopg.Connection) -> dict[str, list[int]]:
-    """A fixed random sample per layout from each unseen split (the model is too slow for every invoice)."""
+def sample(conn: psycopg.Connection, round_: int = 1) -> dict[str, list[int]]:
+    """A fixed random sample per layout from each unseen split (the model is too slow for every invoice).
+
+    Round 2 draws different invoices from the same layouts, disjoint from round 1. It exists because
+    round 1's holdout results were seen while redesigning grounding and routing on calibration data;
+    the redesigned cascade is scored on round-2 holdout invoices that nothing had read before."""
     out = {}
     for split, k in SAMPLE_PER_LAYOUT.items():
         rows = conn.execute("SELECT layout_id, source_document_id FROM eval.doc_meta WHERE split_unseen = %s "
@@ -86,7 +90,16 @@ def sample(conn: psycopg.Connection) -> dict[str, list[int]]:
         for lid, sid in rows:
             by[lid].append(sid)
         rng = random.Random(SAMPLE_SEED)
-        out[split] = sorted(sid for lid in sorted(by) for sid in rng.sample(by[lid], min(k, len(by[lid]))))
+        first = {lid: rng.sample(by[lid], min(k, len(by[lid]))) for lid in sorted(by)}
+        if round_ == 1:
+            out[split] = sorted(sid for ids in first.values() for sid in ids)
+            continue
+        rng2 = random.Random(SAMPLE_SEED + round_)
+        picked = []
+        for lid in sorted(by):
+            rest = [sid for sid in by[lid] if sid not in set(first[lid])]
+            picked += rng2.sample(rest, min(k, len(rest)))
+        out[split] = sorted(picked)
     return out
 
 
@@ -170,3 +183,15 @@ def evaluate(conn: psycopg.Connection, raw_root: Path, provider, progress=print)
                          for f, d in sorted(by_field.items())},
         }
     return report
+
+
+def collect(conn: psycopg.Connection, raw_root: Path, provider, round_: int, progress=print) -> dict:
+    """Run tier 1 and the model on a sample round and store the results, without scoring anything.
+    Lets slow model runs happen while the policy is designed, without anyone seeing holdout scores."""
+    out = {}
+    for split, ids in sample(conn, round_).items():
+        progress(f"round {round_} {split}: tier 1 on {len(ids)} invoices")
+        out[f"{split}_tier1"] = extraction.extract_documents(conn, raw_root, ids)
+        progress(f"round {round_} {split}: model on {len(ids)} invoices")
+        out[f"{split}_tier2"] = run_tier2(conn, raw_root, ids, provider, progress)
+    return out

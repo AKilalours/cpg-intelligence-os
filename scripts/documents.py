@@ -10,6 +10,7 @@ Usage:
     python scripts/documents.py eval-extract   # score the frozen rules on known-layout test and holdout layouts
     python scripts/documents.py vlm-dev        # choose the local model's image scale on 20 fit-layout dev invoices
     python scripts/documents.py eval-cascade   # tier 1 + local model on fixed holdout and calibration samples (resumable)
+    python scripts/documents.py vlm-collect    # run tier 1 + local model on fresh round-2 samples; prints no scores
 
 Requires CPGOS_DATABASE_URL and FATURA in data/raw/fatura (make download DATASET=fatura).
 No language model is called by these commands.
@@ -207,11 +208,29 @@ def cmd_eval_cascade(conn) -> int:
     return 0
 
 
+def cmd_vlm_collect(conn) -> int:
+    from cpgos.documents import cascade
+    from cpgos.llm import LLMError, provider
+    if not _ocr_ready():
+        return 1
+    p = provider("ollama")
+    try:
+        print(f"model: {p.model} digest {str(p.digest())[:12]}")
+    except LLMError as e:
+        print(f"BLOCKED: {e}")
+        return 1
+    t = time.time()
+    out = cascade.collect(conn, RAW, p, round_=2, progress=lambda m: print(m, flush=True))
+    print(json.dumps({"collected": {k: {x: v.get(x) for x in ("documents", "failed_calls")} for k, v in out.items()},
+                      "minutes": round((time.time() - t) / 60, 1), "note": "no scores printed on purpose"}, indent=1))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["load-fatura", "train-router", "eval-router", "route",
                                         "learn-rules", "extract", "eval-extract", "vlm-dev",
-                                        "eval-cascade"])
+                                        "eval-cascade", "vlm-collect"])
     args = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
@@ -219,7 +238,7 @@ def main() -> int:
         return {"load-fatura": cmd_load_fatura, "train-router": cmd_train_router,
                 "eval-router": cmd_eval_router, "route": cmd_route, "learn-rules": cmd_learn_rules,
                 "extract": cmd_extract, "eval-extract": cmd_eval_extract, "vlm-dev": cmd_vlm_dev,
-                "eval-cascade": cmd_eval_cascade}[args.command](conn)
+                "eval-cascade": cmd_eval_cascade, "vlm-collect": cmd_vlm_collect}[args.command](conn)
 
 
 if __name__ == "__main__":
