@@ -160,9 +160,18 @@ def check_datasets() -> list[Check]:
     return out
 
 
+def check_tesseract() -> Check:
+    if shutil.which("tesseract") is None:
+        return Check("Tesseract OCR (document extraction)", False, "tesseract not found",
+                     "brew install tesseract   (Linux: sudo apt-get install tesseract-ocr)", critical=False)
+    r = _run(["tesseract", "--version"])
+    first = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()[0] if r else "unknown"
+    return Check("Tesseract OCR (document extraction)", True, first, critical=False)
+
+
 def run_checks() -> list[Check]:
     return [check_python(), check_project_env(), check_packages(), check_env_file(),
-            check_docker(), check_postgres(), check_node(),
+            check_docker(), check_postgres(), check_node(), check_tesseract(),
             check_port("API", "CPGOS_API_PORT", 8100), check_port("UI", "CPGOS_WEB_PORT", 3100),
             *check_datasets()]
 

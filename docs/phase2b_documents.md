@@ -111,3 +111,53 @@ shifts; together they separate cleanly.
 
 Reproduce: `make train-router && make eval-router && make route-docs`
 (about 2.5 minutes in total).
+
+## Step 3: tier 1, OCR plus rules (done)
+
+Analogy: a clerk who has handled a supplier's invoices for months knows where
+the total sits (known-layout path). Given an unfamiliar invoice, the clerk
+looks for printed labels like "TOTAL" and reads what follows (label search),
+and leaves a field blank rather than guess. Blanks go to the model tiers.
+
+**What the rules know, and where it came from.** Everything is learned by
+code from the 32 fit layouts' training answers: the page area of each field
+per known layout, and the printed labels that precede each field. Nothing is
+a hand-written list, so the label search uses no knowledge of the holdout.
+
+**OCR.** Tesseract, pages enlarged 2x (values read exactly: 87.3% at 1x,
+98.4% at 2x, 97.9% at 3x, on 40 training invoices), one thread per Tesseract
+process, cached per image and engine version.
+
+**Bugs found on fit-layout dev invoices, each with a regression test**
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| 40-page OCR batch did not finish in 3 minutes | Each Tesseract used every core; 4 in parallel oversubscribed the CPU | One thread per process |
+| Buyer names and PO numbers read as ":Shelia Swanson", ":54" | Separator after the label kept | Strip separators |
+| Invoice date read from the "Due Date" line; due dates never found | FATURA's own key labels "Due Date" as the invoice date on 1 layout, so the label belonged to two fields | A label belongs to the field that uses it on the most layouts |
+| "Note:Total payment due in 14 days" read as a total | Label matched mid-sentence | The value must start right after the label |
+| "GSTIN : 24HDE..." read as tax | "GST" matched inside "GSTIN" | Whole-word labels |
+| Company names learned as "labels" | Free text treated as a label | A label must be followed by a value |
+| "BILL_TO: INVOICE ID INV57..." as a buyer name | OCR merged two columns into one line | A value stops where the next label begins |
+| "eighty-" alone parsed as 80; continuations missed | OCR lists lines across columns, so the next line in the list belonged to the other column | Continuation = nearest line below at the same left edge; a trailing hyphen always continues |
+
+On 120 dev invoices, label search went from 150 wrong to 3 wrong; the 3 are
+OCR misreads. Rules were then frozen.
+
+**Scored once** (`make eval-extract`; Tesseract 4.1.1 in the sandbox, so the
+Mac run with Tesseract 5 is the official one and may differ slightly)
+
+| | Known layouts (800 invoices) | New layouts, holdout (2,000) |
+|---|---|---|
+| Correct | 5,992 | 14,439 |
+| Wrong | 47 | 284 |
+| Abstained (left for the models) | 10 | 2,476 |
+| Spurious | 1 | 1 |
+| Precision: when it answers, it is right | **99.2%** | **98.1%** |
+| Coverage: fields read correctly | **99.1%** | **84.0%** |
+
+On new layouts, 1,800 of the 2,476 abstentions are seller names, which have
+no printed label; without them coverage is about 94%. The 284 wrong answers
+on never-seen layouts (1.9%) are the risk the next steps must catch:
+calibrated confidence decides which answers may skip review, and the model
+tiers re-read the rest. The holdout errors were not used to change any rule.

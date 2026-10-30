@@ -46,6 +46,7 @@ CALIBRATION_SEED = 2026
 N_CALIBRATION_TEMPLATES = 8
 
 # Canonical field -> (value type, FATURA labels it can come from, in order of preference).
+# Value types come from normalize.FIELD_TYPES; the assertion below keeps the two in step.
 FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
     "invoice_number": ("id", ("NUMBER",)),
     "invoice_date": ("date", ("DATE",)),
@@ -59,9 +60,10 @@ FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
     "total": ("money", ("TOTAL",)),
     "amount_due": ("money", ("AMOUNT_DUE",)),
     "currency": ("currency", ("TOTAL", "SUB_TOTAL", "AMOUNT_DUE", "TAX")),
-    "total_in_words": ("money", ("TOTAL_WORDS",)),
+    "total_in_words": ("money_words", ("TOTAL_WORDS",)),
 }
-FIELD_TYPES = {k: v[0] for k, v in FIELDS.items()}
+FIELD_TYPES = nz.FIELD_TYPES
+assert set(FIELDS) == set(FIELD_TYPES), "FATURA fields and canonical fields diverged"
 
 
 @dataclass
@@ -140,20 +142,7 @@ def gold_from_annotation(doc_key: str, ann: dict) -> GoldDoc:
             if not e:
                 continue
             raw, box = e
-            if kind == "id":
-                value = nz.normalize_id(raw)
-            elif kind == "date":
-                d = nz.parse_date(raw)
-                value = d.isoformat() if d else None
-            elif kind == "money":
-                a = nz.words_to_amount(raw) if name == "total_in_words" else nz.parse_amount(raw, last=True)
-                value = str(a) if a is not None else None
-            elif kind == "currency":
-                value = nz.parse_currency(raw)
-            elif kind == "name":
-                value = nz.normalize_name(raw)
-            else:
-                value = re.sub(r"\s+", " ", raw).strip() or None
+            value = nz.normalize_field(name, raw)
             if value is None:
                 if kind != "currency":            # currency is optional on every amount line
                     doc.unparsed[label] = raw
@@ -194,12 +183,13 @@ def read_splits(root: Path) -> Splits:
     return Splits(strat1, strat2)
 
 
-def gold_version() -> str:
-    """Changes whenever the code that defines a gold value changes."""
-    here = Path(__file__).resolve().parent
+def gold_version(docs: list["GoldDoc"]) -> str:
+    """Hash of the answer key's content: the same values give the same version even after
+    a refactor; any changed value, box, or document gives a new one."""
     h = hashlib.sha256()
-    for name in ("normalize.py", "fatura.py"):
-        h.update((here / name).read_bytes())
+    for d in sorted(docs, key=lambda x: x.doc_key):
+        for f in sorted(d.fields.values(), key=lambda x: x.name):
+            h.update(json.dumps([d.doc_key, f.name, f.value, f.bbox]).encode())
     return h.hexdigest()[:16]
 
 
@@ -246,7 +236,7 @@ def load_fatura(conn: psycopg.Connection, raw_root: Path, *, origin: str = "real
 
     rep = LoadReport(documents=len(docs), templates=len({d.template_id for d, _ in docs}))
     version_sha = zip_sha256 or manifest.hexdigest()
-    gv = gold_version()
+    gv = gold_version([d for d, _ in docs])
     with conn.transaction():
         ver = conn.execute(
             """INSERT INTO dataset_version (dataset_key, file_name, sha256, license, data_origin)

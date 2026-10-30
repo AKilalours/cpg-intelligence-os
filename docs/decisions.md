@@ -323,3 +323,20 @@ And the known weaknesses are owned: router scan robustness (fixed in 2.0.0),
 deduction checks earning their score from documents (Phase 3), short pays
 auto-posted when a same-check deduction explains them (Phase 2a extension),
 major dependency upgrades as a tested step.
+
+## 45. Rules are learned, not typed in
+The label vocabulary and field areas come from the fit layouts' training
+answers by code. A hand-written label list would encode what the author saw
+across all layouts, including the holdout, and silently inflate the
+new-layout score.
+
+## 46. Freeze, then score once
+Rules were debugged on fit-layout dev invoices until the remaining errors
+were OCR misreads, then frozen and scored once on the holdout. The 284 wrong
+answers on new layouts are left for confidence and the model tiers rather
+than patched, because patching them would turn the holdout into training data.
+
+## 47. OCR output is versioned by engine
+OCR results are cached and stored with the Tesseract version, page mode, and
+scale. Two machines with different Tesseract versions produce two clearly
+labelled results instead of one silently mixed one.

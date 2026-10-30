@@ -191,3 +191,46 @@ def words_to_amount(text: str | None) -> Decimal | None:
     if digits:
         value += Decimal("0." + "".join(digits))
     return value.quantize(Decimal("0.01"))
+
+
+# The canonical invoice header fields and their value types. Shared by every
+# dataset loader and every extractor, so "invoice_date" means one thing everywhere.
+FIELD_TYPES: dict[str, str] = {
+    "invoice_number": "id",
+    "invoice_date": "date",
+    "due_date": "date",
+    "po_number": "id",
+    "seller_name": "text",
+    "buyer_name": "name",
+    "subtotal": "money",
+    "discount": "money",
+    "tax": "money",
+    "total": "money",
+    "amount_due": "money",
+    "currency": "currency",
+    "total_in_words": "money_words",
+}
+
+
+def normalize_field(field: str, raw: str | None) -> str | None:
+    """Typed, canonical string for a field's printed text (label included or not), or None.
+    The single conversion used for answer keys and for every extractor's output."""
+    if raw is None or not raw.strip():
+        return None
+    kind = FIELD_TYPES[field]
+    if kind == "id":
+        return normalize_id(raw)
+    if kind == "date":
+        d = parse_date(raw)
+        return d.isoformat() if d else None
+    if kind == "money":
+        a = parse_amount(raw, last=True)
+        return str(a) if a is not None else None
+    if kind == "money_words":
+        a = words_to_amount(raw)
+        return str(a) if a is not None else None
+    if kind == "currency":
+        return parse_currency(raw)
+    if kind == "name":
+        return normalize_name(raw)
+    return re.sub(r"\s+", " ", raw).strip() or None

@@ -7,7 +7,7 @@ PY     := $(VENV)/bin/python
 DATASET ?= m5
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon load-fatura train-router eval-router route-docs test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -68,6 +68,15 @@ eval-router: $(PY)  ## Score the frozen layout router once on held-out invoices
 
 route-docs: $(PY)  ## Route every document to a known layout or "new", as the engine role
 	$(PY) scripts/documents.py route
+
+learn-rules: $(PY)  ## Learn field areas and label vocabulary from the fit layouts
+	$(PY) scripts/documents.py learn-rules
+
+extract-docs: $(PY)  ## OCR + rules on every document not yet extracted (needs Tesseract)
+	$(PY) scripts/documents.py extract
+
+eval-extract: $(PY)  ## Score the frozen rules on known-layout test invoices and the holdout layouts (needs Tesseract)
+	$(PY) scripts/documents.py eval-extract
 
 test: $(PY)  ## Run the backend tests (needs a reachable Postgres)
 	$(PY) -m pytest

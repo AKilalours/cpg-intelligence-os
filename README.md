@@ -118,6 +118,8 @@ On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):
 | Answer key | 76,194 typed values, 0 unparsed, hidden from the engine role |
 | Known layouts recognised, scan-like copies | **795 of 800**, 0 sent to a wrong layout |
 | New layouts flagged as new, clean and scan-like | **4,000 of 4,000** |
+| Tier 1 (OCR + rules), known layouts: precision / coverage | **99.2% / 99.1%** |
+| Tier 1, never-seen layouts: precision / coverage | **98.1% / 84.0%** (seller names left to the models) |
 
 Details, rejected experiments, and caveats: [`docs/phase2b_documents.md`](docs/phase2b_documents.md).
 

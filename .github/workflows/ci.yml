@@ -32,6 +32,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - run: sudo apt-get update -q && sudo apt-get install -y -q tesseract-ocr   # real-OCR test runs, not skips
       - run: pip install -r requirements.lock && pip install --no-deps -e .
       - run: pytest
 
@@ -71,6 +72,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: sudo apt-get update -q && sudo apt-get install -y -q tesseract-ocr
       - run: pip install --upgrade -e ".[dev]"
       - run: pip freeze | grep -iE "duckdb|psycopg|fastapi|pydantic"
       - run: pytest
