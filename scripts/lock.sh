@@ -5,6 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 command -v uv >/dev/null 2>&1 || { echo "uv not found. Install: pip install uv" >&2; exit 1; }
 tmp="$(mktemp)"
+# Start from the current lock so existing pins are kept and only what must change moves.
+[ -f requirements.lock ] && grep -v '^#' requirements.lock > "$tmp" || true
 uv pip compile pyproject.toml --extra dev --universal --python-version 3.10 --no-header -q -o "$tmp"
 {
   echo "# Exact versions for setup and CI. Regenerate with: make lock"

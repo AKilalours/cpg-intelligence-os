@@ -290,3 +290,16 @@ layout id is kept in `eval.doc_meta`, so the layout router is scored, not told.
 FATURA's totals do not add up (8 of 5,597) and its dates are random. The
 arithmetic check is evaluated on data where totals are real, and FATURA's
 results say so, instead of penalising correct reads.
+
+## 42. The router escalates rather than guesses
+A wrong layout means reading a new supplier's invoice with another layout's
+field positions, which produces confident wrong values. The router's
+threshold and the rejected cropping experiment both favour calling an
+invoice "new" over matching it to the wrong layout: 0 wrong-lane routings in
+5,600 held-out invoices, clean and scan-like, at the cost of escalating 23%
+of scanned known invoices.
+
+## 43. Image libraries are locked dependencies
+Pillow and NumPy were available in one environment by accident. They are now
+declared and pinned; the lock script starts from the existing lock so adding
+a package moves no other version.
