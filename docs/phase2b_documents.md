@@ -274,5 +274,28 @@ next step: an arithmetic check will be scored only on receipts whose labels
 pass this audit, and the rest are reported separately, so a checker is never
 blamed for an error in the answer key.
 
-Next (fix 2, step 2): line-item extraction on the photos, scored against this
-key on validation while designing and once on test.
+## Fix 2, step 2: reading the photos, with arithmetic as a witness
+
+Two readers can share a blind spot (both misread a smudged 8 as a 3). A sum
+does not: if the line amounts add up to the subtotal and the subtotal, tax,
+and service add up to the total, a misread almost always breaks one of the
+sums. So on receipts, arithmetic is the second witness.
+
+- `make receipts-collect SPLIT=validation`: the local model reads every
+  validation receipt (line items and totals, amounts copied as printed);
+  recorded and resumable; prints no scores.
+- `make receipts-eval SPLIT=validation`: Claude reads only the receipts whose
+  local reading does not add up (spending cap and ledger as before), then
+  three candidate rules are scored:
+  1. `local_alone`: accept a local reading that adds up; a person reviews the rest;
+  2. `local_then_claude`: also accept Claude's reading when it adds up;
+  3. `local_then_claude_or_agreement`: also accept when both readers agree on
+     the total and every line amount, even if the sums do not close.
+- One rule is then frozen in `receipts.FROZEN_POLICY`; `receipts-eval
+  SPLIT=test` refuses to run until it is, and scores only that rule.
+
+Scored: totals precision, recall, and F1 per field; line items matched one to
+one (same amount, name within 0.8 similarity) for precision, recall, and F1;
+receipts with every amount right; receipts fully right; and for each rule the
+straight-through rate and how often what went straight through was right.
+Claims about arithmetic are also reported on the receipts whose labels add up.

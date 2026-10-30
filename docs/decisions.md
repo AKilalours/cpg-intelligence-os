@@ -399,3 +399,9 @@ Two CORD training photos were published twice with different labels. Keeping
 both would score one image against two answers; dropping the copy is
 deterministic and reported. The same image in two splits would leak test
 answers and stops the load.
+
+## 58. On receipts, arithmetic is a witness
+A reading may skip a person when its own numbers close (lines to subtotal,
+subtotal to total, cash to change). Unlike a second model, arithmetic does
+not share a model's blind spots. Claude is called only for readings that do
+not add up. The rule is chosen on CORD validation and scored once on test.

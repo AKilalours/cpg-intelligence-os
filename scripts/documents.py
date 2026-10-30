@@ -3,6 +3,9 @@
 Usage:
     python scripts/documents.py load-fatura    # register FATURA invoices and write the answer key to eval.*
     python scripts/documents.py load-cord      # register CORD receipt photos, write their answer key, audit the labels
+    python scripts/documents.py receipts-collect --split validation   # local model reads every receipt; prints no scores
+    python scripts/documents.py receipts-eval --split validation      # Claude for receipts that do not add up; score rules
+    python scripts/documents.py receipts-eval --split test            # the one-time score of the frozen rule
     python scripts/documents.py train-router   # learn layout fingerprints (fit layouts); choose grid and threshold on calibration
     python scripts/documents.py eval-router    # score the frozen router once on held-out invoices; store the report
     python scripts/documents.py route          # route every document as the engine role
@@ -328,14 +331,94 @@ def cmd_routing(conn, split: str, use_claude: bool) -> int:
     return 0
 
 
+def cmd_receipts_collect(conn, split: str) -> int:
+    from cpgos.documents import receipts
+    from cpgos.llm import LLMError
+    docs = receipts.split_documents(conn, split)
+    if not docs:
+        print("BLOCKED: no CORD receipts registered; run: make load-cord")
+        return 1
+    print(f"local model reads {len(docs)} {split} receipts (recorded; resumable; no scores are printed)", flush=True)
+    t = time.time()
+    try:
+        rep = receipts.run_reader(conn, RAW, docs, _local_model(), "local_model", progress=lambda m: print(m, flush=True))
+    except LLMError as e:
+        print(f"STOPPED: {e}")
+        return 1
+    rep["minutes"] = round((time.time() - t) / 60, 1)
+    print(json.dumps(rep, indent=1))
+    return 0
+
+
+def cmd_receipts_eval(conn, split: str, use_claude: bool) -> int:
+    from psycopg.types.json import Jsonb
+
+    from cpgos.documents import cord, receipts
+    from cpgos.llm import LLMError, provider
+    from cpgos.llm.budget import BudgetExceeded
+    if split == "test" and receipts.FROZEN_POLICY is None:
+        print("BLOCKED: choose and freeze the rule on validation first (receipts.FROZEN_POLICY); test is scored once.")
+        return 1
+    docs = receipts.split_documents(conn, split)
+    ids = [d[0] for d in docs]
+    local_p = _local_model()
+    local = receipts.readings(conn, receipts.version(local_p), ids)
+    if len(local) < len(ids):
+        print(f"BLOCKED: the local model has read {len(local)} of {len(ids)} {split} receipts; "
+              f"run: make receipts-collect SPLIT={split}")
+        return 1
+    claude, claude_run = {}, None
+    if use_claude:
+        cp = provider("anthropic")
+        need = [d for d in docs if receipts.needs_claude(local.get(d[0]))]
+        print(f"{len(need)} of {len(docs)} local readings do not add up; Claude reads those", flush=True)
+        try:
+            claude_run = receipts.run_reader(conn, RAW, need, cp, "claude", progress=lambda m: print(m, flush=True))
+        except (BudgetExceeded, LLMError) as e:
+            print(f"STOPPED: {e}")
+            return 1
+        claude = receipts.readings(conn, receipts.version(cp), ids)
+        if claude_run.get("failed"):
+            print(f"INCOMPLETE: {claude_run['failed']} Claude reads failed; rerun to retry them before trusting the scores")
+    golds = receipts.gold(conn, ids)
+    consistent = {sid for sid, g in golds.items() if "fails" not in cord.audit(receipts.to_receipt(g)).values()}
+    policies = receipts.POLICIES if split == "validation" else (receipts.FROZEN_POLICY,)
+    rep = {"split": split, "receipts": len(ids), "labels_add_up": len(consistent),
+           "local_version": receipts.version(local_p), "claude_run": claude_run,
+           "local_model": receipts.score(golds, local),
+           "local_model_where_key_adds_up": receipts.score({s: golds[s] for s in consistent}, local),
+           "claude_on_receipts_it_read": receipts.score({s: golds[s] for s in claude}, claude) if claude else None,
+           "local_on_those_same_receipts": receipts.score({s: golds[s] for s in claude}, local) if claude else None,
+           "policies": receipts.evaluate_policies(golds, local, claude, policies, consistent),
+           "frozen_policy": receipts.FROZEN_POLICY}
+    body = json.loads(json.dumps(rep, default=str))
+    rid = conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES (%s, %s, %s) RETURNING report_id",
+                       (f"cord_receipts_{split}", code_version(), Jsonb(body))).fetchone()[0]
+    lm = rep["local_model"]
+    print(f"report {rid}: CORD {split}, {len(ids)} receipts ({len(consistent)} whose labels add up)")
+    print(f"  local model  totals F1 {lm['totals']['f1']}  items F1 {lm['items']['f1']}  "
+          f"amounts exact {lm['amounts_exact']['k']}/{lm['amounts_exact']['n']}  fully exact {lm['fully_exact']['k']}/{lm['fully_exact']['n']}")
+    if claude:
+        c, l2 = rep["claude_on_receipts_it_read"], rep["local_on_those_same_receipts"]
+        print(f"  on the {c['receipts']} receipts Claude read: Claude amounts exact {c['amounts_exact']['k']}, "
+              f"local {l2['amounts_exact']['k']}")
+    for pol, r in rep["policies"].items():
+        st, ok = r["straight_through"], r["accepted_amounts_exact"]
+        print(f"  rule {pol:32s} straight through {st['k']}/{st['n']}  amounts right when accepted {ok['k']}/{ok['n']} "
+              f"ci95 {ok['ci95']}  fully right {r['accepted_fully_exact']['k']}/{r['accepted_fully_exact']['n']}")
+        if r["accepted_but_wrong"]:
+            print(f"      accepted but wrong: {r['accepted_but_wrong'][:10]}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--split", choices=["calibration", "holdout"], default="calibration")
+    ap.add_argument("--split", choices=["calibration", "holdout", "validation", "test"], default="calibration")
     ap.add_argument("--no-claude", action="store_true", help="decide with the first two readers only")
     ap.add_argument("--round", type=int, default=2, help="sample round (holdout round 3 scores routing 1.2)")
     ap.add_argument("command", choices=["load-fatura", "load-cord", "train-router", "eval-router", "route", "routing-estimate", "routing",
                                         "learn-rules", "extract", "eval-extract", "vlm-dev",
-                                        "eval-cascade", "vlm-collect"])
+                                        "eval-cascade", "vlm-collect", "receipts-collect", "receipts-eval"])
     args = ap.parse_args()
     global ROUND
     ROUND = args.round
@@ -347,7 +430,15 @@ def main() -> int:
                 "extract": cmd_extract, "eval-extract": cmd_eval_extract, "vlm-dev": cmd_vlm_dev,
                 "eval-cascade": cmd_eval_cascade, "vlm-collect": cmd_vlm_collect,
                 "routing-estimate": cmd_routing_estimate,
-                "routing": lambda c: cmd_routing(c, args.split, not args.no_claude)}[args.command](conn)
+                "routing": lambda c: cmd_routing(c, args.split, not args.no_claude),
+                "receipts-collect": lambda c: cmd_receipts_collect(c, _receipt_split(args.split)),
+                "receipts-eval": lambda c: cmd_receipts_eval(c, _receipt_split(args.split), not args.no_claude)}[args.command](conn)
+
+
+def _receipt_split(split: str) -> str:
+    if split not in ("validation", "test"):
+        raise SystemExit("receipts: --split validation or --split test")
+    return split
 
 
 if __name__ == "__main__":

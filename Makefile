@@ -6,9 +6,10 @@ VENV   := .venv
 PY     := $(VENV)/bin/python
 DATASET ?= m5
 ROUND ?= 2
+SPLIT ?= validation
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord finance-world finance-evidence finance-restore-evidence reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -66,6 +67,12 @@ eval-recon: $(PY)  ## Replay both engines, score against the hidden answer key, 
 
 load-cord: $(PY)  ## Register CORD receipt photos, write their answer key, audit the labels (after make download DATASET=cord)
 	$(PY) scripts/documents.py load-cord
+
+receipts-collect: $(PY)  ## Local model reads CORD receipts (SPLIT=validation|test); prints no scores
+	$(PY) scripts/documents.py receipts-collect --split $(SPLIT)
+
+receipts-eval: $(PY)  ## Claude for receipts that do not add up, then score (SPLIT=validation|test)
+	$(PY) scripts/documents.py receipts-eval --split $(SPLIT)
 
 load-fatura: $(PY)  ## Register FATURA invoices and write their answer key (after make download DATASET=fatura)
 	$(PY) scripts/documents.py load-fatura
