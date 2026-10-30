@@ -291,15 +291,35 @@ FATURA's totals do not add up (8 of 5,597) and its dates are random. The
 arithmetic check is evaluated on data where totals are real, and FATURA's
 results say so, instead of penalising correct reads.
 
-## 42. The router escalates rather than guesses
+## 42. The router escalates rather than guesses, and is built not to need to
 A wrong layout means reading a new supplier's invoice with another layout's
-field positions, which produces confident wrong values. The router's
-threshold and the rejected cropping experiment both favour calling an
-invoice "new" over matching it to the wrong layout: 0 wrong-lane routings in
-5,600 held-out invoices, clean and scan-like, at the cost of escalating 23%
-of scanned known invoices.
+field positions, which produces confident wrong values. Every router setting
+is ranked first by misrouted new invoices. Router 1.0.0 was safe but
+escalated 23% of scanned known invoices; 2.0.0 compares only each layout's
+stable cells with a one-cell slide and recognises 99.4% of them, still with
+0 misrouted out of 4,000 new held-out invoices.
 
 ## 43. Image libraries are locked dependencies
 Pillow and NumPy were available in one environment by accident. They are now
 declared and pinned; the lock script starts from the existing lock so adding
 a package moves no other version.
+
+## 44. Additions approved after researching Confido (October 2026)
+Sources: Confido's Series B announcement (agent-driven workflows that surface
+only decisions needing a person), its foodservice product (line-level claim
+matching, double-dip detection, partial disputes with backups, mappings
+learned once), and its Senior ML/AI job post (intermittent demand at scale,
+rolling-origin backtests, best-fit selection, leakage and train/serve skew).
+Added, without removing or reordering anything in the plan:
+1. Reviewer actions in the UI, every action audited (Phase 2b, 3)
+2. Dispute packet with attached evidence (Phase 3)
+3. Double-dip detection across agreements (Phase 2a extension)
+4. Mapping memory: one human fix applies forward and becomes a test (Phase 2b)
+5. Upload an invoice and see each field, its box, and its confidence (Phase 2b)
+6. Intermittent-demand forecasting with best-fit per series (Phase 5)
+7. Train/serve skew and drift monitors (Phase 4)
+8. A public demo running on recorded model calls (Phase 6)
+And the known weaknesses are owned: router scan robustness (fixed in 2.0.0),
+deduction checks earning their score from documents (Phase 3), short pays
+auto-posted when a same-check deduction explains them (Phase 2a extension),
+major dependency upgrades as a tested step.

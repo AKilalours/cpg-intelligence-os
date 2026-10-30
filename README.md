@@ -109,6 +109,18 @@ make reconcile       # cash application + deduction validation, as the engine ro
 make eval-recon      # replay both engines, score against the answer key, store the report
 ```
 
+## Phase 2b so far: document intelligence (measured)
+
+On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):
+
+| | Result |
+|---|---|
+| Answer key | 76,194 typed values, 0 unparsed, hidden from the engine role |
+| Known layouts recognised, scan-like copies | **795 of 800**, 0 sent to a wrong layout |
+| New layouts flagged as new, clean and scan-like | **4,000 of 4,000** |
+
+Details, rejected experiments, and caveats: [`docs/phase2b_documents.md`](docs/phase2b_documents.md).
+
 ## Data
 
 All data comes from public sources, downloaded locally and never committed.

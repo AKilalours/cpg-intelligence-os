@@ -55,8 +55,8 @@ def cmd_train_router(conn) -> int:
     t = time.time()
     router, info = layout.train(conn, RAW)
     mid = layout.save(conn, router)
-    print(json.dumps({"layout_model_id": mid, "grid": list(router.grid), "threshold": round(router.threshold, 4),
-                      "layouts": len(router.keys), "selection_on_calibration": info["selection"],
+    print(json.dumps({"layout_model_id": mid, "version": router.version, "chosen": router.trained_on,
+                      "layouts": len(router.keys), "settings_tried_on_calibration": info["tried"],
                       "seconds": round(time.time() - t, 1)}, indent=1, default=str))
     return 0
 

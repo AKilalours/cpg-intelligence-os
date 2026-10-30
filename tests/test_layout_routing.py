@@ -63,6 +63,7 @@ def test_signature_is_ink_density():
     white = Image.new("L", (595, 841), 255)
     black = Image.new("L", (595, 841), 0)
     assert L.signature(white, (12, 17)).max() == 0.0
+    assert L.signature(white).shape == (L.GRID[0] * L.GRID[1],)
     assert L.signature(black, (12, 17)).min() == 1.0
     assert L.signature(white, (12, 17)).shape == (12 * 17,)
 
@@ -79,7 +80,7 @@ def test_router_knows_trained_layouts_and_flags_new_ones(conn, loaded):
     # Only the two fit layouts are learned: never the calibration layout, never the holdout.
     assert len(router.keys) == 2
     assert f"fatura_L{calib:02d}" not in router.keys and "fatura_L03" not in router.keys
-    assert {c["grid"][0] for c in info["selection"]} == {g[0] for g in L.GRID_CANDIDATES}
+    assert len(info["tried"]) == 12 and all("calibration_new_misrouted" in t for t in info["tried"])
     rep = L.evaluate(conn, raw, router)
     assert rep["known_layouts_clean"]["wrong_layout"] == 0
     assert rep["new_layouts_holdout"]["wrongly_matched_to_known"] == 0
@@ -92,8 +93,9 @@ def test_saved_router_round_trips_and_is_deduplicated(conn, loaded):
     a = L.save(conn, router)
     assert L.save(conn, router) == a                                 # same content -> same model row
     mid, back = L.load(conn)
-    assert mid == a and back.keys == router.keys and back.grid == router.grid
+    assert mid == a and back.keys == router.keys and back.grid == router.grid and back.slide == router.slide
     assert np.allclose(back.centroids, router.centroids, atol=1e-6)
+    assert (back.masks == router.masks).all() and np.allclose(back.thresholds, router.thresholds)
     img = draw(1, 99)
     assert back.route(img)[0] == router.route(img)[0]
 
@@ -137,3 +139,42 @@ def test_perturbation_is_scan_like_but_bounded():
 def test_untrained_database_says_what_to_run(conn):
     with pytest.raises(LookupError, match="make train-router"):
         L.load(conn)
+
+
+def test_slide_realigns_a_shifted_known_page_but_not_a_different_frame():
+    # Stable cells + a one-cell slide: a page shifted by one cell matches its own layout exactly,
+    # while a page with a different frame stays far away.
+    base = np.zeros((68, 48), np.float32)
+    base[10:14, 5:40] = 1.0
+    other = np.zeros((68, 48), np.float32)
+    other[40:44, 5:40] = 1.0
+    shifted = np.roll(base, 1, axis=1)
+    C = np.stack([base.ravel(), other.ravel()])
+    M = np.ones_like(C, dtype=bool)
+    d0 = L.masked_distances(shifted.ravel()[None], C, M, L.GRID, slide=0)[0]
+    d1 = L.masked_distances(shifted.ravel()[None], C, M, L.GRID, slide=1)[0]
+    assert d1[0] == 0.0 and d0[0] > 0.0
+    assert d1[1] > 0.1
+
+
+def test_unstable_cells_are_ignored():
+    # Cells that change between invoices of a layout (the words) must not count.
+    C = np.zeros((1, 48 * 68), np.float32)
+    M = np.ones_like(C, dtype=bool)
+    M[0, :100] = False                       # first 100 cells are "variable content"
+    X = np.zeros((1, 48 * 68), np.float32)
+    X[0, :100] = 1.0                         # this invoice has lots of words there
+    assert L.masked_distances(X, C, M, L.GRID, slide=0)[0, 0] == 0.0
+
+
+def test_version_1_models_still_load_and_route(conn, loaded):
+    # Routing decisions stored under 1.0.0 must stay reproducible after the upgrade.
+    raw, _ = loaded
+    cents = np.stack([L.signature(draw(1, i)) for i in range(4)]).mean(0)
+    conn.execute("""INSERT INTO layout_model (version, grid_w, grid_h, threshold, trained_on, content_sha256)
+                    VALUES ('layout-ink-grid-1.0.0', 48, 68, 4.6, '{}', repeat('b', 64))""")
+    conn.execute("INSERT INTO layout_centroid (layout_model_id, layout_key, n_train, centroid) "
+                 "SELECT layout_model_id, 'fatura_L01', 4, %s FROM layout_model", (cents.tolist(),))
+    _, r = L.load(conn)
+    assert r.slide == 0 and r.masks.all()
+    assert r.route(draw(1, 50))[0] == "fatura_L01"

@@ -51,48 +51,63 @@ handed its own answers.
 Reproduce: `make download DATASET=fatura && make load-fatura` (about 8 s;
 re-running changes nothing).
 
-## Step 2: layout routing (done)
+## Step 2: layout routing (done, router 2.0.0)
 
-Analogy: a mail clerk recognises a regular supplier's envelope at a glance
-and sends it down the fast lane; an unfamiliar one is opened carefully. The
-"glance" is an ink fingerprint: the page shrunk to a grid of cell darkness.
+Analogy: a person recognises a printed form by its frame (logo, boxes,
+printed labels), not by what was written into it, and still recognises it
+when the scan is a little crooked.
 
-**How it was built.** Fingerprints come from the 32 fit layouts' training
-invoices (4,800). The grid size was chosen on the 8 calibration layouts
-(AUROC 0.997 at 12 x 17, 0.999 at 24 x 34, 1.000 at 48 x 68). The "new"
-threshold allows 1% of known invoices on fit-layout dev to be called new.
+**How it works.** Each page becomes a 48 x 68 grid of ink darkness. For each
+known layout the router keeps the cells that barely change between its
+invoices (its frame, and the blank space around it) and compares only those,
+allowing the page to slide one cell in any direction. Training also uses a
+scan-damaged copy of every invoice, and each layout gets its own threshold.
 Routing runs as the engine role and reads only the image.
 
-**Scored once on held-out data** (`make eval-router`, report stored in `eval.report`)
+**How settings were chosen.** 12 combinations were scored on fit-layout dev
+(known) and the 8 calibration layouts (new), ranked by: fewest new invoices
+routed to a known layout, then most scanned known invoices recognised, then
+the widest safety margin. Winner: scan-like training, stable cells only,
+one-cell slide: 0 of 3,200 calibration invoices misrouted, 800 of 800
+scanned dev invoices recognised, closest new invoice 46% beyond its threshold
+(runner-up: 6%).
 
-| Test | Correct | Wrong lane | Escalated as "new" |
-|---|---|---|---|
-| Known layouts, clean (800) | 796 | **0** | 4 |
-| Known layouts, scan-like (800) | 618 (77%) | **0** | 182 |
-| New layouts, clean (2,000) | 2,000 called new | **0** | n/a |
-| New layouts, scan-like (2,000) | 2,000 called new | **0** | n/a |
+**Scored on held-out invoices** (`make eval-router`)
+
+| Test | Router 1.0.0 | Router 2.0.0 |
+|---|---|---|
+| Known layouts, clean (800) | 796 | **800** |
+| Known layouts, scan-like (800) | 618 (77%) | **795 (99.4%)** |
+| Known invoices sent to the wrong layout | 0 | **0** |
+| New layouts called new, clean + scan-like (4,000) | 4,000 | **4,000** |
+| Closest new invoice, as a multiple of its threshold | | **1.74** |
 
 Scan-like = rotation up to 2 degrees, shift up to 12 px, blur, JPEG quality
-35 to 70.
+35 to 70. Routing all 10,000 documents puts exactly the 6,400 fit-layout
+invoices in known lanes and exactly the 3,600 calibration and holdout
+invoices in "new".
 
-**Reading these numbers honestly.** FATURA's layouts are pixel-perfect
-templates, so clean-image routing is easy; the scan-like rows are the useful
-ones. The router's failure mode is the safe one: when unsure it escalates,
-so 23% of scanned known invoices would pay for the model path needlessly,
-but none was read with the wrong layout. Real scans (DocILE) are the true
-test.
+**Experiments that were measured and rejected** (dev and calibration only)
 
-**Rejected alternative, with numbers** (judged on dev and calibration only):
-cropping each page to its printed content raised scan-like known recall from
-621 to 779 of 800, but sent 482 of 1,600 scan-like calibration (new)
-invoices to a known layout. Reading a new supplier's invoice with another
-layout's field positions is the dangerous error, so it was rejected.
-Brute-force deskewing was too slow to evaluate (11 rotations per page).
+| Variant | Scanned known recognised | New invoices misrouted |
+|---|---|---|
+| 1.0.0 whole page | 621 / 800 | 11 / 1,600 |
+| Crop to printed content | 779 / 800 | 482 / 1,600 |
+| Whole page + slide | 757 to 792 / 800 | 70 to 454 / 1,600 |
+| Stable cells, no slide | 799 to 800 / 800 | 7 to 3,200 / 3,200 |
 
-**Disclosure.** During the first exploration a script also printed AUROC on
-the holdout layouts. It did not change any choice (calibration alone picks
-the same grid, and the threshold is set on dev), and the frozen router was
-then scored once. Choices are now made only inside `layout.train`, which
-never reads the holdout.
+The lesson: sliding alone lets different frames look alike because the
+changing words dominate; ignoring the changing words alone is fragile to
+shifts; together they separate cleanly.
 
-Reproduce: `make train-router && make eval-router && make route-docs`.
+**Reading these numbers honestly.**
+- FATURA's layouts are clean templates. Scan-like damage here is simulated,
+  so DocILE (real scans) is the real test.
+- The familiar-layout test invoices were scored for 1.0.0 too, so the 2.0.0
+  numbers on them are a second look. Every 2.0.0 setting was chosen without
+  them, and the holdout layouts were never read during training.
+- During the first exploration a script printed holdout AUROC; it changed no
+  choice. Choices now happen only inside `layout.train`.
+
+Reproduce: `make train-router && make eval-router && make route-docs`
+(about 2.5 minutes in total).
