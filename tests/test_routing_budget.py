@@ -102,3 +102,25 @@ def test_claude_call_is_capped_and_logged(tmp_path, monkeypatch):
     with pytest.raises(BudgetExceeded):
         p.complete(req)                                                           # $0.003 left < $0.007 worst case
     assert len(sent) == 2                                                         # refused before sending
+
+
+def test_identical_rejections_stop_the_run_early(conn, monkeypatch):
+    # Regression: 120 calls were sent into the same 400 error before the run ended.
+    from cpgos.documents import cascade, rules, vlm
+    conn.execute("INSERT INTO source_document (sha256, storage_key, source_type, mime_type) "
+                 "SELECT md5(i::text) || md5(i::text), 'x' || i, 'invoice', 'image/jpeg' FROM generate_series(1, 10) i")
+    conn.execute("INSERT INTO rules_model (version, content, trained_on, content_sha256) "
+                 "VALUES ('r', '{\"regions\": {}, \"lexicon\": {}}', '{}', repeat('c', 64))")
+    ids = [r[0] for r in conn.execute("SELECT source_document_id FROM source_document")]
+    monkeypatch.setattr(cascade.ocr, "ocr_image", lambda path, sha: [])
+    monkeypatch.setattr(vlm, "page_png", lambda path, scale=1.0: b"png")
+    calls = []
+    monkeypatch.setattr(vlm, "extract", lambda p, img, iid=None: (calls.append(1), ([], {
+        "error": "Anthropic returned 400: temperature is deprecated", "client_error": True}))[1])
+
+    class P:
+        name, model = "anthropic", "claude-sonnet-5-5"
+        def digest(self):
+            return None
+    out = cascade.run_tier2(conn, __import__("pathlib").Path("."), ids, P(), progress=lambda m: None, extractor="claude")
+    assert len(calls) == cascade.MAX_SAME_ERRORS and out["stopped_early"] == 1

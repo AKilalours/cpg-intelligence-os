@@ -60,7 +60,9 @@ class Anthropic:
         content.append({"type": "text", "text": prompt})
         # Spending cap: refuse before sending if the worst case could overspend.
         budget.check(self.model, self._estimate_input_tokens(req), req.max_tokens, self.ledger)
-        body = {"model": self.model, "max_tokens": req.max_tokens, "temperature": req.temperature,
+        # No "temperature": current Claude models reject it (400, "temperature is deprecated").
+        # Repeatability comes from recording every answer, not from sampling settings.
+        body = {"model": self.model, "max_tokens": req.max_tokens,
                 "messages": [{"role": "user", "content": content}]}
         if req.system:
             body["system"] = req.system
@@ -71,7 +73,9 @@ class Anthropic:
         except httpx.HTTPError as e:
             raise LLMError(f"Anthropic request failed: {e.__class__.__name__}") from None
         if r.status_code != 200:
-            raise LLMError(f"Anthropic returned {r.status_code}: {r.text[:300]}")
+            err = LLMError(f"Anthropic returned {r.status_code}: {r.text[:300]}")
+            err.client_error = 400 <= r.status_code < 500 and r.status_code != 429   # will fail the same way again
+            raise err
         out = r.json()
         text = "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
         usage = out.get("usage", {})

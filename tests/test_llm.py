@@ -132,6 +132,8 @@ def test_anthropic_key_is_sent_only_in_the_header_and_never_recorded(monkeypatch
     r = Recorder(Anthropic(), "auto", tmp_path).complete(REQ)
     assert r.data == {"total": "1.00"} and r.input_tokens == 1500
     assert seen["headers"]["x-api-key"] == SECRET and SECRET not in json.dumps(seen["body"])
+    # Regression: claude-sonnet-5-5 rejects "temperature" (400 on every call).
+    assert "temperature" not in seen["body"]
     for f in tmp_path.rglob("*"):
         if f.is_file():
             assert SECRET not in f.read_text()

@@ -284,8 +284,9 @@ def cmd_routing(conn, split: str, use_claude: bool) -> int:
     body = json.loads(json.dumps(rep, default=str))
     rid = conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES (%s, %s, %s) RETURNING report_id",
                        (f"routing_{split}", code_version(), Jsonb(body))).fetchone()[0]
-    short = lambda s: {"straight_through": s["straight_through"], "accepted_correct": s.get("accepted_correct"),
-                       "review_fields_per_invoice": s["review_fields_per_invoice"], "accepted_by_reason": s.get("accepted_by_reason")}
+    short = lambda s: s if "incomplete" in s else {
+        "straight_through": s["straight_through"], "accepted_correct": s.get("accepted_correct"),
+        "review_fields_per_invoice": s["review_fields_per_invoice"], "accepted_by_reason": s.get("accepted_by_reason")}
     print(json.dumps({"report_id": rid, "split": split, "invoices": rep["invoices"], "third_reader": rep["third_reader"],
                       "two_readers_only": short(rep["two_readers_only"]), "with_claude": short(rep["with_third_reader"]),
                       "accepted_but_wrong": rep["accepted_but_wrong"][:12], "minutes": rep["minutes"]}, indent=1, default=str))

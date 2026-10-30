@@ -84,7 +84,7 @@ def extract(provider: Provider, image_bytes: bytes, image_id: str | None = None)
     try:
         r = provider.complete(req)
     except LLMError as e:
-        return [], {"error": str(e)}
+        return [], {"error": str(e), "client_error": getattr(e, "client_error", False)}
     meta = {"provider": r.provider, "model": r.model, "model_digest": r.model_digest, "seconds": r.seconds,
             "input_tokens": r.input_tokens, "output_tokens": r.output_tokens, "replayed": r.replayed,
             "recording": r.key, "prompt_version": PROMPT_VERSION, "parsed_json": r.data is not None}
