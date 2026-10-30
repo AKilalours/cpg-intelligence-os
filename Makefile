@@ -7,7 +7,7 @@ PY     := $(VENV)/bin/python
 DATASET ?= m5
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -86,6 +86,15 @@ eval-cascade: $(PY)  ## Tier 1 + local model on fixed samples, scored (about 1.5
 
 vlm-collect: $(PY)  ## Tier 1 + local model on fresh round-2 samples, no scores shown (about 1.5 h; resumable)
 	$(PY) scripts/documents.py vlm-collect
+
+routing-estimate: $(PY)  ## How many Claude calls the routing steps need and what they cost (no calls)
+	$(PY) scripts/documents.py routing-estimate
+
+routing-calibration: $(PY)  ## Two-readers rule with Claude as third reader, on calibration invoices (paid, capped)
+	$(PY) scripts/documents.py routing --split calibration
+
+routing-holdout: $(PY)  ## The one-time final score on fresh holdout invoices (paid, capped)
+	$(PY) scripts/documents.py routing --split holdout
 
 test: $(PY)  ## Run the backend tests (needs a reachable Postgres)
 	$(PY) -m pytest

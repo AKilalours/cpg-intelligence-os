@@ -11,6 +11,9 @@ Usage:
     python scripts/documents.py vlm-dev        # choose the local model's image scale on 20 fit-layout dev invoices
     python scripts/documents.py eval-cascade   # tier 1 + local model on fixed holdout and calibration samples (resumable)
     python scripts/documents.py vlm-collect    # run tier 1 + local model on fresh round-2 samples; prints no scores
+    python scripts/documents.py routing-estimate             # how many Claude calls each step needs, and the cost; no calls
+    python scripts/documents.py routing --split calibration  # two-readers rule + Claude on calibration (design data)
+    python scripts/documents.py routing --split holdout      # the one-time final score on fresh holdout invoices
 
 Requires CPGOS_DATABASE_URL and FATURA in data/raw/fatura (make download DATASET=fatura).
 No language model is called by these commands.
@@ -226,9 +229,74 @@ def cmd_vlm_collect(conn) -> int:
     return 0
 
 
+SPLIT_ROUNDS = {"calibration": [1, 2], "holdout": [2]}   # holdout round 1 was seen during design
+
+
+def _local_model():
+    from cpgos.llm import LLMError, provider
+    p = provider("ollama")
+    try:
+        p.digest()
+    except LLMError:
+        # Ollama not running: recorded answers are enough, because every local-model answer is recorded.
+        p = provider("ollama", mode="replay")
+    return p
+
+
+def cmd_routing_estimate(conn) -> int:
+    from cpgos.documents import cascade, routing
+    from cpgos.llm import budget
+    if not _ocr_ready():
+        return 1
+    local = _local_model()
+    out = {}
+    for split, rounds in SPLIT_ROUNDS.items():
+        ids = sorted({sid for r in rounds for sid in cascade.sample(conn, r)[split]})
+        v1 = extraction.extract_documents(conn, RAW, ids)["extractor_version"]
+        v2 = cascade.run_tier2(conn, RAW, ids, local, progress=lambda m: None)["extractor_version"]
+        r1, r2 = cascade._values(conn, v1, ids), cascade._values(conn, v2, ids)
+        need = sum(1 for sid in ids if routing.needs_third_reader(r1[sid], r2[sid]))
+        typical = budget.cost("claude-sonnet-5-5", 1400, 300) * need
+        worst = budget.cost("claude-sonnet-5-5", 1700, 700) * need
+        out[split] = {"invoices": len(ids), "need_claude": need, "usd_typical": f"{typical:.2f}", "usd_worst_case": f"{worst:.2f}"}
+    out["budget"] = {"cap_usd": str(budget.cap()), "spent_usd": f"{budget.spent():.4f}",
+                     "prices_per_mtok": "claude-sonnet-5-5: $2 in / $10 out (platform.claude.com pricing, 2026-10-30)"}
+    print(json.dumps(out, indent=1))
+    return 0
+
+
+def cmd_routing(conn, split: str, use_claude: bool) -> int:
+    from psycopg.types.json import Jsonb
+    from cpgos.documents import cascade
+    from cpgos.llm import LLMError, provider
+    from cpgos.llm.budget import BudgetExceeded
+    if not _ocr_ready():
+        return 1
+    claude = provider("anthropic") if use_claude else None
+    t = time.time()
+    try:
+        rep = cascade.evaluate_routing(conn, RAW, split, SPLIT_ROUNDS[split], _local_model(), claude,
+                                       progress=lambda m: print(m, flush=True))
+    except (BudgetExceeded, LLMError) as e:
+        print(f"STOPPED: {e}")
+        return 1
+    rep["minutes"] = round((time.time() - t) / 60, 1)
+    body = json.loads(json.dumps(rep, default=str))
+    rid = conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES (%s, %s, %s) RETURNING report_id",
+                       (f"routing_{split}", code_version(), Jsonb(body))).fetchone()[0]
+    short = lambda s: {"straight_through": s["straight_through"], "accepted_correct": s.get("accepted_correct"),
+                       "review_fields_per_invoice": s["review_fields_per_invoice"], "accepted_by_reason": s.get("accepted_by_reason")}
+    print(json.dumps({"report_id": rid, "split": split, "invoices": rep["invoices"], "third_reader": rep["third_reader"],
+                      "two_readers_only": short(rep["two_readers_only"]), "with_claude": short(rep["with_third_reader"]),
+                      "accepted_but_wrong": rep["accepted_but_wrong"][:12], "minutes": rep["minutes"]}, indent=1, default=str))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["load-fatura", "train-router", "eval-router", "route",
+    ap.add_argument("--split", choices=["calibration", "holdout"], default="calibration")
+    ap.add_argument("--no-claude", action="store_true", help="decide with the first two readers only")
+    ap.add_argument("command", choices=["load-fatura", "train-router", "eval-router", "route", "routing-estimate", "routing",
                                         "learn-rules", "extract", "eval-extract", "vlm-dev",
                                         "eval-cascade", "vlm-collect"])
     args = ap.parse_args()
@@ -238,7 +306,9 @@ def main() -> int:
         return {"load-fatura": cmd_load_fatura, "train-router": cmd_train_router,
                 "eval-router": cmd_eval_router, "route": cmd_route, "learn-rules": cmd_learn_rules,
                 "extract": cmd_extract, "eval-extract": cmd_eval_extract, "vlm-dev": cmd_vlm_dev,
-                "eval-cascade": cmd_eval_cascade, "vlm-collect": cmd_vlm_collect}[args.command](conn)
+                "eval-cascade": cmd_eval_cascade, "vlm-collect": cmd_vlm_collect,
+                "routing-estimate": cmd_routing_estimate,
+                "routing": lambda c: cmd_routing(c, args.split, not args.no_claude)}[args.command](conn)
 
 
 if __name__ == "__main__":

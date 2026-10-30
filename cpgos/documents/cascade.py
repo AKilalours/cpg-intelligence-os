@@ -36,7 +36,8 @@ def tier2_version(provider, rules_model_id: int) -> str:
     return f"{vlm.PROMPT_VERSION}+{provider.name}:{provider.model}@{digest}+{GROUNDING_VERSION}+rules{rules_model_id}"
 
 
-def run_tier2(conn: psycopg.Connection, raw_root: Path, doc_ids: list[int], provider, progress=print) -> dict:
+def run_tier2(conn: psycopg.Connection, raw_root: Path, doc_ids: list[int], provider, progress=print,
+              extractor: str = "vlm") -> dict:
     """Model reads each document; values are grounded on the page and stored as the engine role.
     Resumable: documents already stored under this version are skipped, and model answers are
     recorded, so an interrupted run loses nothing."""
@@ -66,8 +67,8 @@ def run_tier2(conn: psycopg.Connection, raw_root: Path, doc_ids: list[int], prov
             for e in exs:
                 conn.execute(
                     """INSERT INTO field_extraction (source_document_id, extractor, extractor_version, field_name, value,
-                           raw_text, bbox, path, signals) VALUES (%s, 'vlm', %s, %s, %s, %s, %s, %s, %s)""",
-                    (sid, ver, e.field_name, e.value, e.raw_text or None, Jsonb(e.bbox) if e.bbox else None, e.path,
+                           raw_text, bbox, path, signals) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (sid, extractor, ver, e.field_name, e.value, e.raw_text or None, Jsonb(e.bbox) if e.bbox else None, e.path,
                      Jsonb({**e.signals, "call": {k: meta.get(k) for k in ("seconds", "input_tokens", "output_tokens",
                                                                           "recording", "replayed")}})))
         stats["documents"] += 1
@@ -195,3 +196,56 @@ def collect(conn: psycopg.Connection, raw_root: Path, provider, round_: int, pro
         progress(f"round {round_} {split}: model on {len(ids)} invoices")
         out[f"{split}_tier2"] = run_tier2(conn, raw_root, ids, provider, progress)
     return out
+
+
+# ---------- step 5 + 6: Claude as the third reader, and the two-readers rule ----------
+
+def _gold(conn, gs: int, ids: list[int]) -> dict[int, dict]:
+    g: dict[int, dict] = defaultdict(dict)
+    for sid, f, v in conn.execute("SELECT source_document_id, field_name, value FROM eval.doc_gold "
+                                  "WHERE gold_set_id = %s AND source_document_id = ANY(%s)", (gs, ids)):
+        g[sid][f] = v
+    return g
+
+
+def route(conn: psycopg.Connection, raw_root: Path, ids: list[int], local, claude=None, progress=print) -> dict:
+    """Readers 1 and 2 for every invoice; Claude only for invoices with an unsettled field; then decide.
+    claude=None decides without a third reader (to see how much Claude adds)."""
+    from cpgos.documents import routing
+    from cpgos.llm import budget
+    v1 = extraction.extract_documents(conn, raw_root, ids)["extractor_version"]
+    v2 = run_tier2(conn, raw_root, ids, local, progress=lambda m: None)["extractor_version"]   # replays recordings
+    r1, r2 = _values(conn, v1, ids), _values(conn, v2, ids)
+    need = [sid for sid in ids if routing.needs_third_reader(r1[sid], r2[sid])]
+    r3: dict = defaultdict(dict)
+    third = {"invoices_needing_third_reader": len(need)}
+    if claude is not None and need:
+        spent_before = budget.spent()
+        progress(f"third reader ({claude.model}) on {len(need)} of {len(ids)} invoices")
+        run = run_tier2(conn, raw_root, need, claude, progress, extractor="claude")
+        r3 = _values(conn, run["extractor_version"], need)
+        third.update({"version": run["extractor_version"], "calls_failed": run["failed_calls"],
+                      "usd_spent_this_run": str(budget.spent() - spent_before), "usd_spent_total": str(budget.spent()),
+                      "usd_cap": str(budget.cap())})
+    decisions = {sid: routing.decide(r1[sid], r2[sid], r3.get(sid) if claude is not None else None) for sid in ids}
+    return {"reader_versions": {"rules": v1, "local_model": v2}, "third_reader": third, "decisions": decisions}
+
+
+def evaluate_routing(conn: psycopg.Connection, raw_root: Path, split: str, rounds: list[int], local, claude=None,
+                     progress=print) -> dict:
+    from cpgos.documents import routing
+    gs = conn.execute("SELECT max(gold_set_id) FROM eval.gold_set WHERE name = 'fatura_header_fields'").fetchone()[0]
+    ids = sorted({sid for r in rounds for sid in sample(conn, r)[split]})
+    res = route(conn, raw_root, ids, local, claude, progress)
+    gold = _gold(conn, gs, ids)
+    with_third = routing.summarize(res["decisions"], gold)
+    without = routing.summarize({sid: routing.decide(*[_values(conn, v, [sid])[sid] for v in res["reader_versions"].values()])
+                                 for sid in ids}, gold)
+    wrong = [(sid, d.field_name, d.reason, d.value, gold[sid].get(d.field_name), d.candidates)
+             for sid, ds in res["decisions"].items() for d in ds
+             if d.status == "accepted" and d.value != gold[sid].get(d.field_name)]
+    return {"policy": routing.POLICY_VERSION, "split": split, "rounds": rounds, "invoices": len(ids),
+            "reader_versions": res["reader_versions"], "third_reader": res["third_reader"],
+            "two_readers_only": without, "with_third_reader": with_third,
+            "accepted_but_wrong": [{"doc": a, "field": b, "reason": c, "accepted": d, "truth": e, "candidates": f}
+                                   for a, b, c, d, e, f in wrong[:40]]}
