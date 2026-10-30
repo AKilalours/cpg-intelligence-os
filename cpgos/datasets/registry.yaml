@@ -73,6 +73,22 @@ datasets:
       10k invoices from 50 templates with an official unseen-template split.
       Template-generated, so report it separately from DocILE and never call it scanned real-world mail.
 
+  cord:
+    title: CORD v2 receipts (real photographs, line items)
+    modules: [document_ai]
+    origin: real
+    method: huggingface
+    repo: naver-clova-ix/cord-v2
+    path: data
+    landing_page: https://github.com/clovaai/cord
+    license: CC BY 4.0 (LICENSE-CC-BY in github.com/clovaai/cord)
+    license_verified: true
+    notes: >
+      1,000 photographed Indonesian receipts (800 train, 100 dev, 100 test) with labelled line items
+      (name, quantity, unit price, price) and real subtotal, tax, and total that add up. Covers what
+      FATURA cannot: real capture noise, line items, and arithmetic checks. Receipts, not invoices,
+      and amounts in rupiah: reported separately.
+
   cuad:
     title: Contract Understanding Atticus Dataset
     modules: [document_ai]

@@ -15,7 +15,7 @@ def test_registry_entries_are_complete():
     for spec in reg.values():
         assert spec.landing_page.startswith("https://")
         assert spec.origin in {"real", "real_template_generated"}
-        assert spec.method in {"http", "kaggle", "manual", "bundled"}
+        assert spec.method in {"http", "kaggle", "huggingface", "manual", "bundled"}
 
 
 def test_license_must_be_accepted(tmp_path):

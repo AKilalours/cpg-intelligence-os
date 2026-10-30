@@ -32,3 +32,37 @@ def test_zip_missing_expected_file_fails(spec):
                           {**spec.raw, "files": ["sell_prices.csv"]})
     with pytest.raises(RuntimeError, match="missing expected files"):
         fetch_http(bad)
+
+
+def test_huggingface_files_are_verified_against_published_checksums(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import json as _json
+    import scripts.download_data as dd
+    from cpgos.datasets.registry import DatasetSpec
+    good, bad = b"parquet-bytes", b"tampered"
+    listing = [{"type": "file", "path": "data/train-00000.parquet", "size": len(good),
+                "lfs": {"oid": hashlib.sha256(good).hexdigest()}}, {"type": "directory", "path": "data/x"}]
+    served = {"payload": good}
+
+    class R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def opener(url, timeout):
+        return R(_json.dumps(listing).encode() if "/api/" in url else served["payload"])
+    spec = DatasetSpec("cord", "t", "real", "huggingface", "l", True, "x", {"repo": "a/b", "path": "data"})
+    monkeypatch.setattr(DatasetSpec, "raw_dir", property(lambda self: tmp_path / self.key))
+    files = dd.fetch_huggingface(spec, opener)
+    assert [f.name for f in files] == ["train-00000.parquet"] and files[0].read_bytes() == good
+    assert dd.fetch_huggingface(spec, opener) == files                     # already verified: no re-download
+    files[0].unlink()
+    served["payload"] = bad
+    import pytest
+    with pytest.raises(RuntimeError, match="checksum does not match"):
+        dd.fetch_huggingface(spec, opener)
+    assert not (tmp_path / "cord" / "data" / "train-00000.parquet").exists()
+    assert not list((tmp_path / "cord" / "data").glob("*.part"))

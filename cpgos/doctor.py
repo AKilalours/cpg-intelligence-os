@@ -154,7 +154,7 @@ def check_datasets() -> list[Check]:
         detail = f"terms {'accepted' if lic else 'not accepted'}, files {'present' if present else 'missing'}"
         fix = "" if lic and present else (
             f"read {spec.landing_page}, add '{key}: true' to data/license_acceptance.yaml" if not lic
-            else f"make download DATASET={key}" if spec.method in {"http", "kaggle"}
+            else f"make download DATASET={key}" if spec.method in {"http", "kaggle", "huggingface"}
             else f"get files from {spec.landing_page} into data/raw/{key}/")
         out.append(Check(f"Dataset {key}", lic and present, detail, fix, critical=False))
     return out

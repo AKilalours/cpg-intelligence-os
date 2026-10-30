@@ -64,6 +64,49 @@ def fetch_http(spec) -> list[Path]:
     return out
 
 
+HF_API = "https://huggingface.co/api/datasets/{repo}/tree/{rev}/{path}"
+HF_FILE = "https://huggingface.co/datasets/{repo}/resolve/{rev}/{path}"
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def fetch_huggingface(spec, opener=urllib.request.urlopen) -> list[Path]:
+    """Download a Hugging Face dataset folder. Every file is checked against the SHA-256 that
+    Hugging Face publishes for it (its LFS object id) before it is kept, then pinned locally."""
+    import json
+    repo, rev, folder = spec.raw["repo"], spec.raw.get("revision", "main"), spec.raw.get("path", "data")
+    with opener(HF_API.format(repo=repo, rev=rev, path=folder), timeout=60) as r:
+        listing = json.loads(r.read())
+    files = [e for e in listing if e.get("type") == "file"]
+    if not files:
+        raise RuntimeError(f"no files listed under {repo}/{folder}")
+    out = []
+    for e in files:
+        dest = spec.raw_dir / e["path"]
+        want = (e.get("lfs") or {}).get("oid")
+        if dest.exists() and (want is None or _sha256(dest) == want):
+            out.append(dest)
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_suffix(dest.suffix + ".part")
+        print(f"  downloading {e['path']} ({e.get('size', 0) / 1e6:.1f} MB)")
+        with opener(HF_FILE.format(repo=repo, rev=rev, path=e["path"]), timeout=300) as r, tmp.open("wb") as f:
+            shutil.copyfileobj(r, f)
+        if want is not None and _sha256(tmp) != want:
+            tmp.unlink()
+            raise RuntimeError(f"{e['path']}: checksum does not match the one Hugging Face publishes; not kept")
+        tmp.rename(dest)
+        out.append(dest)
+    return out
+
+
 def fetch_kaggle(spec) -> list[Path]:
     if shutil.which("kaggle") is None:
         raise RuntimeError("Install the Kaggle CLI (pip install kaggle) and add ~/.kaggle/kaggle.json")
@@ -112,6 +155,8 @@ def main() -> int:
                 files = fetch_http(spec)
             elif spec.method == "kaggle":
                 files = fetch_kaggle(spec)
+            elif spec.method == "huggingface":
+                files = fetch_huggingface(spec)
             elif spec.method == "bundled":
                 files = [Path(__file__).resolve().parents[1] / spec.raw["file"]]
             else:
