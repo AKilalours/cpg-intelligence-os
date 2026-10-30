@@ -85,8 +85,10 @@ datasets:
     license_verified: true
     notes: >
       1,000 photographed Indonesian receipts (800 train, 100 dev, 100 test) with labelled line items
-      (name, quantity, unit price, price) and real subtotal, tax, and total that add up. Covers what
-      FATURA cannot: real capture noise, line items, and arithmetic checks. Receipts, not invoices,
+      (name, quantity, unit price, price), subtotal, tax, and total. Covers what FATURA cannot: real
+      capture noise, line items, and arithmetic checks. The labels do not always add up: 947 of 986
+      checkable receipts do (allowing the Rp 100 rounding printed on receipts); 2 train photos are
+      byte-identical pairs labelled twice (make load-cord keeps the first). Receipts, not invoices,
       and amounts in rupiah: reported separately.
 
   cuad:

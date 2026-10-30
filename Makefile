@@ -8,7 +8,7 @@ DATASET ?= m5
 ROUND ?= 2
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 finance-world finance-evidence finance-restore-evidence reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord finance-world finance-evidence finance-restore-evidence reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -63,6 +63,9 @@ reconcile: $(PY)  ## Cash application + deduction validation, written by the eng
 
 eval-recon: $(PY)  ## Replay both engines, score against the hidden answer key, store the report
 	$(PY) scripts/finance.py evaluate
+
+load-cord: $(PY)  ## Register CORD receipt photos, write their answer key, audit the labels (after make download DATASET=cord)
+	$(PY) scripts/documents.py load-cord
 
 load-fatura: $(PY)  ## Register FATURA invoices and write their answer key (after make download DATASET=fatura)
 	$(PY) scripts/documents.py load-fatura

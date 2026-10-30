@@ -2,6 +2,7 @@
 
 Usage:
     python scripts/documents.py load-fatura    # register FATURA invoices and write the answer key to eval.*
+    python scripts/documents.py load-cord      # register CORD receipt photos, write their answer key, audit the labels
     python scripts/documents.py train-router   # learn layout fingerprints (fit layouts); choose grid and threshold on calibration
     python scripts/documents.py eval-router    # score the frozen router once on held-out invoices; store the report
     python scripts/documents.py route          # route every document as the engine role
@@ -57,6 +58,38 @@ def cmd_load_fatura(conn) -> int:
     out["provenance"] = "FATURA2.zip sha256 from datasets.lock.json" if zip_sha else "manifest hash of files"
     out["seconds"] = round(time.time() - t, 1)
     print(json.dumps(out, indent=1))
+    return 0
+
+
+def cmd_load_cord(conn) -> int:
+    """CORD receipts: answer key to eval.*, plus how often the published labels add up (stored as a report)."""
+    from psycopg.types.json import Jsonb
+
+    from cpgos.documents import cord
+    shas = json.loads(LOCK.read_text()).get("cord") if LOCK.exists() else None
+    t = time.time()
+    try:
+        rep, receipts = cord.load_cord(conn, RAW, file_shas=shas)
+    except cord.CordFormatError as e:
+        print(f"BLOCKED: {e}")
+        return 1
+    audit = cord.audit_summary(receipts)
+    ver = conn.execute("SELECT dataset_version_id FROM eval.gold_set WHERE gold_set_id = %s", (rep.gold_set_id,)).fetchone()[0]
+    rid = conn.execute("INSERT INTO eval.report (kind, dataset_version_id, code_version, body) VALUES "
+                       "('cord_label_audit', %s, %s, %s) RETURNING report_id",
+                       (ver, code_version(), Jsonb({"gold_set_id": rep.gold_set_id, "audit": audit}))).fetchone()[0]
+    out = asdict(rep)
+    out["provenance"] = "Parquet sha256s from datasets.lock.json" if shas else "manifest hash of images"
+    out["seconds"] = round(time.time() - t, 1)
+    print(json.dumps(out, indent=1))
+    print(f"label audit (report {rid}): do the published labels add up?")
+    for split in ("train", "validation", "test", "all"):
+        a = audit[split]
+        ok = a["all_checks_pass_allowing_rounding"]
+        print(f"  {split:10s} {a['receipts']:4d} receipts; all checks add up (rounding allowed): {ok['k']}/{ok['n']}")
+        for name, c in a["checks"].items():
+            print(f"      {name:18s} exact {c['exact']['k']}/{c['exact']['n']}   with rounding "
+                  f"{c['exact_or_rounded']['k']}/{c['exact_or_rounded']['n']}  ci95 {c['exact_or_rounded']['ci95']}")
     return 0
 
 
@@ -300,7 +333,7 @@ def main() -> int:
     ap.add_argument("--split", choices=["calibration", "holdout"], default="calibration")
     ap.add_argument("--no-claude", action="store_true", help="decide with the first two readers only")
     ap.add_argument("--round", type=int, default=2, help="sample round (holdout round 3 scores routing 1.2)")
-    ap.add_argument("command", choices=["load-fatura", "train-router", "eval-router", "route", "routing-estimate", "routing",
+    ap.add_argument("command", choices=["load-fatura", "load-cord", "train-router", "eval-router", "route", "routing-estimate", "routing",
                                         "learn-rules", "extract", "eval-extract", "vlm-dev",
                                         "eval-cascade", "vlm-collect"])
     args = ap.parse_args()
@@ -309,7 +342,7 @@ def main() -> int:
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
-        return {"load-fatura": cmd_load_fatura, "train-router": cmd_train_router,
+        return {"load-fatura": cmd_load_fatura, "load-cord": cmd_load_cord, "train-router": cmd_train_router,
                 "eval-router": cmd_eval_router, "route": cmd_route, "learn-rules": cmd_learn_rules,
                 "extract": cmd_extract, "eval-extract": cmd_eval_extract, "vlm-dev": cmd_vlm_dev,
                 "eval-cascade": cmd_eval_cascade, "vlm-collect": cmd_vlm_collect,

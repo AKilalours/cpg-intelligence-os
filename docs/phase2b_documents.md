@@ -223,3 +223,56 @@ after seeing it.
 ($2 / $10 per million input / output tokens); a hard cap refuses any call
 whose worst case could pass CPGOS_LLM_BUDGET_USD. The local model takes about
 16 to 23 s per invoice on an M4 MacBook Pro; Claude about 2 s.
+
+## Fix 2: real receipt photographs (CORD v2), step 1: the answer key and a label audit
+
+Why: every FATURA invoice is generated from a template and its totals are
+random, so nothing there is a photograph and nothing can be checked by
+arithmetic. CORD v2 has 1,000 photographed Indonesian receipts with labelled
+line items, subtotal, tax, and total (CC BY 4.0).
+
+`make load-cord` extracts the images from the published Parquet files
+(checked against `datasets.lock.json`), registers each one by its sha256 as a
+`receipt` source document, and writes the answer key to `eval.receipt_gold`
+(totals block, with boxes) and `eval.receipt_item_gold` (one row per line),
+which the engine role cannot read. It runs in about 2 minutes and in bounded
+memory: each published file is one 450-490 MB block that has to be decoded
+whole, so a first version that held all 2.3 GB of images was killed for
+running out of memory.
+
+**Rupiah need their own parser.** "60.000" is sixty thousand; "45,000.00",
+"9.500,00", "Rp. 12.000", "[25,000]" (a box around a payment) and "39,800)"
+(a clipped accounting minus) all occur. The invoice parser would read
+"60.000" as sixty. `parse_idr` reads all of these and refuses what it cannot
+read for certain ("Rp 57,0000", "39,200,00", "121.000.00"): 21 of 4,047
+labelled values stay unparsed rather than guessed.
+
+**Two photos appear twice**, labelled by different hands (train 0058 = 0109,
+train 0265 = 0285; one says "10,000" where the other says "10.000"). Both
+pairs are inside train, so no test answer leaks into training. The loader
+keeps the first and reports the copy; a duplicate across splits is refused
+before anything is written. Result: 998 receipts (798 / 100 / 100).
+
+**Do the published labels add up?** Before any "the arithmetic must check
+out" rule is scored, the labels themselves were audited. The checks
+understand three real receipt conventions found on train receipts: totals are
+rounded (96,003 is printed 96,000), menu prices often include tax, and some
+receipts print the change with a minus sign.
+
+| Check (all splits) | Exact | Allowing Rp 100 rounding |
+|---|---|---|
+| Line amounts sum to the subtotal (or total) | 947 of 962 | 952 of 962 |
+| Subtotal - discount + service (+ tax) = total | 581 of 638 | 620 of 638 |
+| Cash - total = change | 512 of 527 | 515 of 527 |
+| Quantity x unit price = line amount | 340 of 349 | 349 of 349 |
+| **Every applicable check passes** | | **947 of 986 (96.0%)** |
+
+The 39 receipts whose labels do not add up are genuine label problems, for
+example test 0000 (a discount of 60,000 labelled on a receipt whose total is
+60,000) and train 0290 (the tax labelled as a discount). Consequence for the
+next step: an arithmetic check will be scored only on receipts whose labels
+pass this audit, and the rest are reported separately, so a checker is never
+blamed for an error in the answer key.
+
+Next (fix 2, step 2): line-item extraction on the photos, scored against this
+key on validation while designing and once on test.

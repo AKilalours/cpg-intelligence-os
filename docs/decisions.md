@@ -387,3 +387,15 @@ repair command restored the altered records, verified against a rebuilt world.
 The world generator named claims after a database id. Database ids depend on
 what else was inserted before (even a failed attempt), so they are not part
 of the data. Generator 1.1.0 numbers claims by their position in the world.
+
+## 56. Audit the answer key before scoring against it
+CORD's labels were checked for internal consistency before any arithmetic
+rule is scored: 947 of 986 receipts add up (allowing printed rounding). Rules
+that check arithmetic will be scored only on those, with the rest reported
+separately, so label errors are never counted as model errors.
+
+## 57. A duplicate image keeps one answer key; across splits it blocks the load
+Two CORD training photos were published twice with different labels. Keeping
+both would score one image against two answers; dropping the copy is
+deterministic and reported. The same image in two splits would leak test
+answers and stops the load.
