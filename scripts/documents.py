@@ -341,7 +341,8 @@ def cmd_receipts_collect(conn, split: str) -> int:
     print(f"local model reads {len(docs)} {split} receipts (recorded; resumable; no scores are printed)", flush=True)
     t = time.time()
     try:
-        rep = receipts.run_reader(conn, RAW, docs, _local_model(), "local_model", progress=lambda m: print(m, flush=True))
+        rep = receipts.run_reader(conn, RAW, docs, _local_model(), "local_model", receipts.load_labels(RAW),
+                                  progress=lambda m: print(m, flush=True))
     except LLMError as e:
         print(f"STOPPED: {e}")
         return 1
@@ -362,6 +363,7 @@ def cmd_receipts_eval(conn, split: str, use_claude: bool) -> int:
     docs = receipts.split_documents(conn, split)
     ids = [d[0] for d in docs]
     local_p = _local_model()
+    labels = receipts.load_labels(RAW)
     local = receipts.readings(conn, receipts.version(local_p), ids)
     if len(local) < len(ids):
         print(f"BLOCKED: the local model has read {len(local)} of {len(ids)} {split} receipts; "
@@ -373,7 +375,7 @@ def cmd_receipts_eval(conn, split: str, use_claude: bool) -> int:
         need = [d for d in docs if receipts.needs_claude(local.get(d[0]))]
         print(f"{len(need)} of {len(docs)} local readings do not add up; Claude reads those", flush=True)
         try:
-            claude_run = receipts.run_reader(conn, RAW, need, cp, "claude", progress=lambda m: print(m, flush=True))
+            claude_run = receipts.run_reader(conn, RAW, need, cp, "claude", labels, progress=lambda m: print(m, flush=True))
         except (BudgetExceeded, LLMError) as e:
             print(f"STOPPED: {e}")
             return 1
@@ -381,10 +383,12 @@ def cmd_receipts_eval(conn, split: str, use_claude: bool) -> int:
         if claude_run.get("failed"):
             print(f"INCOMPLETE: {claude_run['failed']} Claude reads failed; rerun to retry them before trusting the scores")
     golds = receipts.gold(conn, ids)
-    consistent = {sid for sid, g in golds.items() if "fails" not in cord.audit(receipts.to_receipt(g)).values()}
+    consistent = {sid for sid, g in golds.items()                # the key has a total and its own sums close
+                  if g["fields"].get("total") is not None and "fails" not in cord.audit(receipts.to_receipt(g)).values()}
     policies = receipts.POLICIES if split == "validation" else (receipts.FROZEN_POLICY,)
     rep = {"split": split, "receipts": len(ids), "labels_add_up": len(consistent),
            "local_version": receipts.version(local_p), "claude_run": claude_run,
+           "labels": {"version": labels["version"], "per_field": {f: len(v) for f, v in labels["labels"].items()}},
            "local_model": receipts.score(golds, local),
            "local_model_where_key_adds_up": receipts.score({s: golds[s] for s in consistent}, local),
            "claude_on_receipts_it_read": receipts.score({s: golds[s] for s in claude}, claude) if claude else None,

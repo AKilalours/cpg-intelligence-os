@@ -405,3 +405,16 @@ A reading may skip a person when its own numbers close (lines to subtotal,
 subtotal to total, cash to change). Unlike a second model, arithmetic does
 not share a model's blind spots. Claude is called only for readings that do
 not add up. The rule is chosen on CORD validation and scored once on test.
+
+## 59. Models copy, code classifies
+Asked to fill named fields, the vision model invented values that are not
+printed (a subtotal equal to the total on 33 of 100 receipts). Asked to copy
+the printed lines, it has nothing to invent; a learned label vocabulary then
+decides each line's field. The same split as everywhere else: models read,
+deterministic code decides.
+
+## 60. Never let a parser turn text into floats
+A JSON number 89.100 is 89.1 to a parser and 89,100 rupiah on the receipt.
+Model output is parsed with numbers kept as literal text, and amounts must
+also be plausible for the currency, because arithmetic cannot detect a
+consistent scale error.

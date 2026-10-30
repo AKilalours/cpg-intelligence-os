@@ -88,8 +88,12 @@ def request_key(provider: str, model: str, digest: str | None, req: LLMRequest) 
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
-def parse_json(text: str) -> dict | None:
-    """The JSON object in a model's text: whole text, or the first {...} block (models sometimes add prose or fences)."""
+def parse_json(text: str, literal_numbers: bool = False) -> dict | None:
+    """The JSON object in a model's text: whole text, or the first {...} block (models sometimes add prose or fences).
+
+    literal_numbers: keep every JSON number as the exact text the model wrote. A receipt amount written
+    as the bare number 89.100 means eighty-nine thousand one hundred rupiah; read as a float it becomes
+    89.1, and every amount on the receipt shrinks by the same factor, so the sums still close."""
     t = text.strip()
     if t.startswith("```"):
         t = t.strip("`")
@@ -98,7 +102,7 @@ def parse_json(text: str) -> dict | None:
         if not candidate:
             continue
         try:
-            v = json.loads(candidate)
+            v = json.loads(candidate, parse_float=str, parse_int=str) if literal_numbers else json.loads(candidate)
             return v if isinstance(v, dict) else None
         except json.JSONDecodeError:
             continue

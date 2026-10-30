@@ -299,3 +299,46 @@ one (same amount, name within 0.8 similarity) for precision, recall, and F1;
 receipts with every amount right; receipts fully right; and for each rule the
 straight-through rate and how often what went straight through was right.
 Claims about arithmetic are also reported on the receipts whose labels add up.
+
+### First validation run (report 16) and what it exposed
+
+The local model read the 100 validation photos (27 s each). 71 readings
+"added up", but only 23 of those were right. Two mistakes of mine, found by
+breaking every wrong-but-accepted receipt down field by field and looking at
+the photos:
+
+1. **Amounts read as floats.** The schema allowed bare JSON numbers; a model
+   that wrote `89.100` (89,100 rupiah) without quotes was read as 89.1. Every
+   amount on such a receipt shrank 1,000 times and the sums still closed, so
+   the arithmetic check passed it. Fix: amounts are read from the model's
+   literal text (recordings keep it, so no re-run was needed), floats are
+   refused, and a reading must also look like rupiah (whole numbers, total at
+   least Rp 1,000), because sums can never catch a scale error.
+2. **The model invented totals fields.** Asked for "the subtotal", it copied
+   the total into it on 33 receipts that print no subtotal (receipt 0000), and
+   invented a total on receipts that print only a subtotal (receipt 0029). A
+   value rule cannot tell these apart: 182 train receipts really print
+   subtotal = total.
+
+Tried and dropped: checking each field's label with OCR. Tesseract cannot
+read these photos (zero words on the clear receipt 0000 in its default mode),
+so it missed the true label for about half the real values and discarded
+correct readings (totals F1 fell from 0.88 to 0.56).
+
+**Prompt 2.0: the model copies, code classifies.** The model now transcribes
+every totals line as printed, `{"label": "TOTAL", "amount": "45,500"}`, and
+the field comes from the label, using label words learned from train
+receipts (CORD marks which printed words are labels; each label belongs to
+the one field it names most often; the longest label on a line wins, so
+"TOTAL" inside "SUBTOTAL" never counts). Held-out check on validation's own
+printed labels: 361 of 373 map to the right field; the misses are rare
+spellings and give no value rather than a wrong one. A field printed twice
+with different amounts gives no value.
+
+Scorer definitions, fixed to mean money: a printed "Discount 0" equals no
+discount line; zero-price add-on lines carry no money; "card" includes
+e-wallet payments, as the prompt says; and claims about arithmetic count only
+receipts whose key has a total and adds up.
+
+Report 16 stays on record as the result of prompt 1.0; prompt 2.0 needs a new
+validation run before any rule is chosen.

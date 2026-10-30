@@ -31,9 +31,15 @@ from PIL import Image
 from psycopg.types.json import Jsonb
 
 from cpgos.documents import cord
-from cpgos.llm.base import LLMError, LLMRequest
+from cpgos.llm.base import LLMError, LLMRequest, parse_json
 
-PROMPT_VERSION = "receipt-1.0.0"
+PROMPT_VERSION = "receipt-2.0.0"
+# 2.0: the model copies every totals line as printed (label and amount) and code assigns the field from the
+#      label, using label words learned from train. 1.0 asked the model for "the subtotal", and it invented one
+#      (equal to the total) on 33 of 100 validation receipts that print none (report 16).
+# read-1.1: amounts are read from the model's literal text. 1.0 read JSON numbers as floats, so "89.100"
+#      (89,100 rupiah) became 89.1; whole receipts shrank 1,000 times and still added up (report 16).
+READING_VERSION = "read-1.1"
 MAX_SIDE = 1280
 TOTALS = ("subtotal", "discount", "tax", "service", "total", "cash", "change", "card")
 UNSIGNED = ("discount", "change")         # printed with or without a minus sign; compared as amounts
@@ -41,21 +47,25 @@ NAME_MATCH = 0.8                          # item names: similarity of letters an
 POLICIES = ("local_alone", "local_then_claude", "local_then_claude_or_agreement")
 FROZEN_POLICY: str | None = None          # set from the validation results, before test is scored
 
-SYSTEM = ("You read shop receipts photographed in Indonesia. Copy every amount exactly as printed, keeping its "
-          "dots and commas (for example 60.000 or 45,000.00). Never compute or guess a value that is not printed.")
-PROMPT = """Read this receipt and return a JSON object with:
+SYSTEM = ("You transcribe shop receipts photographed in Indonesia. Copy text and amounts exactly as printed, keeping "
+          "the dots and commas in amounts (for example 60.000 or 45,000.00). Never compute, infer, or repeat a value "
+          "that is not printed.")
+PROMPT = """Transcribe this receipt as a JSON object with:
 - "items": every purchased line in printed order, each {"name", "quantity", "unit_price", "price"}. "price" is the
   line amount printed for that line; use null for anything not printed on that line. Add-ons printed under a line
   (toppings, sizes) belong to that line: do not list them as separate items.
-- "subtotal", "discount", "tax", "service", "total", "cash", "change", "card": the amount printed on that line of the
-  receipt, or null if the receipt has no such line. "card" is any card or e-wallet payment."""
-_AMOUNT = {"type": ["string", "number", "null"]}
+- "totals": every line printed below the items that has an amount (subtotal, discount, tax, service, total,
+  payment, change, and any other), in printed order, each {"label": the words printed on that line, exactly,
+  "amount": the amount printed on that line, exactly}. Only lines that are actually printed."""
+_TEXT = {"type": ["string", "null"]}
 SCHEMA = {"type": "object",
-          "properties": {"items": {"type": "array", "items": {"type": "object", "properties": {
-              "name": {"type": ["string", "null"]}, "quantity": _AMOUNT, "unit_price": _AMOUNT, "price": _AMOUNT},
-              "required": ["name", "quantity", "unit_price", "price"]}},
-              **{k: _AMOUNT for k in TOTALS}},
-          "required": ["items", *TOTALS]}
+          "properties": {
+              "items": {"type": "array", "items": {"type": "object", "properties": {
+                  "name": _TEXT, "quantity": _TEXT, "unit_price": _TEXT, "price": _TEXT},
+                  "required": ["name", "quantity", "unit_price", "price"]}},
+              "totals": {"type": "array", "items": {"type": "object", "properties": {"label": _TEXT, "amount": _TEXT},
+                                                    "required": ["label", "amount"]}}},
+          "required": ["items", "totals"]}
 
 
 # ---------- one reading ----------
@@ -79,13 +89,15 @@ def image_id(sha256: str) -> str:
 def _amount(v) -> str | None:
     if v is None or isinstance(v, bool):
         return None
-    if isinstance(v, (int, float)):
-        v = format(Decimal(str(v)).normalize(), "f")
+    if isinstance(v, float):
+        raise TypeError("receipt amounts must be the model's literal text; parse with literal_numbers=True")
     return cord.canonical(cord.parse_idr(str(v)))
 
 
-def parse(data: dict) -> dict:
-    """A model's JSON -> {"fields": {name: canonical}, "items": [...], "printed": data}."""
+def parse(data: dict, labels: dict) -> dict:
+    """A model's JSON -> {"fields": {name: canonical}, "items": [...], "totals_lines": [...], "printed": data}.
+    Each totals line's field is decided by its printed label; a field printed twice with different amounts,
+    or a label no train receipt used, gives no value (a person or the second reader decides)."""
     items = []
     for it in data.get("items") or []:
         if not isinstance(it, dict):
@@ -94,16 +106,22 @@ def parse(data: dict) -> dict:
         items.append({"name": " ".join(str(it.get("name") or "").split()) or None,
                       "quantity": cord.canonical(cord.parse_count(str(q))) if q is not None else None,
                       "unit_price": _amount(it.get("unit_price")), "price": _amount(it.get("price"))})
-    fields = {}
+    lines = []
+    for t in data.get("totals") or []:
+        if isinstance(t, dict):
+            label = str(t.get("label") or "")
+            lines.append({"label": label, "amount": _amount(t.get("amount")), "field": classify(label, labels)})
+    fields, conflicts = {}, []
     for f in TOTALS:
-        v = _amount(data.get(f))
-        if v is not None and f in UNSIGNED:
-            v = v.lstrip("-")
-        fields[f] = v
-    return {"fields": fields, "items": items, "printed": data}
+        amounts = {ln["amount"] for ln in lines if ln["field"] == f and ln["amount"] is not None}
+        if len(amounts) > 1:
+            conflicts.append(f)
+        v = amounts.pop() if len(amounts) == 1 else None
+        fields[f] = v.lstrip("-") if (v is not None and f in UNSIGNED) else v
+    return {"fields": fields, "items": items, "totals_lines": lines, "conflicts": conflicts, "printed": data}
 
 
-def read(provider, png: bytes, iid: str) -> tuple[dict | None, dict]:
+def read(provider, png: bytes, iid: str, labels: dict) -> tuple[dict | None, dict]:
     req = LLMRequest(system=SYSTEM, prompt=PROMPT, images=[png], image_ids=[iid], json_schema=SCHEMA, max_tokens=1500)
     try:
         r = provider.complete(req)
@@ -111,9 +129,10 @@ def read(provider, png: bytes, iid: str) -> tuple[dict | None, dict]:
         return None, {"error": str(e), "client_error": getattr(e, "client_error", False)}
     meta = {"provider": r.provider, "model": r.model, "seconds": r.seconds, "input_tokens": r.input_tokens,
             "output_tokens": r.output_tokens, "replayed": r.replayed, "recording": r.key}
-    if not isinstance(r.data, dict):
+    data = parse_json(r.text, literal_numbers=True)          # never r.data: floats lose the printed digits
+    if not isinstance(data, dict):
         return None, {**meta, "error": "model did not return a JSON object"}
-    return parse(r.data), meta
+    return parse(data, labels), meta
 
 
 def to_receipt(body: dict) -> cord.Receipt:
@@ -129,21 +148,103 @@ def to_receipt(body: dict) -> cord.Receipt:
     return r
 
 
+MIN_TOTAL = Decimal(1000)        # no receipt in CORD totals under Rp 1,000; the smallest coin in use is Rp 100
+
+
 def arithmetic(body: dict | None) -> tuple[bool, dict]:
-    """Does a reading add up? Needs a total, at least one applicable check, and no failing check."""
+    """Does a reading add up? Needs a plausible rupiah total, at least one applicable check, and no failing check.
+
+    Sums cannot see a scale error (every amount 1,000 times too small still adds up), so amounts must
+    also look like rupiah: whole numbers, and a total of at least Rp 1,000."""
     if body is None:
         return False, {"reason": "no reading"}
+    amounts = [Decimal(v) for v in body["fields"].values() if v is not None] + \
+              [Decimal(i[k]) for i in body["items"] for k in ("unit_price", "price") if i.get(k) is not None]
+    if any(a != a.to_integral_value() for a in amounts):
+        return False, {"reason": "an amount has a fractional part, which rupiah receipts do not print"}
+    total = body["fields"].get("total")
+    if total is not None and Decimal(total) < MIN_TOTAL:
+        return False, {"reason": "total under Rp 1,000"}
     checks = cord.audit(to_receipt(body))
     decided = {k: v for k, v in checks.items() if v is not None}
     ok = body["fields"].get("total") is not None and bool(decided) and "fails" not in decided.values()
     return ok, checks
 
 
+# ---------- which field a printed totals label names ----------
+# Learned from train labels (CORD marks label words). Held-out check on validation's own labels: 361 of 373
+# printed labels map to the right field; the misses are rare spellings ("Srv Ch"), which give no value.
+# (Checking labels with OCR was tried and dropped: Tesseract finds no words at all on some clear photos.)
+
+LABELS_VERSION = "labels-1.0.0"
+LABEL_MIN_COUNT = 2
+_CATEGORY = {f"{block}.{key}": name for (block, key), name in cord.TOTAL_FIELDS.items() if not name.endswith("_count")}
+_CATEGORY["total.emoneyprice"] = "card"           # "card" = any card or e-wallet payment, as the prompt says
+LABELS_FILE = Path(__file__).resolve().parents[2] / "data" / "processed" / "cord" / f"receipt_{LABELS_VERSION}.json"
+
+
+def norm_label(text: str) -> str:
+    """Upper case, punctuation dropped, tokens without letters dropped ("TAX 10%:" -> "TAX")."""
+    toks = re.sub(r"[^A-Z0-9%]+", " ", text.upper()).split()
+    return " ".join(t for t in toks if re.search(r"[A-Z]", t))
+
+
+def learn_labels(records) -> dict:
+    """Printed label words per field, from TRAIN receipts only (CORD marks label words with is_key).
+    A label belongs to the one field it labels most often, so "TOTAL" is a total label even though
+    22 train receipts print it beside a subtotal."""
+    counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for _, gt in records:
+        if cord.SPLITS.get(gt.get("meta", {}).get("split")) != "train":
+            continue
+        for line in gt.get("valid_line", []):
+            field = _CATEGORY.get(line.get("category"))
+            label = norm_label(" ".join(w["text"] for w in line.get("words", []) if w.get("is_key")))
+            if field and label:
+                counts[label][field] += 1
+    out: dict[str, list[str]] = defaultdict(list)
+    reassigned = 0
+    for label, by_field in counts.items():
+        field, n = max(by_field.items(), key=lambda kv: (kv[1], kv[0]))
+        reassigned += len(by_field) > 1
+        if n >= LABEL_MIN_COUNT:
+            out[field].append(label)
+    return {"version": LABELS_VERSION, "labels": {f: sorted(v) for f, v in sorted(out.items())},
+            "labels_claimed_by_several_fields": reassigned}
+
+
+def load_labels(raw_root: Path, path: Path = LABELS_FILE) -> dict:
+    """Learned once from the train split and cached; the same Parquet files give the same labels everywhere."""
+    import json
+    if path.is_file():
+        return json.loads(path.read_text())
+    lab = learn_labels(cord.read_records(raw_root / "cord" / "data"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(lab, indent=1))
+    return lab
+
+
+def classify(label: str, labels: dict) -> str | None:
+    """The field a printed label names: an exact learned label, else the longest learned label inside it
+    (whole words), so "SUBTOTAL" is never "TOTAL" and "TOTAL KEMBALIAN" is change. One field per line."""
+    t = norm_label(label)
+    if not t:
+        return None
+    best = None
+    for f, labs in labels["labels"].items():
+        for lab in labs:
+            if lab == t:
+                return f
+            if f" {lab} " in f" {t} " and (best is None or len(lab) > len(best[0])):
+                best = (lab, f)
+    return best[1] if best else None
+
+
 # ---------- running the readers ----------
 
 def version(provider) -> str:
     digest = (provider.digest() or "unknown")[-12:] if provider.name == "ollama" else provider.model
-    return f"{PROMPT_VERSION}+{provider.name}:{provider.model}@{digest}+max{MAX_SIDE}"
+    return f"{PROMPT_VERSION}/{READING_VERSION}/{LABELS_VERSION}+{provider.name}:{provider.model}@{digest}+max{MAX_SIDE}"
 
 
 def split_documents(conn, split: str) -> list[tuple[int, str, str]]:
@@ -153,7 +254,8 @@ def split_documents(conn, split: str) -> list[tuple[int, str, str]]:
         (split,)).fetchall()
 
 
-def run_reader(conn, raw_root: Path, docs, provider, reader: str, progress=print, max_same_errors: int = 3) -> dict:
+def run_reader(conn, raw_root: Path, docs, provider, reader: str, labels: dict, progress=print,
+               max_same_errors: int = 3) -> dict:
     """Read each receipt not yet read under this version; store as the engine role. Resumable."""
     ver = version(provider)
     done = {sid for (sid,) in conn.execute("SELECT source_document_id FROM receipt_extraction WHERE extractor_version = %s "
@@ -162,7 +264,7 @@ def run_reader(conn, raw_root: Path, docs, provider, reader: str, progress=print
     stats = Counter()
     secs, last_errors = [], []
     for i, (sid, key, sha) in enumerate(todo, 1):
-        body, meta = read(provider, receipt_png(raw_root / key), image_id(sha))
+        body, meta = read(provider, receipt_png(raw_root / key), image_id(sha), labels)
         if body is None:
             stats["failed"] += 1
             last_errors = (last_errors + [meta.get("error", "")[:80]])[-max_same_errors:]
@@ -198,6 +300,10 @@ def gold(conn, ids: list[int]) -> dict[int, dict]:
     for sid, f, v in conn.execute("SELECT source_document_id, field_name, value FROM eval.receipt_gold WHERE gold_set_id = %s "
                                   "AND source_document_id = ANY(%s) AND field_name = ANY(%s)", (gs, ids, list(TOTALS))):
         out[sid]["fields"][f] = v.lstrip("-") if (v is not None and f in UNSIGNED) else v
+    for sid, v in conn.execute("SELECT source_document_id, value FROM eval.receipt_gold WHERE gold_set_id = %s "
+                               "AND source_document_id = ANY(%s) AND field_name = 'emoney'", (gs, ids)):
+        if out[sid]["fields"].get("card") is None:
+            out[sid]["fields"]["card"] = v                     # "card" = any card or e-wallet payment
     for sid, name, q, u, p, d, subs in conn.execute(
             """SELECT source_document_id, name, quantity, unit_price, price, discount, sub_items FROM eval.receipt_item_gold
                WHERE gold_set_id = %s AND source_document_id = ANY(%s) ORDER BY source_document_id, item_index""", (gs, ids)):
@@ -243,21 +349,37 @@ def item_correct(g: dict, p: dict | None) -> bool:
             and (g.get("quantity") is None or p.get("quantity") == g.get("quantity")))
 
 
+ZERO_IS_ABSENT = ("discount", "tax", "service")   # a printed "Discount 0" and no discount line mean the same money
+
+
+def _money_lines(items: list[dict]) -> list[str]:
+    """Line amounts that carry money: zero-price and unpriced lines (add-ons such as "Top Oreo 0") do not."""
+    return sorted(str(i.get("price")) for i in items if i.get("price") not in (None, "0"))
+
+
 def score_receipt(g: dict, p: dict | None) -> dict:
     p = p or {"fields": {}, "items": []}
     out = Counter()
     for f in TOTALS:
         gv, pv = g["fields"].get(f), p["fields"].get(f)
+        if f in ZERO_IS_ABSENT:
+            gv, pv = (None if gv == "0" else gv), (None if pv == "0" else pv)
         out[("correct" if gv == pv else "wrong" if gv is not None and pv is not None else
              "missed" if gv is not None else "spurious") if (gv is not None or pv is not None) else "both_blank"] += 1
-    pairs = match_items(g["items"], p["items"])
+    # A predicted unpriced or zero line named like one of the key's add-ons is that add-on listed separately,
+    # not an extra purchase.
+    addons = [x.get("name") for i in g["items"] for x in i.get("sub_items") or []]
+    read_items = [i for i in p["items"] if not (i.get("price") in (None, "0") and
+                                                any(name_similarity(i.get("name"), a) >= NAME_MATCH for a in addons))]
+    out["addons_listed_as_lines"] = len(p["items"]) - len(read_items)
+    pairs = match_items(g["items"], read_items)
     out["items_gold"] = len(g["items"])
-    out["items_read"] = len(p["items"])
+    out["items_read"] = len(read_items)
     out["items_correct"] = sum(item_correct(a, b) for a, b in pairs)
     amounts_ok = out["wrong"] == out["missed"] == out["spurious"] == 0 and \
-        sorted(str(i.get("price")) for i in g["items"]) == sorted(str(i.get("price")) for i in p["items"])
+        _money_lines(g["items"]) == _money_lines(read_items)
     out["amounts_exact"] = int(amounts_ok)
-    out["fully_exact"] = int(amounts_ok and out["items_correct"] == len(g["items"]) == len(p["items"]))
+    out["fully_exact"] = int(amounts_ok and out["items_correct"] == len(g["items"]) == len(read_items))
     return out
 
 
@@ -283,8 +405,7 @@ def score(golds: dict[int, dict], preds: dict[int, dict | None]) -> dict:
 def _agree(a: dict | None, b: dict | None) -> bool:
     if a is None or b is None or a["fields"].get("total") is None:
         return False
-    return a["fields"].get("total") == b["fields"].get("total") and \
-        sorted(str(i.get("price")) for i in a["items"]) == sorted(str(i.get("price")) for i in b["items"])
+    return a["fields"].get("total") == b["fields"].get("total") and _money_lines(a["items"]) == _money_lines(b["items"])
 
 
 def decide(policy: str, local: dict | None, claude: dict | None) -> tuple[dict | None, str]:
