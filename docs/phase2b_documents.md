@@ -468,3 +468,37 @@ gone, for about 2 points of straight-through. The 3 remaining errors:
   should such ties go to a person?
 
 Spend to date: $4.82 of the $5.00 cap. Further paid runs need the cap raised.
+
+## What limits straight-through, and routing 1.4
+
+Round 4 was rebuilt in the sandbox from her Mac's OCR cache and recordings
+(130 of 300 straight through, as in report 21) and every review decision was
+traced:
+
+1. **Invoices that do not print a required field.** Layouts 4 and 50 print no
+   invoice number; layout 39 prints no total and no seller. 118 of 163
+   "required field not found" decisions are fields that are not on the page.
+   Sending those 90 invoices to a person is correct (an invoice cannot be
+   posted without a number or a total), and all 90 were. Reports now give two
+   numbers: straight-through on invoices that print every required field,
+   and incomplete invoices sent to a person.
+2. **Grounding let OCR veto both models.** On some new layouts Tesseract is
+   the weakest reader ("INV76613880" came out as "involoe dunwber INV
+   6813080"), and grounding refused values both models read identically. On
+   rounds 1-4 (all already scored), when OCR could not find the value at all
+   and both models printed the same invoice number, date, or amount, the
+   value was right 115 of 115 times; when OCR found it under another field's
+   label, both models agreeing was wrong 57 of 57 times. **Routing 1.4**
+   accepts the first case only, never for names (decision 64), and only when
+   no reader read something different.
+3. **A labelling convention of one template:** layout 49 prints a single
+   "BALANCE DUE", which FATURA files as the total; "Balance Due" is learned as
+   the amount-due label, so every layout-49 invoice is held for that field.
+   Left as is: changing rules to fit one template's annotation would be fitting
+   the key, not reading invoices better.
+
+Design replay of 1.4 on round 4 (already seen, not a result): straight-through
+on complete invoices 139 of 210 (66%), incomplete invoices to a person 90 of
+90, accepted values 3,664 of 3,667, fields sent to a person per invoice 0.96 ->
+0.78. **Round 5** (30 per layout, disjoint from rounds 1-4) scores 1.4 once;
+it needs the spending cap raised (about $1.32; $0.18 is left under $5).

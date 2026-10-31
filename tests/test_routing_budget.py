@@ -152,13 +152,13 @@ def test_presence_needs_two_witnesses():
     # Regression (holdout layout 12, diagnosed after scoring): OCR dropped the tax line, so grounding
     # discarded both models' correct "23.39" and 1.1 accepted "no tax". Two model readers printing the
     # same value now block "absent"; one unconfirmed model guess does not.
-    assert routing.seen_by_two({"tax": "23.39"}, {"tax": "23.39"}) == {"tax"}
-    assert routing.seen_by_two({"tax": "23.39"}, {"tax": "99.00"}) == set()
-    assert routing.seen_by_two({"subtotal": "734.33"}, {}) == set()
+    assert routing.seen_by_two({"tax": "23.39"}, {"tax": "23.39"}) == {"tax": "23.39"}
+    assert routing.seen_by_two({"tax": "23.39"}, {"tax": "99.00"}) == {}
+    assert routing.seen_by_two({"subtotal": "734.33"}, {}) == {}
     # Only values OCR could not find at all count: two models agreeing on a value OCR did find but in
     # the wrong role (a ship-to name as the buyer) held back 20 calibration invoices with no buyer.
-    assert routing.seen_by_two({"tax": "23.39"}, {"tax": "23.39"}, not_found=({"tax"}, {"tax"})) == {"tax"}
-    assert routing.seen_by_two({"buyer_name": "Ann Lee"}, {"buyer_name": "Ann Lee"}, not_found=(set(), set())) == set()
+    assert routing.seen_by_two({"tax": "23.39"}, {"tax": "23.39"}, not_found=({"tax"}, {"tax"})) == {"tax": "23.39"}
+    assert routing.seen_by_two({"buyer_name": "Ann Lee"}, {"buyer_name": "Ann Lee"}, not_found=(set(), set())) == {}
     s = _status(routing.decide({}, {}, {}, seen={"tax"}))
     assert s["tax"][0] == "review" and "could not confirm" in s["tax"][2]
 
@@ -199,13 +199,43 @@ def test_a_seller_is_never_accepted_as_absent():
 def test_sample_rounds_never_overlap(conn):
     # Each holdout round is scored once, so a later round must never reuse an earlier round's invoices.
     from cpgos.documents import cascade
-    for i in range(240):
+    for i in range(320):
         sid = conn.execute("INSERT INTO source_document (sha256, storage_key, source_type) VALUES (%s, %s, 'invoice') "
                            "RETURNING source_document_id", (f"{i:064d}", f"k{i}")).fetchone()[0]
         conn.execute("INSERT INTO eval.doc_meta (source_document_id, dataset_key, doc_key, layout_id, split_unseen) "
                      "VALUES (%s, 'fatura', %s, %s, 'holdout')", (sid, f"d{i:04d}", i % 2))
     seen = set()
-    for r in (1, 2, 3, 4):
+    for r in (1, 2, 3, 4, 5):
         got = set(cascade.sample(conn, r)["holdout"])
         assert len(got) == 2 * cascade.ROUND_SIZES[r]["holdout"] and not (got & seen)
         seen |= got
+
+
+def test_values_ocr_cannot_read_are_accepted_when_both_models_read_them_alike():
+    # Round 4, layout 49: both models read "INV76613880"; OCR printed "involoe dunwber INV 6813080",
+    # so grounding refused both readings and the invoice went to a person (1.3).
+    seen = routing.seen_by_two({"invoice_number": "INV76613880", "buyer_name": "Marcus Welch"},
+                               {"invoice_number": "INV76613880", "buyer_name": "Marcus Welch"},
+                               not_found=({"invoice_number", "buyer_name"}, {"invoice_number", "buyer_name"}))
+    assert seen == {"invoice_number": "INV76613880", "buyer_name": "Marcus Welch"}
+    s = _status(routing.decide({}, {}, {}, seen=seen))
+    assert s["invoice_number"] == ("accepted", "INV76613880", "two models read the same value; OCR could not read it")
+    assert s["buyer_name"][0] == "review"                         # names: the two models share blind spots
+    # a reader that did read something else blocks it
+    s = _status(routing.decide({"invoice_number": "INV6813080"}, {}, {}, seen=seen))
+    assert s["invoice_number"][0] == "review"
+
+
+def test_one_unconfirmed_reading_is_never_evidence():
+    seen = routing.seen_by_two({"total": "10.00"}, {"total": "12.00"}, not_found=({"total"}, {"total"}))
+    assert seen == {}
+
+
+def test_summary_separates_incomplete_invoices():
+    full = {"invoice_number": "A", "invoice_date": "2008-03-20", "total": "1.00", "seller_name": "X Inc"}
+    no_number = {k: v for k, v in full.items() if k != "invoice_number"}
+    ds = {1: routing.decide(full, dict(full)), 2: routing.decide(no_number, dict(no_number))}
+    s = routing.summarize(ds, {1: full, 2: no_number})
+    assert s["straight_through"]["k"] == 1 and s["straight_through"]["n"] == 2
+    assert (s["straight_through_complete_invoices"]["k"], s["straight_through_complete_invoices"]["n"]) == (1, 1)
+    assert (s["incomplete_invoices_sent_to_a_person"]["k"], s["incomplete_invoices_sent_to_a_person"]["n"]) == (1, 1)

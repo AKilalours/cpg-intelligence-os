@@ -324,6 +324,8 @@ def cmd_routing(conn, split: str, use_claude: bool) -> int:
                        (f"routing_{split}", code_version(), Jsonb(body))).fetchone()[0]
     short = lambda s: s if "incomplete" in s else {
         "straight_through": s["straight_through"], "accepted_correct": s.get("accepted_correct"),
+        "straight_through_complete_invoices": s.get("straight_through_complete_invoices"),
+        "incomplete_invoices_sent_to_a_person": s.get("incomplete_invoices_sent_to_a_person"),
         "review_fields_per_invoice": s["review_fields_per_invoice"], "accepted_by_reason": s.get("accepted_by_reason")}
     print(json.dumps({"report_id": rid, "split": split, "invoices": rep["invoices"], "third_reader": rep["third_reader"],
                       "two_readers_only": short(rep["two_readers_only"]), "with_claude": short(rep["with_third_reader"]),

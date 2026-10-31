@@ -455,3 +455,15 @@ forecasting with rolling-origin backtests, and train/serve skew.
 Round 4: both buyer-name errors were the local model and Claude agreeing
 against OCR + rules, which had it right. Readers that fail differently are
 worth more than readers that are each stronger but fail alike.
+
+## 65. The weakest reader must not veto the strongest
+Grounding treated OCR as the judge of what is printed. On layouts where OCR
+reads worst, that let it overrule two models reading the same id, date, or
+amount. Routing 1.4 accepts those, and only those, because the evidence split
+cleanly (115 of 115 right) from the case that must stay refused (57 of 57
+wrong).
+
+## 66. Report straight-through in two parts
+An invoice missing a required field must reach a person; counting that as a
+failure hides the real reading failures. Reports give straight-through on
+complete invoices and the share of incomplete invoices sent to a person.

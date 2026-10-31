@@ -33,7 +33,14 @@ from dataclasses import dataclass
 
 from cpgos.documents import normalize as nz
 
-POLICY_VERSION = "two-readers-1.3.0"
+POLICY_VERSION = "two-readers-1.4.0"
+# 1.4: OCR is the weakest reader on some new layouts ("INV76613880" read as "involoe dunwber INV 6813080"), and
+# grounding let it veto values both models read identically. When OCR cannot find the value at all and the two
+# model readers printed the same invoice number, date, or amount, with no reader disagreeing, it is accepted.
+# Evidence on already-scored rounds 1-4: 115 of 115 such values were correct. Never for names (round 4: the
+# two models agreed on the same wrong buyer twice), and never when OCR found the value under another field's
+# label (57 of 57 such agreements were wrong).
+UNREADABLE_BY_OCR_KINDS = ("id", "date", "money")
 # Never accepted as absent. 1.3 adds seller_name: every invoice names who issued it, so "no seller" is a reading
 # failure, never an answer. Round 3 (report 20): 19 of 21 wrong acceptances were one seller ("Miller Inc") that
 # no reader, Claude included, found, accepted as absent because the field has no printed label to check.
@@ -66,7 +73,7 @@ def unverifiable_absence(vocab: dict[str, list[str]]) -> set[str]:
     return set(nz.FIELD_TYPES) - set(vocab) - {"currency"}
 
 
-def seen_by_two(*readings: dict, not_found: tuple[set[str], ...] | None = None) -> set[str]:
+def seen_by_two(*readings: dict, not_found: tuple[set[str], ...] | None = None) -> dict[str, str]:
     """Fields where two model readers independently printed the same typed value that the page scan
     could not find at all (1.2; holdout layout 12: OCR dropped the tax line, both models read 23.39).
 
@@ -75,13 +82,14 @@ def seen_by_two(*readings: dict, not_found: tuple[set[str], ...] | None = None) 
     agreeing on the wrong role (e.g. a ship-to name as the buyer) is not evidence of presence: on
     calibration that case held back 20 invoices whose answer key has no buyer. One unconfirmed
     reading is never evidence."""
-    out = set()
+    out = {}
     for f in nz.FIELD_TYPES:
         idx = [i for i, r in enumerate(readings) if r.get(f) is not None
                and (not_found is None or f in not_found[i])]
         vals = [readings[i][f] for i in idx]
-        if len(vals) >= 2 and len(set(vals)) < len(vals):
-            out.add(f)
+        repeated = [v for v in vals if vals.count(v) >= 2]
+        if repeated:
+            out[f] = repeated[0]                      # field -> the value two readers printed alike
     return out
 
 
@@ -115,9 +123,9 @@ def needs_third_reader(r1: dict, r2: dict, printed_labels: set[str] = frozenset(
 
 
 def decide(r1: dict, r2: dict, r3: dict | None = None, printed_labels: set[str] = frozenset(),
-           seen: set[str] = frozenset(), unverifiable: set[str] = frozenset()) -> list[Decision]:
-    """seen: fields two model readers read alike but the page scan could not confirm (see seen_by_two);
-    such a field is never accepted as absent (1.2)."""
+           seen: dict[str, str] | set[str] = frozenset(), unverifiable: set[str] = frozenset()) -> list[Decision]:
+    """seen: field -> value two model readers read alike that the page scan could not find (see seen_by_two).
+    Such a field is never accepted as absent (1.2); an id, date, or amount is accepted with that value (1.4)."""
     out = []
     for f in nz.FIELD_TYPES:
         a, b = r1.get(f), r2.get(f)
@@ -125,6 +133,9 @@ def decide(r1: dict, r2: dict, r3: dict | None = None, printed_labels: set[str] 
         cands = {k: v for k, v in (("rules", a), ("local_model", b), ("claude", c)) if v is not None}
         if a is not None and a == b:
             out.append(Decision(f, a, "accepted", "two readers agree", cands))
+        elif not cands and isinstance(seen, dict) and f in seen and nz.FIELD_TYPES[f] in UNREADABLE_BY_OCR_KINDS:
+            out.append(Decision(f, seen[f], "accepted", "two models read the same value; OCR could not read it",
+                                {"models": seen[f]}))
         elif (a is None and b is None and f not in REQUIRED and (r3 is None or c is None)
               and f not in printed_labels and f not in seen and not (f in unverifiable and r3 is None)):
             out.append(Decision(f, None, "accepted", "absent: no value and no label for it on the page", cands))
@@ -163,4 +174,11 @@ def summarize(decisions_by_doc: dict[int, list[Decision]], gold: dict[int, dict]
         n_acc = accepted["correct"] + accepted["wrong"]
         out["accepted_correct"] = rate(accepted["correct"], n_acc)
         out["accepted_by_reason"] = {k: v for k, v in accepted.items() if ":" in k}
+        # Two numbers instead of one: an invoice that does not print a required field (FATURA layouts 4 and 50
+        # have no invoice number, layout 39 no total or seller) must go to a person, and doing so is a success.
+        complete = {sid for sid in decisions_by_doc if all(gold.get(sid, {}).get(f) is not None for f in REQUIRED)}
+        thru = {sid for sid, ds in decisions_by_doc.items() if all(d.status == "accepted" for d in ds)}
+        out["straight_through_complete_invoices"] = rate(len(thru & complete), len(complete))
+        out["incomplete_invoices_sent_to_a_person"] = rate(len(set(decisions_by_doc) - complete - thru),
+                                                           len(set(decisions_by_doc) - complete))
     return out
