@@ -414,3 +414,30 @@ The fix in 1.3 is **not** scored on test: test has been seen. CORD has no
 unseen receipts left (train taught the label words, validation shaped the
 rule), so proving 1.3 needs another public receipt set; until then 1.3 is
 covered by tests only.
+
+## Round 3: the one-time score of routing 1.2 (report 20)
+
+300 fresh holdout invoices (30 per never-seen layout, disjoint from rounds 1
+and 2), Claude as third reader, $1.32 ($0.0044 per invoice):
+
+| | Round 2, rule 1.1 (150) | **Round 3, rule 1.2 (300)** |
+|---|---|---|
+| Invoices with no person needed | 55.3% | **45.7%** (137, CI 40.1-51.3%) |
+| Accepted values correct | 98.5% (1,819 / 1,846) | **99.4%** (3,614 / 3,635, CI 99.1-99.6%) |
+| Fields sent to a person per invoice | 0.69 | 0.88 |
+| Wrong acceptances | 27 | 21 |
+
+1.2 traded straight-through for accuracy. Every invoice needed the third
+reader, because the seller has no printed label, so its absence can only be
+checked by another reader. 19 of the 21 wrong acceptances are one seller,
+"Miller Inc", which no reader found (Claude included) and which was then
+accepted as absent; 2 are values where Claude agreed with a wrong reader.
+
+**Routing 1.3:** the seller joins invoice number, date, and total as fields
+never accepted as absent. This is a business fact, not a fit to round 3:
+every invoice names who issued it, so "no seller" is a reading failure.
+It costs straight-through on invoices whose seller no reader can find, and
+removes the error class that made up 19 of 21 mistakes. Each holdout layout
+still has about 140 unseen invoices, so 1.3 gets its own one-time score on
+round 4 (30 per layout, disjoint from rounds 1-3; a test enforces that rounds
+never overlap).

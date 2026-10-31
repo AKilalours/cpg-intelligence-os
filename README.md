@@ -123,9 +123,9 @@ On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):
 | New layouts flagged as new, clean and scan-like | **4,000 of 4,000** |
 | Tier 1 (OCR + rules), known layouts: precision / coverage | **99.2% / 99.1%** |
 | Tier 1, never-seen layouts: precision / coverage | **98.1% / 84.0%** (seller names left to the models) |
-| Full cascade on never-seen layouts: invoices with no human needed | **55.3%** (Claude as third reader; $0.004 per invoice) |
-| Values filled in automatically that were correct | **1,219 of 1,219** (95% CI >= 99.7%) |
-| Fields wrongly accepted as absent | 27 of 627 (diagnosed; fix 1.2 awaits a fresh holdout round) |
+| Full cascade on never-seen layouts: invoices with no human needed | **45.7%** of 300 (rule 1.2, round 3; was 55.3% under 1.1) |
+| Accepted values that were correct (round 3) | **3,614 of 3,635 (99.4%, CI 99.1-99.6%)**; $0.0044 per invoice |
+| Wrong acceptances (round 3) | 21: 19 are one seller no reader found; rule 1.3 never accepts a missing seller, scored next on round 4 |
 
 On CORD (real photographed receipts, line items; rule frozen on validation, test scored once):
 

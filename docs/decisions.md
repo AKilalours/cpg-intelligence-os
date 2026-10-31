@@ -423,3 +423,30 @@ consistent scale error.
 A receipt reading may skip a person only if every amount printed in its
 totals block has a known meaning. Unknown lines ("NET1 AMT", "ITEMS :1
 41,000") were behind most of the wrong acceptances on validation.
+
+## 62. A field that every document has can never be accepted as missing
+Rule 1.3: an invoice always names its seller, so no reader finding one means
+the reading failed. Scored on a fresh round (4), not on the round that
+revealed it.
+
+## 63. Additions 9-12, from Confido's current job posts (approved 2026-10-31)
+Mapped to what the Applied AI/ML and Senior ML/AI posts ask for, and placed
+in the existing phases so they do not displace the plan:
+9. **Anomaly detection** on retailer POS and deductions (Phase 4), scored
+   against the evidence overlay, whose injected restatements and gaps are
+   labelled ground truth. ("Flag irregularities ... using anomaly detection.")
+10. **Promotion recommendation** (Phase 5): lift measured on real M5 price
+   drops, a ranked recommendation of which promotion to run where, with
+   expected return and a backtest. ("Recommendation systems to improve
+   retailer promotions"; "promotion optimization.")
+11. **Risk-controlled straight-through** (Phase 4): choose the accept rule so
+   the error rate is bounded with stated confidence on the calibration split
+   (conformal risk control), instead of reading one point estimate.
+   ("Guardrails for production"; "monitoring for systems without a single
+   correct answer.")
+12. **A small fine-tuned model** (Phase 3): LoRA on a small local model for
+   deduction reason text to code, against the prompted model and the rules,
+   on the same held-out claims. ("Fine-tuning LLMs" is a listed nice-to-have.)
+Additions 1-8 already cover document extraction, agentic workflows with
+eval harnesses, entity reconciliation (mapping memory), intermittent-demand
+forecasting with rolling-origin backtests, and train/serve skew.

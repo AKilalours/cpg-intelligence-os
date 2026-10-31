@@ -30,7 +30,8 @@ GROUNDING_VERSION = "ground-2.0.0"
 SAMPLE_SEED = 2026
 MAX_SAME_ERRORS = 3              # identical rejected requests in a row before a run stops
 SAMPLE_PER_LAYOUT = {"holdout": 15, "calibration": 10}
-ROUND_SIZES = {1: SAMPLE_PER_LAYOUT, 2: SAMPLE_PER_LAYOUT, 3: {"holdout": 30, "calibration": 0}}
+ROUND_SIZES = {1: SAMPLE_PER_LAYOUT, 2: SAMPLE_PER_LAYOUT, 3: {"holdout": 30, "calibration": 0},
+               4: {"holdout": 30, "calibration": 0}}      # round 4 scores routing 1.3 (designed after round 3)
 
 
 def tier2_version(provider, rules_model_id: int) -> str:

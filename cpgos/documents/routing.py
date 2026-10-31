@@ -33,8 +33,11 @@ from dataclasses import dataclass
 
 from cpgos.documents import normalize as nz
 
-POLICY_VERSION = "two-readers-1.2.0"
-REQUIRED = ("invoice_number", "invoice_date", "total")
+POLICY_VERSION = "two-readers-1.3.0"
+# Never accepted as absent. 1.3 adds seller_name: every invoice names who issued it, so "no seller" is a reading
+# failure, never an answer. Round 3 (report 20): 19 of 21 wrong acceptances were one seller ("Miller Inc") that
+# no reader, Claude included, found, accepted as absent because the field has no printed label to check.
+REQUIRED = ("invoice_number", "invoice_date", "total", "seller_name")
 
 
 @dataclass

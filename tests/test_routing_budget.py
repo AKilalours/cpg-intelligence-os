@@ -46,16 +46,16 @@ def test_optional_absent_is_accepted_but_required_absent_is_not():
 
 
 def test_only_unsettled_fields_need_a_third_reader():
-    r = {"invoice_number": "1", "invoice_date": "2008-03-20", "total": "1.00"}
+    r = {"invoice_number": "1", "invoice_date": "2008-03-20", "total": "1.00", "seller_name": "Fernandez PLC"}
     assert routing.needs_third_reader(r, dict(r)) == []
     assert routing.needs_third_reader(r, {**r, "total": "7.00"}) == ["total"]
     assert routing.needs_third_reader(r, {**r, "seller_name": "X"}) == ["seller_name"]
 
 
 def test_summary_counts_wrong_acceptances_against_the_key():
-    ds = {1: routing.decide({"invoice_number": "A", "invoice_date": "2008-03-20", "total": "1.00"},
-                            {"invoice_number": "A", "invoice_date": "2008-03-20", "total": "1.00"})}
-    s = routing.summarize(ds, {1: {"invoice_number": "A", "invoice_date": "2008-03-20", "total": "1.00", "po_number": "35"}})
+    r = {"invoice_number": "A", "invoice_date": "2008-03-20", "total": "1.00", "seller_name": "Fernandez PLC"}
+    ds = {1: routing.decide(r, dict(r))}
+    s = routing.summarize(ds, {1: {**r, "po_number": "35"}})
     assert s["straight_through"]["k"] == 1
     assert s["accepted_by_reason"]["wrong: absent: no value and no label for it on the page"] == 1   # a missed PO number
 
@@ -171,7 +171,8 @@ def test_unlabelled_fields_need_the_third_reader_before_absent():
     assert "seller_name" in unv and "total" not in unv
     assert "seller_name" in routing.needs_third_reader({}, {}, unverifiable=unv)
     assert _status(routing.decide({}, {}, None, unverifiable=unv))["seller_name"][0] == "review"
-    assert _status(routing.decide({}, {}, {}, unverifiable=unv))["seller_name"][0] == "accepted"   # Claude also found none
+    # 1.3: even when Claude also finds none, a seller is never accepted as absent (round 3, "Miller Inc").
+    assert _status(routing.decide({}, {}, {}, unverifiable=unv))["seller_name"][0] == "review"
 
 
 def test_sample_rounds_never_overlap_and_round3_is_larger(conn, tmp_path, monkeypatch):
@@ -186,3 +187,25 @@ def test_sample_rounds_never_overlap_and_round3_is_larger(conn, tmp_path, monkey
     assert not (set(r[1]) & set(r[2])) and not (set(r[1]) & set(r[3])) and not (set(r[2]) & set(r[3]))
     assert cascade.sample(conn, 3)["calibration"] == []
     assert cascade.sample(conn, 2) == cascade.sample(conn, 2)                    # deterministic
+
+
+def test_a_seller_is_never_accepted_as_absent():
+    # Round 3 (report 20): "Miller Inc" was found by no reader and accepted as absent 19 times.
+    s = _status(routing.decide({}, {}, {}))
+    assert s["seller_name"][0] == "review"
+    assert "seller_name" in routing.REQUIRED
+
+
+def test_sample_rounds_never_overlap(conn):
+    # Each holdout round is scored once, so a later round must never reuse an earlier round's invoices.
+    from cpgos.documents import cascade
+    for i in range(240):
+        sid = conn.execute("INSERT INTO source_document (sha256, storage_key, source_type) VALUES (%s, %s, 'invoice') "
+                           "RETURNING source_document_id", (f"{i:064d}", f"k{i}")).fetchone()[0]
+        conn.execute("INSERT INTO eval.doc_meta (source_document_id, dataset_key, doc_key, layout_id, split_unseen) "
+                     "VALUES (%s, 'fatura', %s, %s, 'holdout')", (sid, f"d{i:04d}", i % 2))
+    seen = set()
+    for r in (1, 2, 3, 4):
+        got = set(cascade.sample(conn, r)["holdout"])
+        assert len(got) == 2 * cascade.ROUND_SIZES[r]["holdout"] and not (got & seen)
+        seen |= got
