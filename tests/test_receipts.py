@@ -261,3 +261,13 @@ def test_a_negative_or_zero_amount_is_never_mistaken_for_a_count():
     assert not R._count_only({"label": "KEMBALIAN", "amount": "-11500"})
     assert not R._count_only({"label": "DISCOUNT", "amount": "0"})
     assert R._count_only({"label": "ITEMS: 4", "amount": "4"})
+
+
+def test_an_unpriced_line_never_switches_off_the_line_sum():
+    # Test split, receipt 0074: two add-on lines had no price, so 1.2 skipped the line sum entirely and an
+    # invented "FOOD 214,000" line went straight through. Unpriced lines now count as zero.
+    d = json.loads(json.dumps(GOOD))
+    d["items"].append({"name": "DANISH FISH & CHIPS", "quantity": None, "unit_price": None, "price": None})
+    assert R.arithmetic(R.parse(d, LABELS))[0] is True                          # an unpriced add-on is harmless
+    d["items"].append({"name": "FOOD", "quantity": None, "unit_price": "214.000", "price": "214.000"})
+    assert R.arithmetic(R.parse(d, LABELS))[0] is False                         # an invented line breaks the sum

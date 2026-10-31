@@ -39,7 +39,7 @@ PROMPT_VERSION = "receipt-2.0.0"
 #      (equal to the total) on 33 of 100 validation receipts that print none (report 16).
 # read-1.1: amounts are read from the model's literal text. 1.0 read JSON numbers as floats, so "89.100"
 #      (89,100 rupiah) became 89.1; whole receipts shrank 1,000 times and still added up (report 16).
-READING_VERSION = "read-1.2"   # 1.2: counts recognised first, cut-off labels match, unexplained-amount guard
+READING_VERSION = "read-1.3"   # 1.2: counts first, cut-off labels, unexplained-amount guard; 1.3: line sum always checked
 MAX_SIDE = 1280
 TOTALS = ("subtotal", "discount", "tax", "service", "total", "cash", "change", "card")
 UNSIGNED = ("discount", "change")         # printed with or without a minus sign; compared as amounts
@@ -185,7 +185,11 @@ def arithmetic(body: dict | None) -> tuple[bool, dict]:
         return False, {"reason": "an amount in the totals block has a label no rule understands", "labels": unexplained}
     if body.get("conflicts"):
         return False, {"reason": "a field is printed twice with different amounts", "fields": body["conflicts"]}
-    checks = cord.audit(to_receipt(body))
+    # Unpriced lines (add-ons, or a price the model did not read) count as zero, so the line sum is always
+    # checked when any line is priced. 1.2 skipped the whole sum when one line was unpriced, and an invented
+    # "FOOD 214,000" line went through on the test split (report 19, receipt 0074).
+    priced = {**body, "items": [i for i in body["items"] if i.get("price") is not None]}
+    checks = cord.audit(to_receipt(priced))
     decided = {k: v for k, v in checks.items() if v is not None}
     ok = body["fields"].get("total") is not None and bool(decided) and "fails" not in decided.values()
     return ok, checks

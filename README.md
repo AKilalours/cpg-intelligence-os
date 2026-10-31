@@ -20,7 +20,7 @@ forecasting and promotion analytics.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Data foundation and product shell | **Done**, verified on full real M5 |
-| 2 | Document AI and reconciliation | **Reconciliation done** (2a); document AI next (2b) |
+| 2 | Document AI and reconciliation | **Reconciliation done** (2a); document AI measured on FATURA invoices and CORD receipt photos (2b); review UI next |
 | 3 | Agentic investigation | Not started |
 | 4 | Evaluation and production controls | Not started |
 | 5 | Forecasting and promotion analytics | Not started |
@@ -126,6 +126,15 @@ On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):
 | Full cascade on never-seen layouts: invoices with no human needed | **55.3%** (Claude as third reader; $0.004 per invoice) |
 | Values filled in automatically that were correct | **1,219 of 1,219** (95% CI >= 99.7%) |
 | Fields wrongly accepted as absent | 27 of 627 (diagnosed; fix 1.2 awaits a fresh holdout round) |
+
+On CORD (real photographed receipts, line items; rule frozen on validation, test scored once):
+
+| | Result |
+|---|---|
+| Answer key | 998 receipts, 4,047 totals values, 2,570 line items; 2 duplicate photos dropped; labels add up on 947 of 986 |
+| Receipts straight through (test) | **71 of 100** |
+| Every amount right when accepted (test) | **65 of 71 (91.5%, 95% CI 83-96%)**; validation was 80 of 83 |
+| Of the 6 wrong: | 1 hole in my check (fixed, untested on fresh data), 1 label error, 2 skipped payment lines, 2 answer-key gaps |
 
 Details, rejected experiments, and caveats: [`docs/phase2b_documents.md`](docs/phase2b_documents.md).
 

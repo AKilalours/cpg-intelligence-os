@@ -380,3 +380,37 @@ from either model, must add up, account for every printed amount, and look
 like rupiah. The agreement rule was rejected on principle: it accepts readings
 whose sums do not close, which is how 0094 ("OTHERS 7,280" read as a card)
 got through. Test is scored once, with this rule.
+
+### Official test result (report 19, scored once with the frozen rule)
+
+| | Validation (design) | **Test (official)** |
+|---|---|---|
+| Receipts straight through | 83 of 100 | **71 of 100** |
+| Every amount right when accepted | 80 of 83 | **65 of 71 (91.5%, 95% CI 82.8-96.1%)** |
+| Local model, every amount right | 80 of 100 | 60 of 100 |
+| Answer key itself adds up | 96 of 100 | 90 of 100 |
+| Claude, on the receipts it read | 18 of 29 right | 32 of 51 right (local: 17 of 51) |
+
+Test is worse than validation, for two reasons stated plainly: the rule was
+designed in three rounds of fixes made after looking at validation errors, so
+part of the validation number is fitted to those 100 receipts; and the test
+split is harder (its own key adds up less often, and the local model reads
+fewer receipts fully right). 91.5% is the number to quote.
+
+The 6 wrong acceptances, each looked at:
+- **0074, a hole in my check:** two add-on lines had no price, which switched
+  the line sum off entirely, and a line "FOOD 214,000" the model invented went
+  through. Fixed in reading 1.3 (unpriced lines count as zero, so the sum is
+  always checked), with a regression test from this receipt.
+- **0016, my label classifier:** "Cash Payment" was classed as a card payment
+  because the learned word PAYMENT is longer than CASH. Open: a fix needs a
+  rule for generic words, and nothing left in CORD can score it.
+- **0011, 0084, the model:** the payment line was skipped; every purchased
+  line and the total were right.
+- **0026, 0037, answer-key gaps:** the model read "Teh Tawar 2 x 4,000 =
+  8,000", which the key leaves unpriced; the key has no total on 0037.
+
+The fix in 1.3 is **not** scored on test: test has been seen. CORD has no
+unseen receipts left (train taught the label words, validation shaped the
+rule), so proving 1.3 needs another public receipt set; until then 1.3 is
+covered by tests only.
