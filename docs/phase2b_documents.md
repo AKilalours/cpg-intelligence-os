@@ -441,3 +441,30 @@ removes the error class that made up 19 of 21 mistakes. Each holdout layout
 still has about 140 unseen invoices, so 1.3 gets its own one-time score on
 round 4 (30 per layout, disjoint from rounds 1-3; a test enforces that rounds
 never overlap).
+
+## Round 4: the one-time score of routing 1.3 (report 21)
+
+300 fresh holdout invoices (disjoint from rounds 1-3), $1.32:
+
+| | Round 3, rule 1.2 | **Round 4, rule 1.3** |
+|---|---|---|
+| Accepted values correct | 99.4% (3,614 / 3,635) | **99.92% (3,604 / 3,607, CI 99.76-99.97%)** |
+| Wrong acceptances | 21 (19 a missing seller) | **3** |
+| Invoices with no person needed | 45.7% | 43.3% (130, CI 37.9-49.0%) |
+| Fields sent to a person per invoice | 0.88 | 0.98 |
+
+The change did what it was designed to: the missing-seller error class is
+gone, for about 2 points of straight-through. The 3 remaining errors:
+- one tax value accepted as absent (no reader found it, and no tax label was
+  found on the page);
+- **two buyer names where the local model and Claude agreed on the same wrong
+  name while OCR + rules had it right.** Two language models are not two
+  independent witnesses: they can share the same misreading. The third
+  reader was meant to break ties, and here the two models outvoted the one
+  reader that does not share their blind spots. Not changed now (no fresh
+  round to score a change against without raising the spending cap); noted
+  as the next rule question: when the two model readers agree against OCR +
+  rules on a name, does the receipt-style arithmetic analogue exist, or
+  should such ties go to a person?
+
+Spend to date: $4.82 of the $5.00 cap. Further paid runs need the cap raised.

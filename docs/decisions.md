@@ -450,3 +450,8 @@ in the existing phases so they do not displace the plan:
 Additions 1-8 already cover document extraction, agentic workflows with
 eval harnesses, entity reconciliation (mapping memory), intermittent-demand
 forecasting with rolling-origin backtests, and train/serve skew.
+
+## 64. Two models agreeing is weaker evidence than a model agreeing with OCR
+Round 4: both buyer-name errors were the local model and Claude agreeing
+against OCR + rules, which had it right. Readers that fail differently are
+worth more than readers that are each stronger but fail alike.
