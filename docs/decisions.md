@@ -467,3 +467,14 @@ wrong).
 An invoice missing a required field must reach a person; counting that as a
 failure hides the real reading failures. Reports give straight-through on
 complete invoices and the share of incomplete invoices sent to a person.
+
+## 67. Recognise a repeated failure by its kind, and stop at once when no retry can help
+Round 5: the API credit ran out at call 71 and the run made 229 more failing
+calls. The "stop after 3 identical rejections" check compared full error
+text, and every Anthropic error carries a unique request id, so no two ever
+matched (the test used a fake error without one, which is why it passed).
+Errors now carry a signature (status, type, message) and a fatal flag
+(exhausted credit, invalid or unauthorised key: stop at the first call); one
+shared FailFast guards both the invoice and receipt runs. Nothing was lost:
+the 70 answers before the failure are recorded and replay for free, and the
+report refused to present an incomplete third-reader run as a result.

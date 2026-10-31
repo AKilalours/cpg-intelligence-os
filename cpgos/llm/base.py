@@ -35,7 +35,37 @@ CASSETTE_ROOT = Path(__file__).resolve().parents[2] / "data" / "processed" / "ll
 
 
 class LLMError(RuntimeError):
-    pass
+    """A failed model call.
+
+    client_error: the request itself was refused (4xx other than 429) and will fail the same way again.
+    signature:    what kind of failure it was, without per-call details such as request ids, so that
+                  repeated failures can be recognised (comparing full error text never matched, because
+                  every Anthropic error carries a unique request id: round 5 made 230 failing calls).
+    fatal:        no retry can succeed (credit exhausted, invalid or unauthorised key): stop at once."""
+    client_error = False
+    signature: str | None = None
+    fatal = False
+
+
+class FailFast:
+    """Decides when a batch of model calls must stop instead of failing on every remaining document."""
+
+    def __init__(self, max_same: int = 3):
+        self.max_same, self.streak, self.last = max_same, 0, None
+
+    def observe(self, meta: dict) -> str | None:
+        """Call after every call. Returns the reason to stop, or None to carry on."""
+        if "error" not in meta:
+            self.streak, self.last = 0, None
+            return None
+        if meta.get("fatal"):
+            return f"stopped: the provider refused in a way no retry can fix: {meta.get('error_signature') or meta['error']}"
+        sig = meta.get("error_signature") or meta["error"]
+        self.streak = self.streak + 1 if (sig == self.last and meta.get("client_error")) else 1
+        self.last = sig
+        if self.streak >= self.max_same:
+            return f"stopped: {self.max_same} calls in a row were rejected the same way ({sig}); fix it and rerun"
+        return None
 
 
 class ReplayMiss(LLMError):

@@ -228,7 +228,7 @@ def test_reader_stops_after_three_identical_rejections(conn, tiny, tmp_path):
     err = LLMError("400 bad request")
     err.client_error = True
     p = Recorder(Scripted([err, err, err, GOOD]), "record", tmp_path / "c2")
-    with pytest.raises(LLMError, match="identical rejections"):
+    with pytest.raises(LLMError, match="rejected the same way"):
         R.run_reader(conn, tiny, R.split_documents(conn, "validation") * 2, p, "claude", LABELS, progress=lambda *_: None)
 
 

@@ -73,9 +73,7 @@ class Anthropic:
         except httpx.HTTPError as e:
             raise LLMError(f"Anthropic request failed: {e.__class__.__name__}") from None
         if r.status_code != 200:
-            err = LLMError(f"Anthropic returned {r.status_code}: {r.text[:300]}")
-            err.client_error = 400 <= r.status_code < 500 and r.status_code != 429   # will fail the same way again
-            raise err
+            raise _error(r.status_code, r.text)
         out = r.json()
         text = "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
         usage = out.get("usage", {})
@@ -85,3 +83,22 @@ class Anthropic:
                            model=out.get("model", self.model), model_digest=None,
                            input_tokens=usage.get("input_tokens"), output_tokens=usage.get("output_tokens"),
                            seconds=round(time.time() - t, 3))
+
+
+FATAL_TYPES = ("authentication_error", "permission_error", "billing_error")
+
+
+def _error(status: int, text: str) -> LLMError:
+    """An LLMError with a signature (status, type, message; no request id) and whether retrying can help."""
+    import json
+    etype, message = "", text[:200]
+    try:
+        e = json.loads(text).get("error") or {}
+        etype, message = e.get("type", ""), e.get("message", message)
+    except (ValueError, AttributeError):
+        pass
+    err = LLMError(f"Anthropic returned {status}: {text[:300]}")
+    err.signature = f"{status} {etype}: {message}".strip()
+    err.client_error = 400 <= status < 500 and status != 429           # will fail the same way again
+    err.fatal = status in (401, 403) or etype in FATAL_TYPES or "credit balance" in message.lower()
+    return err

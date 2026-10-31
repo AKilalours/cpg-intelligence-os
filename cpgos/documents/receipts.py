@@ -31,7 +31,7 @@ from PIL import Image
 from psycopg.types.json import Jsonb
 
 from cpgos.documents import cord
-from cpgos.llm.base import LLMError, LLMRequest, parse_json
+from cpgos.llm.base import FailFast, LLMError, LLMRequest, parse_json
 
 PROMPT_VERSION = "receipt-2.0.0"
 # 2.0: the model copies every totals line as printed (label and amount) and code assigns the field from the
@@ -131,7 +131,8 @@ def read(provider, png: bytes, iid: str, labels: dict) -> tuple[dict | None, dic
     try:
         r = provider.complete(req)
     except LLMError as e:
-        return None, {"error": str(e), "client_error": getattr(e, "client_error", False)}
+        return None, {"error": str(e), "client_error": getattr(e, "client_error", False),
+                      "error_signature": getattr(e, "signature", None), "fatal": getattr(e, "fatal", False)}
     meta = {"provider": r.provider, "model": r.model, "seconds": r.seconds, "input_tokens": r.input_tokens,
             "output_tokens": r.output_tokens, "replayed": r.replayed, "recording": r.key}
     data = parse_json(r.text, literal_numbers=True)          # never r.data: floats lose the printed digits
@@ -304,17 +305,17 @@ def run_reader(conn, raw_root: Path, docs, provider, reader: str, labels: dict, 
                                            "AND body IS NOT NULL", (ver,))}
     todo = [d for d in docs if d[0] not in done]
     stats = Counter()
-    secs, last_errors = [], []
+    secs = []
+    guard = FailFast(max_same_errors)
     for i, (sid, key, sha) in enumerate(todo, 1):
         body, meta = read(provider, receipt_png(raw_root / key), image_id(sha), labels)
+        stop = guard.observe(meta if body is None else {})
         if body is None:
             stats["failed"] += 1
-            last_errors = (last_errors + [meta.get("error", "")[:80]])[-max_same_errors:]
             progress(f"  {i}/{len(todo)} FAILED: {meta.get('error', '')[:120]}")
-            if meta.get("client_error") and len(last_errors) == max_same_errors and len(set(last_errors)) == 1:
-                raise LLMError(f"stopped after {max_same_errors} identical rejections: {last_errors[0]}")
+            if stop:
+                raise LLMError(stop)
             continue
-        last_errors = []
         with conn.transaction():
             conn.execute("SET LOCAL ROLE cpgos_engine")
             conn.execute("""INSERT INTO receipt_extraction (source_document_id, extractor_version, reader, body, call)

@@ -24,6 +24,7 @@ from psycopg.types.json import Jsonb
 
 from cpgos.documents import extraction, ocr, rules, vlm
 from cpgos.finance.evaluate import rate
+from cpgos.llm.base import FailFast
 
 POLICY_VERSION = "cascade-1.0.0"
 GROUNDING_VERSION = "ground-2.0.0"
@@ -56,22 +57,19 @@ def run_tier2(conn: psycopg.Connection, raw_root: Path, doc_ids: list[int], prov
                    AND e.extractor_version = %s) ORDER BY s.source_document_id""", (doc_ids, ver)).fetchall()
     stats = Counter({"documents": 0, "failed_calls": 0, "replayed": 0})
     secs = []
-    same_error_streak, last_error = 0, None
+    guard = FailFast(MAX_SAME_ERRORS)
     for i, (sid, key, sha) in enumerate(docs, 1):
         words = ocr.ocr_image(raw_root / key, sha)
         exs, meta = vlm.extract(provider, vlm.page_png(raw_root / key, 1.0), vlm.image_id(sha, 1.0))
+        stop = guard.observe(meta)
         if "error" in meta:
             stats["failed_calls"] += 1
             progress(f"  {i}/{len(docs)} FAILED: {meta['error'][:160]}")
-            # Fail fast: a request the provider rejects as invalid will be rejected for every invoice.
-            same_error_streak = same_error_streak + 1 if meta["error"] == last_error and meta.get("client_error") else 1
-            last_error = meta["error"]
-            if same_error_streak >= MAX_SAME_ERRORS:
+            if stop:                       # fail fast: never fail on every remaining invoice
                 stats["stopped_early"] = 1
-                progress(f"  stopped: {MAX_SAME_ERRORS} calls in a row were rejected the same way; fix the request and rerun")
+                progress(f"  {stop}")
                 break
             continue
-        same_error_streak, last_error = 0, None
         exs = vlm.grounded(exs, words, model.lexicon)
         stats["replayed"] += bool(meta.get("replayed"))
         secs.append(meta.get("seconds") or 0.0)

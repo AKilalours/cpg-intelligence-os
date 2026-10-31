@@ -8,6 +8,8 @@ from cpgos.llm import budget
 from cpgos.llm.anthropic_provider import Anthropic
 from cpgos.llm.base import LLMRequest
 from cpgos.llm.budget import BudgetExceeded
+from cpgos.llm.base import FailFast
+import json
 
 
 # ---------- the two-readers rule ----------
@@ -239,3 +241,41 @@ def test_summary_separates_incomplete_invoices():
     assert s["straight_through"]["k"] == 1 and s["straight_through"]["n"] == 2
     assert (s["straight_through_complete_invoices"]["k"], s["straight_through_complete_invoices"]["n"]) == (1, 1)
     assert (s["incomplete_invoices_sent_to_a_person"]["k"], s["incomplete_invoices_sent_to_a_person"]["n"]) == (1, 1)
+
+
+# ---------- fail fast (round 5: 230 failing calls after the credit ran out) ----------
+
+def _anthropic_error(status, etype, message, request_id):
+    from cpgos.llm.anthropic_provider import _error
+    return _error(status, json.dumps({"type": "error", "error": {"type": etype, "message": message},
+                                      "request_id": request_id}))
+
+
+def test_same_failure_with_different_request_ids_has_one_signature():
+    a = _anthropic_error(400, "invalid_request_error", "temperature is deprecated", "req_1")
+    b = _anthropic_error(400, "invalid_request_error", "temperature is deprecated", "req_2")
+    assert str(a) != str(b) and a.signature == b.signature                     # the old check compared str()
+    assert a.client_error and not a.fatal
+
+
+def test_exhausted_credit_and_bad_keys_stop_at_the_first_call():
+    credit = _anthropic_error(400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API.", "r")
+    assert credit.fatal
+    assert _anthropic_error(401, "authentication_error", "invalid x-api-key", "r").fatal
+    assert not _anthropic_error(529, "overloaded_error", "Overloaded", "r").fatal
+
+
+def _meta(err):
+    return {"error": str(err), "client_error": err.client_error, "error_signature": err.signature, "fatal": err.fatal}
+
+
+def test_fail_fast_stops_after_three_alike_or_one_fatal():
+    g = FailFast(3)
+    errs = [_anthropic_error(400, "invalid_request_error", "temperature is deprecated", f"req_{i}") for i in range(3)]
+    assert [g.observe(_meta(e)) is None for e in errs] == [True, True, False]   # stops on the third
+    g = FailFast(3)
+    stop = g.observe(_meta(_anthropic_error(400, "invalid_request_error", "Your credit balance is too low", "r")))
+    assert stop and "no retry can fix" in stop
+    g = FailFast(3)                                                              # a success resets the streak
+    g.observe(_meta(errs[0])); g.observe(_meta(errs[1])); g.observe({})
+    assert g.observe(_meta(errs[2])) is None
