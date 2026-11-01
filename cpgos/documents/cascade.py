@@ -294,6 +294,9 @@ def evaluate_routing(conn: psycopg.Connection, raw_root: Path, split: str, round
     gs = conn.execute("SELECT max(gold_set_id) FROM eval.gold_set WHERE name = 'fatura_header_fields'").fetchone()[0]
     ids = sorted({sid for r in rounds for sid in sample(conn, r)[split]})
     res = route(conn, raw_root, ids, local, claude, progress)
+    if claude is None or res["third_reader"].get("complete", True):
+        from cpgos.documents import review
+        review.save_decisions(conn, res["decisions"], routing.POLICY_VERSION)   # what reviewers will see
     gold = _gold(conn, gs, ids)
     with_third = routing.summarize(res["decisions"], gold)
     without = routing.summarize({sid: routing.decide(*[_values(conn, v, [sid])[sid] for v in res["reader_versions"].values()],

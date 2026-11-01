@@ -18,6 +18,7 @@ Usage:
     python scripts/documents.py routing-estimate             # how many Claude calls each step needs, and the cost; no calls
     python scripts/documents.py routing --split calibration  # two-readers rule + Claude on calibration (design data)
     python scripts/documents.py routing --split holdout      # the one-time final score on fresh holdout invoices
+    python scripts/documents.py decide --split holdout --round 5  # store routing decisions for review; no scores
 
 Requires CPGOS_DATABASE_URL and FATURA in data/raw/fatura (make download DATASET=fatura).
 No language model is called by these commands.
@@ -417,6 +418,31 @@ def cmd_receipts_eval(conn, split: str, use_claude: bool) -> int:
     return 0
 
 
+def cmd_decide(conn, split: str) -> int:
+    """Route a sample and store each field's decision for the review screens. Prints no scores;
+    model answers already recorded are replayed, so a re-run costs nothing."""
+    from cpgos.documents import cascade, review, routing
+    from cpgos.llm import LLMError, provider
+    from cpgos.llm.budget import BudgetExceeded
+    if not _ocr_ready():
+        return 1
+    ids = sorted({sid for r in ([ROUND] if split == "holdout" else SPLIT_ROUNDS[split])
+                  for sid in cascade.sample(conn, r)[split]})
+    try:
+        res = cascade.route(conn, RAW, ids, _local_model(), provider("anthropic"), lambda m: print(m, flush=True))
+    except (BudgetExceeded, LLMError) as e:
+        print(f"STOPPED: {e}")
+        return 1
+    if not res["third_reader"].get("complete", True):
+        print("INCOMPLETE: some third-reader calls failed; rerun before reviewing")
+        return 1
+    n = review.save_decisions(conn, res["decisions"], routing.POLICY_VERSION)
+    q = review.queue(conn, 10_000)
+    print(json.dumps({"documents": len(ids), "decisions_stored": n, "policy": routing.POLICY_VERSION,
+                      "documents_waiting_for_review": len(q)}, indent=1))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--split", choices=["calibration", "holdout", "validation", "test"], default="calibration")
@@ -424,7 +450,7 @@ def main() -> int:
     ap.add_argument("--round", type=int, default=2, help="sample round (holdout round 3 scores routing 1.2)")
     ap.add_argument("command", choices=["load-fatura", "load-cord", "train-router", "eval-router", "route", "routing-estimate", "routing",
                                         "learn-rules", "extract", "eval-extract", "vlm-dev",
-                                        "eval-cascade", "vlm-collect", "receipts-collect", "receipts-eval"])
+                                        "eval-cascade", "vlm-collect", "receipts-collect", "receipts-eval", "decide"])
     args = ap.parse_args()
     global ROUND
     ROUND = args.round
@@ -437,6 +463,7 @@ def main() -> int:
                 "eval-cascade": cmd_eval_cascade, "vlm-collect": cmd_vlm_collect,
                 "routing-estimate": cmd_routing_estimate,
                 "routing": lambda c: cmd_routing(c, args.split, not args.no_claude),
+                "decide": lambda c: cmd_decide(c, args.split),
                 "receipts-collect": lambda c: cmd_receipts_collect(c, _receipt_split(args.split)),
                 "receipts-eval": lambda c: cmd_receipts_eval(c, _receipt_split(args.split), not args.no_claude)}[args.command](conn)
 

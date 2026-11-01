@@ -1,7 +1,9 @@
 """HTTP API over the canonical data model.
 
-Every endpoint here is read-only and runs inside a READ ONLY transaction, so
-even a bug in a query cannot modify the ledger. Every number returned is
+Read endpoints run inside a READ ONLY transaction, so even a bug in a query
+cannot modify the ledger. The only write endpoints are human reviews; they
+run as the database's reviewer role, which can record reviews, remembered
+corrections, and audit events, and nothing else. Every number returned is
 computed from database rows at request time; nothing is hardcoded.
 """
 
@@ -26,9 +28,18 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=(config.get("CPGOS_CORS_ORIGINS")
                    or f"http://localhost:{config.get('CPGOS_WEB_PORT', '3100')}").split(","),
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+def get_write_conn() -> Iterator[psycopg.Connection]:
+    """For human reviews only; the review code switches to the reviewer role inside its transaction."""
+    url = config.get("CPGOS_DATABASE_URL")
+    if not url:
+        raise HTTPException(503, "CPGOS_DATABASE_URL is not set; run `make setup` to create .env")
+    with psycopg.connect(url, autocommit=True) as conn:
+        yield conn
 
 
 def get_conn() -> Iterator[psycopg.Connection]:
@@ -306,3 +317,57 @@ def sales_series(
         data_origin=next(iter(origins)) if len(origins) == 1 else "mixed",
         points=[s.SalesPoint(**r) for r in rows],  # extra keys are ignored
     )
+
+
+# ---------- document review (fix 4) ----------
+
+from pathlib import Path  # noqa: E402
+
+from fastapi.responses import FileResponse  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
+
+from cpgos.documents import review  # noqa: E402
+
+RAW_ROOT = Path(config.get("CPGOS_RAW_ROOT") or Path(__file__).resolve().parents[2] / "data" / "raw")
+
+
+class ReviewIn(BaseModel):
+    action: str
+    reviewer: str
+    value: str | None = None
+    note: str | None = None
+
+
+@app.get("/api/documents/queue")
+def document_queue(limit: int = Query(50, ge=1, le=500), conn: psycopg.Connection = Depends(get_conn)):
+    return review.queue(conn, limit)
+
+
+@app.get("/api/documents/{document_id}")
+def document_detail(document_id: int, conn: psycopg.Connection = Depends(get_conn)):
+    v = review.document_view(conn, document_id)
+    if v is None:
+        raise HTTPException(404, f"No document {document_id}")
+    v["image_url"] = f"/api/documents/{document_id}/image"
+    return v
+
+
+@app.get("/api/documents/{document_id}/image")
+def document_image(document_id: int, conn: psycopg.Connection = Depends(get_conn)):
+    r = conn.execute("SELECT storage_key, mime_type FROM source_document WHERE source_document_id = %s",
+                     (document_id,)).fetchone()
+    if r is None:
+        raise HTTPException(404, f"No document {document_id}")
+    path = (RAW_ROOT / r["storage_key"]).resolve()
+    if not path.is_relative_to(RAW_ROOT.resolve()) or not path.is_file():   # storage keys never leave data/raw
+        raise HTTPException(404, "document image not available on this machine")
+    return FileResponse(path, media_type=r["mime_type"] or "application/octet-stream")
+
+
+@app.post("/api/documents/{document_id}/fields/{field_name}/review")
+def document_review(document_id: int, field_name: str, body: ReviewIn,
+                    conn: psycopg.Connection = Depends(get_write_conn)):
+    try:
+        return review.submit(conn, document_id, field_name, body.action, body.reviewer, body.value, body.note)
+    except review.ReviewError as e:
+        raise HTTPException(400, str(e)) from None
