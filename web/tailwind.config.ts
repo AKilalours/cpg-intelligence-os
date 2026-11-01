@@ -13,6 +13,7 @@ const config: Config = {
         rule: "#C9D8C6",
         tag: "#F4C430",
         debit: "#A8322A",
+        credit: "#2E6B4A",      // accepted by the routing rule
       },
       fontFamily: {
         sans: ['"Public Sans"', "system-ui", "sans-serif"],

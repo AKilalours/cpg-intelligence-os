@@ -1,22 +1,49 @@
 import { api } from "@/lib/api";
 import { count } from "@/lib/format";
-import type { DatasetStatus } from "@/lib/types";
+import type { DatasetStatus, ReviewQueueItem } from "@/lib/types";
+import Link from "next/link";
 import { Cmd, Notice, PageHeader, Section } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function DocumentsPage() {
-  const res = await api<DatasetStatus[]>("/api/datasets");
+  const [res, queue] = await Promise.all([
+    api<DatasetStatus[]>("/api/datasets"),
+    api<ReviewQueueItem[]>("/api/documents/queue"),
+  ]);
   return (
     <>
       <PageHeader
         title="Documents"
-        purpose="Turn invoices, remittances, deduction notices, and promotion agreements into validated, typed records with a source for every field."
+        purpose="Invoices read by three readers; a routing rule accepts what is safe, and people check the rest. Every review is attributed and kept."
       />
-      <Section title="Document extraction">
-        <Notice kind="planned" title="Arrives in Phase 2">
-          Extraction runs on DocILE business documents and FATURA invoices, scored per field and per layout.
-        </Notice>
+      <Section title="Review queue" note="Documents with fields the routing rule would not accept on its own">
+        {!queue.ok ? (
+          <Notice kind="error" title="Review queue unavailable">{queue.error}</Notice>
+        ) : queue.data.length === 0 ? (
+          <Notice kind="empty" title="Nothing waiting for a person">
+            Store routing decisions first: <Cmd>make decide-docs ROUND=5</Cmd>
+          </Notice>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="ledger bg-sheet">
+              <thead>
+                <tr><th>Document</th><th className="num">Waiting</th><th className="num">Accepted</th><th>Fields to check</th><th>Rule</th></tr>
+              </thead>
+              <tbody>
+                {queue.data.map((q) => (
+                  <tr key={q.source_document_id}>
+                    <td><Link className="underline underline-offset-4" href={`/documents/${q.source_document_id}`}>{q.source_document_id}</Link></td>
+                    <td className="num">{count(q.open_fields)}</td>
+                    <td className="num">{count(q.accepted_fields)}</td>
+                    <td>{q.review_fields.map((f) => f.replace(/_/g, " ")).join(", ")}</td>
+                    <td className="text-sm text-muted">{q.policy_version}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Section>
       <Section title="Source data readiness" note="Every dataset needs accepted terms and downloaded files before it loads">
         {!res.ok ? (

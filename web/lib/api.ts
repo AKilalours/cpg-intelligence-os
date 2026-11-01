@@ -20,3 +20,32 @@ export async function api<T>(path: string): Promise<ApiResult<T>> {
     };
   }
 }
+
+// Server-side POST for human reviews. The API records them as the database's reviewer role.
+export async function apiPost<T>(path: string, body: unknown): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let detail = text.slice(0, 300);
+      try {
+        detail = (JSON.parse(text) as { detail?: string }).detail ?? detail;
+      } catch {
+        // not JSON: keep the text
+      }
+      return { ok: false, error: detail };
+    }
+    return { ok: true, data: (await res.json()) as T };
+  } catch {
+    return { ok: false, error: `Can't reach the API at ${BASE}. Start it with: make api` };
+  }
+}
+
+export function apiBase(): string {
+  return BASE;
+}

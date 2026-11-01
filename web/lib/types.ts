@@ -181,3 +181,42 @@ export interface EvaluationReport<T = Phase2aReport> {
   created_at: string;
   body: T;
 }
+
+// ---------- document review (fix 4) ----------
+
+export interface ReviewQueueItem {
+  source_document_id: number;
+  policy_version: string;
+  open_fields: number;
+  accepted_fields: number;
+  review_fields: string[];
+}
+
+export interface FieldReview {
+  action: "approve" | "correct";
+  value: string | null;
+  reviewer: string;
+  at: string;
+}
+
+export interface FieldDecision {
+  field: string;
+  kind: string | null;
+  status: "accepted" | "review";
+  value: string | null;
+  reason: string;
+  candidates: Record<string, string>;
+  bbox: [number, number, number, number] | null; // [x0, y0, x1, y1] in [0, 1], top-left origin
+  review: FieldReview | null;
+}
+
+export interface DocumentView {
+  source_document_id: number;
+  storage_key: string;
+  source_type: string;
+  mime_type: string | null;
+  policy_version: string | null;
+  fields: FieldDecision[];
+  open_fields: number;
+  image_url: string;
+}
