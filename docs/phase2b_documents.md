@@ -502,3 +502,29 @@ on complete invoices 139 of 210 (66%), incomplete invoices to a person 90 of
 90, accepted values 3,664 of 3,667, fields sent to a person per invoice 0.96 ->
 0.78. **Round 5** (30 per layout, disjoint from rounds 1-4) scores 1.4 once;
 it needs the spending cap raised (about $1.32; $0.18 is left under $5).
+
+## Round 5: the one-time score of routing 1.4 (report 23)
+
+300 fresh holdout invoices (disjoint from rounds 1-4). The first attempt
+stopped being useful when the API credit ran out at call 71 (decision 67);
+the 70 recorded answers replayed and the remaining 230 calls were made after
+a top-up. Spend to date $6.19.
+
+| | Round 4, rule 1.3 | **Round 5, rule 1.4** |
+|---|---|---|
+| Complete invoices with no person needed | 130 / 210 (62%) | **146 / 210 (69.5%, CI 63.0-75.4%)** |
+| Incomplete invoices sent to a person | 90 / 90 | **90 / 90** |
+| All invoices with no person needed | 43.3% | 48.7% |
+| Accepted values correct | 99.92% (3 wrong) | **99.89% (3,662 / 3,666, CI 99.72-99.96%)** |
+| Fields sent to a person per invoice | 0.98 | **0.78** |
+
+The new acceptance ("two models read the same value; OCR could not read
+it") was used 72 times and was right 72 times. The 4 wrong acceptances:
+- a subtotal all three readers read as 1,094.02 that the key does not have
+  (probably a key gap; not checked against the image yet);
+- two tax values accepted as absent, no reader having found anything;
+- one buyer name where the local model and Claude agreed against OCR + rules,
+  which was right. This is the third such case in rounds 4-5 (decision 64):
+  the next rule question is whether a name on which OCR + rules disagrees
+  with both models should go to a person. 80 unseen invoices per layout
+  remain if that is ever scored.
