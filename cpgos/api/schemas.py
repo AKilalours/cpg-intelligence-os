@@ -134,11 +134,15 @@ class CashAppItem(BaseModel):
     suggested_invoice: str | None
     confidence: Decimal | None
     explanation: dict | None
+    invoice_amount: Decimal | None = None        # the suggested invoice, side by side with the payment
+    invoice_date: date | None = None
 
 
 class CashAppSummary(BaseModel):
     cash_lines: int
     auto_applied: int
+    approved_by_person: int = 0
+    rejected_by_person: int = 0
     in_review: int
     unmatched: int
     applied_amount: Decimal

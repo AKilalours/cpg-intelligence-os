@@ -44,3 +44,18 @@ export function rateText(r: { k: number; n: number; ci95: [number, number] | nul
   const ci = r.ci95 ? ` (95% CI ${pct(r.ci95[0])} to ${pct(r.ci95[1])})` : "";
   return `${count(r.k)} of ${count(r.n)}${ci}`;
 }
+
+// Money as integer cents: sums and differences never touch a float.
+export function toCents(dec: string | null | undefined): bigint {
+  if (!dec) return 0n;
+  const neg = dec.startsWith("-");
+  const [i, f = ""] = (neg ? dec.slice(1) : dec).split(".");
+  const c = BigInt(i || "0") * 100n + BigInt((f + "00").slice(0, 2));
+  return neg ? -c : c;
+}
+
+export function fromCents(c: bigint): string {
+  const neg = c < 0n;
+  const a = neg ? -c : c;
+  return `${neg ? "-" : ""}${a / 100n}.${String(a % 100n).padStart(2, "0")}`;
+}

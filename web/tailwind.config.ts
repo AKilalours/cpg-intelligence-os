@@ -26,8 +26,16 @@ const config: Config = {
       keyframes: {
         land: { "0%": { opacity: "0", transform: "scale(1.25)" }, "100%": { opacity: "1", transform: "scale(1)" } },
         sweep: { "0%": { top: "0%" }, "100%": { top: "100%" } },
+        grow: { "0%": { transform: "scaleX(0)" }, "100%": { transform: "scaleX(1)" } },
+        rise: { "0%": { opacity: "0", transform: "translateY(10px)" }, "100%": { opacity: "1", transform: "none" } },
+        draw: { "0%": { strokeDashoffset: "var(--len)" }, "100%": { strokeDashoffset: "var(--off)" } },
+        flow: { "0%": { strokeDashoffset: "24" }, "100%": { strokeDashoffset: "0" } },
       },
-      animation: { land: "land 260ms ease-out both", sweep: "sweep 1.4s linear infinite" },
+      animation: {
+        land: "land 260ms ease-out both", sweep: "sweep 1.4s linear infinite",
+        grow: "grow 900ms cubic-bezier(.2,.7,.2,1) both", rise: "rise 320ms ease-out both",
+        draw: "draw 900ms cubic-bezier(.2,.7,.2,1) both", flow: "flow 900ms linear infinite",
+      },
     },
   },
   plugins: [],

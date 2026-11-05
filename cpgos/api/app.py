@@ -223,20 +223,27 @@ def cash_application(limit: int = Query(50, ge=1, le=500), conn: psycopg.Connect
                SELECT r.remittance_line_id FROM remittance_line r
                WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0),
            latest AS (
-               SELECT DISTINCT ON (remittance_line_id) remittance_line_id, status, applied_amount
-               FROM cash_application ORDER BY remittance_line_id, cash_application_id DESC)
+               SELECT DISTINCT ON (remittance_line_id) remittance_line_id, cash_application_id, status, applied_amount
+               FROM cash_application ORDER BY remittance_line_id, cash_application_id DESC),
+           people AS (
+               SELECT (payload->>'cash_application_id')::bigint AS cash_application_id, action FROM audit_event
+               WHERE actor_type = 'human' AND action IN ('cash_approve', 'cash_reject'))
            SELECT count(*) AS cash_lines,
-                  count(*) FILTER (WHERE l.status = 'approved') AS auto_applied,
+                  count(*) FILTER (WHERE l.status = 'approved' AND p.action IS NULL) AS auto_applied,
+                  count(*) FILTER (WHERE p.action = 'cash_approve') AS approved_by_person,
+                  count(*) FILTER (WHERE p.action = 'cash_reject') AS rejected_by_person,
                   count(*) FILTER (WHERE l.status = 'proposed') AS in_review,
                   count(*) FILTER (WHERE l.status IS NULL OR l.status NOT IN ('approved', 'proposed')) AS unmatched,
                   coalesce(sum(l.applied_amount) FILTER (WHERE l.status = 'approved'), 0) AS applied_amount
-           FROM cash c LEFT JOIN latest l USING (remittance_line_id)""").fetchone()
+           FROM cash c LEFT JOIN latest l USING (remittance_line_id)
+           LEFT JOIN people p ON p.cash_application_id = l.cash_application_id""").fetchone()
     unapplied = conn.execute(
         """SELECT (SELECT coalesce(sum(amount), 0) FROM payment)
                 - (SELECT coalesce(sum(applied_amount), 0) FROM cash_application WHERE status = 'approved') AS u""").fetchone()["u"]
     review = conn.execute(
         """SELECT r.remittance_line_id, p.payment_reference, p.payment_date, r.raw_invoice_ref, r.net_amount AS amount,
-                  i.invoice_number AS suggested_invoice, c.confidence, c.match_explanation AS explanation
+                  i.invoice_number AS suggested_invoice, c.confidence, c.match_explanation AS explanation,
+                  i.total_amount AS invoice_amount, i.invoice_date
            FROM cash_application c
            JOIN remittance_line r USING (remittance_line_id) JOIN payment p USING (payment_id)
            LEFT JOIN invoice i USING (invoice_id)
@@ -411,3 +418,30 @@ def routing_history(conn: psycopg.Connection = Depends(get_conn)):
     for x in out:
         latest[x["policy"]] = x
     return sorted(latest.values(), key=lambda x: x["report_id"])
+
+
+# ---------- finance decisions (fix 4) ----------
+
+from cpgos.finance import review as finance_review  # noqa: E402
+
+
+class DecisionIn(BaseModel):
+    action: str
+    reviewer: str
+    note: str | None = None
+
+
+@app.post("/api/cash/{remittance_line_id}/review")
+def cash_review(remittance_line_id: int, body: DecisionIn, conn: psycopg.Connection = Depends(get_write_conn)):
+    try:
+        return finance_review.decide_cash(conn, remittance_line_id, body.action, body.reviewer, body.note)
+    except finance_review.DecisionError as e:
+        raise HTTPException(400, str(e)) from None
+
+
+@app.post("/api/deductions/{deduction_id}/review")
+def deduction_review(deduction_id: int, body: DecisionIn, conn: psycopg.Connection = Depends(get_write_conn)):
+    try:
+        return finance_review.decide_deduction(conn, deduction_id, body.action, body.reviewer, body.note)
+    except finance_review.DecisionError as e:
+        raise HTTPException(400, str(e)) from None

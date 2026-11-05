@@ -121,11 +121,15 @@ export interface CashAppItem {
   suggested_invoice: string | null;
   confidence: Decimal | null;
   explanation: Record<string, unknown> | null;
+  invoice_amount?: Decimal | null;
+  invoice_date?: string | null;
 }
 
 export interface CashAppSummary {
   cash_lines: number;
   auto_applied: number;
+  approved_by_person: number;
+  rejected_by_person: number;
   in_review: number;
   unmatched: number;
   applied_amount: Decimal;
