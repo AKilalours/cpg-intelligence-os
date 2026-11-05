@@ -112,8 +112,8 @@ class FakeModel:
 
 def test_model_letters_are_used_only_when_every_number_traces(investigated):
     out = cases.write_letters(investigated, FakeModel(), progress=lambda m: None)
-    assert out["letters"] > 0 and out["rejected"] == out["letters"] // 3 and out["passed_number_check"] == out["letters"] - out["rejected"]
-    assert all(set(e["invented"]) == {"30", "99.99"} for e in out["examples"])
+    assert out["letters"] > 0 and out["rejected"] == out["letters"] // 3 and out["passed_all_checks"] == out["letters"] - out["rejected"]
+    assert all(set(e["problems"]) == {"30", "99.99"} for e in out["examples"])
     q = [r for r in cases.queue(investigated) if r["agent_action"] in ("dispute", "request")]
     sources = {cases.detail(investigated, r["case_id"])["letter"]["source"] for r in q}
     assert sources == {"model", "template"}                    # good drafts used, invented ones fell back

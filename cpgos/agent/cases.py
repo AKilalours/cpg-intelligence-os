@@ -128,7 +128,7 @@ def write_letters(conn, provider, limit: int | None = None, progress=print) -> d
         passed += not bad
         rejected += bool(bad)
         if bad and len(examples) < 10:
-            examples.append({"claim": r["claim_number"], "invented": bad})
+            examples.append({"claim": r["claim_number"], "problems": bad})
         with conn.transaction():
             conn.execute("SET LOCAL ROLE cpgos_agent")
             conn.execute("""INSERT INTO audit_event (case_id, actor_type, actor_id, action, payload, model_version, prompt_version)
@@ -137,7 +137,7 @@ def write_letters(conn, provider, limit: int | None = None, progress=print) -> d
                                                                      "model": f"{provider.name}:{provider.model}"}),
                           f"{provider.name}:{provider.model}", letter.PROMPT_VERSION))
         progress(f"[{i}/{len(todo)}] {r['claim_number']}: {'passed' if not bad else 'rejected ' + ', '.join(bad)}")
-    return {"letters": len(todo), "passed_number_check": passed, "rejected": rejected, "examples": examples,
+    return {"letters": len(todo), "passed_all_checks": passed, "rejected": rejected, "examples": examples,
             "model": f"{provider.name}:{provider.model}", "prompt": letter.PROMPT_VERSION}
 
 

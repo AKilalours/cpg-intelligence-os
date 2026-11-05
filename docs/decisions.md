@@ -653,3 +653,11 @@ drafts (11%): numbers right, meaning wrong. The honest result for prompt 1.1 is
 called passed), rejects such drafts in favour of the template, and prompt 1.2
 tells the model so and not to claim more than the evidence shows ("dropped like
 a promotion" is not "part of a promotion").
+
+## 85. Prompt 1.2 result: deadline mistakes 12 to 1, and the 1 is caught
+Full run, 105 letters: 104 pass both checks; R-0000591 asked for a document by
+a deadline that had passed, was rejected, and the template is shown. A read
+of a sample found no engine wording and no "part of a promotion" overclaim;
+some letters echo the instruction ("we will not be asking for anything by that
+date"), true but stilted, left as a style note rather than tuned further on
+the same 105 letters.

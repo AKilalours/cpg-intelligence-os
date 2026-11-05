@@ -140,6 +140,17 @@ Designed on California; scored once on Texas and Wisconsin (report 28, investiga
 | Claims left undecided | 13 named document requests (12 of those claims were valid) | 10 "needs evidence" |
 | Cost | 1 real over-claim asked about instead of disputed (a slower dispute, not a lost one) | |
 
+**Dispute and request letters** are drafted by a local model (qwen2.5-VL 7B through Ollama, no per-call
+cost) and used only if two deterministic checks pass: every number and date must trace to the case,
+and what the letter says about the dispute deadline must be true on the ledger date. Otherwise the
+template letter is used and the case screen says why.
+
+| 105 open dispute and request letters | Prompt 1.1 | Prompt 1.2 |
+|---|---|---|
+| Every number and date traceable | 105 of 105 | 105 of 105 |
+| Deadline described truthfully | **93 of 105** (12 asked for action by a date already past) | **104 of 105** |
+| Used as written | 93 | 104; the 1 failure falls back to the template |
+
 Both engine false disputes came from damaged records: a promotion missing from the calendar, and a
 promotion end date keyed a week early. In both, the shelf price showed the promotion was running,
 so the agent asked for the agreement instead of disputing. A price drop can stop a dispute; it can
