@@ -125,15 +125,63 @@ def cmd_evaluate(conn) -> int:
     return 0
 
 
+def cmd_agent_design(conn) -> int:
+    """Phase 3, design region (California) only: where the agent differs from the engine, with the truth.
+    Safe to rerun while building playbooks; the scoring region is not shown."""
+    from cpgos.agent import investigate as inv
+    from cpgos.agent.score import score
+    s = score(conn, inv.investigate(conn))
+    d = s["design_region"]
+    print(json.dumps({"agent": s["agent"], "design_region": d,
+                      "agent_differs_from_engine": [x for x in s["agent_differs_from_engine"] if x["region"] == "CA"]},
+                     indent=1, default=str))
+    return 0
+
+
+def cmd_agent_score(conn) -> int:
+    """Phase 3, scored once on Texas and Wisconsin per agent version; the cases and reasoning are saved."""
+    from psycopg.types.json import Jsonb
+    from cpgos.agent import investigate as inv
+    from cpgos.agent.score import score
+    done = conn.execute("SELECT report_id FROM eval.report WHERE kind = 'agent' AND body->>'agent' = %s",
+                        (inv.AGENT_VERSION,)).fetchone()
+    if done:
+        print(f"{inv.AGENT_VERSION} was already scored (report {done[0]}). A playbook change needs a new version;"
+              " scoring the same version twice would let it be tuned on the scoring region.")
+        return 1
+    findings = inv.investigate(conn)
+    inv.save(conn, findings)
+    s = score(conn, findings)
+    rid = conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES ('agent', %s, %s) RETURNING report_id",
+                       (code_version(), Jsonb(json.loads(json.dumps(s, default=str))))).fetchone()[0]
+    r = s["report_region"]
+    print(f"report {rid}: {inv.AGENT_VERSION} on {'+'.join(r['regions'])}, {r['claims']} claims")
+    print(f"  actions {r['actions']}")
+    print(f"  false disputes   agent {r['false_disputes']['k']}/{r['false_disputes']['n']}"
+          f"   engine {r['engine']['false_disputes']['k']}/{r['engine']['false_disputes']['n']}")
+    print(f"  false approvals  agent {r['false_approvals']['k']}/{r['false_approvals']['n']}"
+          f"   engine {r['engine']['false_approvals']['k']}/{r['engine']['false_approvals']['n']}")
+    print(f"  claims left undecided: engine {r['engine']['needs_evidence']}, agent requests {r['requests']['n']}"
+          f" (for claims that were valid {r['requests']['claim_was_valid']}, invalid {r['requests']['claim_was_invalid']})")
+    print(f"  disputes exact to the cent {r['disputes_exact_to_the_cent']['k']}/{r['disputes_exact_to_the_cent']['n']},"
+          f" recoverable disputed correctly ${r['recoverable_disputed_correctly']} of ${r['true_recoverable_total']}")
+    for x in s["agent_differs_from_engine"]:
+        if x["region"] in r["regions"]:
+            print(f"  differs: {x}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["world", "reconcile", "evaluate", "evidence", "restore-evidence"])
+    ap.add_argument("command", choices=["world", "reconcile", "evaluate", "evidence", "restore-evidence",
+                                        "agent-design", "agent-score"])
     args = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
         return {"world": cmd_world, "reconcile": cmd_reconcile, "evaluate": cmd_evaluate,
-                "evidence": cmd_evidence, "restore-evidence": cmd_restore_evidence}[args.command](conn)
+                "evidence": cmd_evidence, "restore-evidence": cmd_restore_evidence,
+                "agent-design": cmd_agent_design, "agent-score": cmd_agent_score}[args.command](conn)
 
 
 if __name__ == "__main__":

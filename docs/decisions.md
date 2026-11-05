@@ -558,3 +558,17 @@ the same thing (receipt line, invoice late fee, or promotion store, product
 and period) whatever its verdict, and any rejected claim lists them. The
 verdict still comes from the evidence; the link only strengthens the dispute.
 Both regression tests fail on the previous engine and pass on this one.
+
+## 75. The agent is judged on the evidence a supplier really has
+Before building the agent, its role was checked: it could still read the
+undamaged originals under the evidence overlay, each claim's true store, the
+damage report, and the M5 units the retailer POS is derived from. An agent on
+that role would have scored well by reading the answer. 0019 and 0020 give it
+the engine's view plus weekly shelf prices, which a supplier really sees;
+tests prove each hidden table is unreadable (7 fail without 0019).
+
+## 76. A price drop may stop a dispute, never start an approval
+When no agreement is on file, a promotion-level shelf price in the claimed
+weeks means one probably ran: the agent asks for it instead of disputing, since
+a lost dispute costs a relationship and analyst time. The same signal is never
+enough to accept, because a price drop does not say what allowance was agreed.

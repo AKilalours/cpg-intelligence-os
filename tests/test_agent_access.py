@@ -7,10 +7,12 @@ import pytest
 
 HIDDEN = ["SELECT 1 FROM retailer_pos_week", "SELECT 1 FROM receipt_line", "SELECT 1 FROM shipment",
           "SELECT 1 FROM promotion", "SELECT 1 FROM promotion_sku", "SELECT 1 FROM finance_evidence",
-          "SELECT store_id FROM deduction", "SELECT 1 FROM eval.gt_deduction", "SELECT 1 FROM eval.gt_remittance_alloc"]
+          "SELECT store_id FROM deduction", "SELECT 1 FROM eval.gt_deduction", "SELECT 1 FROM eval.gt_remittance_alloc",
+          "SELECT units FROM sales_observation", "SELECT 1 FROM sales_series_stats"]
 VISIBLE = ["SELECT 1 FROM observed.retailer_pos_week", "SELECT 1 FROM observed.receipt_line",
            "SELECT 1 FROM observed.shipment", "SELECT 1 FROM observed.promotion", "SELECT 1 FROM observed.deduction",
-           "SELECT claim_number, amount FROM deduction", "SELECT 1 FROM invoice", "SELECT 1 FROM trade_term"]
+           "SELECT claim_number, amount FROM deduction", "SELECT 1 FROM invoice", "SELECT 1 FROM trade_term",
+           "SELECT obs_date, shelf_price FROM sales_observation", "SELECT 1 FROM deduction_assessment"]
 
 
 @pytest.mark.parametrize("sql", HIDDEN)
