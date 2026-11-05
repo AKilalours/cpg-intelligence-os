@@ -388,3 +388,26 @@ def document_review(document_id: int, field_name: str, body: ReviewIn,
         return review.submit(conn, document_id, field_name, body.action, body.reviewer, body.value, body.note)
     except review.ReviewError as e:
         raise HTTPException(400, str(e)) from None
+
+
+@app.get("/api/evaluation/routing-history")
+def routing_history(conn: psycopg.Connection = Depends(get_conn)):
+    """Every complete one-time holdout score of the invoice routing rule, oldest first: the story of the rule."""
+    out = []
+    for r in conn.execute("""SELECT report_id, created_at, body FROM eval.report WHERE kind = 'routing_holdout'
+                             ORDER BY report_id"""):
+        b = r["body"]
+        w = b.get("with_third_reader") or b.get("with_claude") or {}
+        if not isinstance(w, dict) or "accepted_correct" not in w:
+            continue                                   # incomplete runs are never shown as results
+        out.append({"report_id": r["report_id"], "created_at": r["created_at"], "policy": b.get("policy"),
+                    "rounds": b.get("rounds"), "invoices": b.get("invoices"),
+                    "accepted_correct": w["accepted_correct"], "straight_through": w["straight_through"],
+                    "straight_through_complete": w.get("straight_through_complete_invoices"),
+                    "review_fields_per_invoice": w.get("review_fields_per_invoice"),
+                    "wrong": (w["accepted_correct"]["n"] - w["accepted_correct"]["k"])})
+    # One result per rule version: the latest complete score of each.
+    latest = {}
+    for x in out:
+        latest[x["policy"]] = x
+    return sorted(latest.values(), key=lambda x: x["report_id"])

@@ -184,3 +184,15 @@ def test_a_stopped_database_says_so_instead_of_a_bare_500(monkeypatch):
     for path in ("/api/datasets", "/api/overview", "/api/documents/queue"):
         r = c.get(path)
         assert r.status_code == 503 and "make db" in r.json()["detail"], path
+
+
+def test_routing_history_skips_incomplete_runs_and_keeps_one_per_rule(client, conn):
+    def report(policy, k, n, complete=True):
+        w = {"accepted_correct": {"k": k, "n": n, "rate": k / n}, "straight_through": {"k": 1, "n": 2, "rate": 0.5}}
+        body = {"policy": policy, "invoices": 2, "with_third_reader": w if complete else {"incomplete": "3 calls failed"}}
+        conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES ('routing_holdout', 't', %s)", (Jsonb(body),))
+    report("two-readers-1.1.0", 98, 100)
+    report("two-readers-1.2.0", 1, 2, complete=False)
+    report("two-readers-1.2.0", 99, 100)
+    h = client.get("/api/evaluation/routing-history").json()
+    assert [(x["policy"], x["wrong"]) for x in h] == [("two-readers-1.1.0", 2), ("two-readers-1.2.0", 1)]

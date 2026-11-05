@@ -3,6 +3,7 @@ import { count, money, pct, rateText, when } from "@/lib/format";
 import type { CashAppScore, EvaluationReport, IngestionRun, Phase2aReport } from "@/lib/types";
 import { Cmd, Figure, Notice, PageHeader, Section, Status } from "@/components/ui";
 import { DeductionScores } from "./DeductionScores";
+import { RuleStory, type RulePoint } from "./RuleStory";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,10 @@ const NOISE: Record<string, string> = {
 };
 
 export default async function EvaluationPage() {
-  const [report, runs] = await Promise.all([
+  const [report, runs, story] = await Promise.all([
     api<EvaluationReport | null>("/api/evaluation/latest?kind=phase2a"),
     api<IngestionRun[]>("/api/ingestion-runs?limit=100"),
+    api<RulePoint[]>("/api/evaluation/routing-history"),
   ]);
   const rejected = runs.ok ? runs.data.filter((r) => r.status === "rejected") : [];
   return (
@@ -26,6 +28,7 @@ export default async function EvaluationPage() {
         title="Proof"
         purpose="Every number scored against a hidden answer key, with its uncertainty."
       />
+      {story.ok ? <RuleStory points={story.data} /> : null}
       {!report.ok ? (
         <Notice kind="error" title="Evaluation unavailable">{report.error}</Notice>
       ) : report.data === null ? (
@@ -37,13 +40,11 @@ export default async function EvaluationPage() {
       ) : (
         <Reconciliation r={report.data} />
       )}
-      <Section title="Rejected data loads" note="Batches refused by a data contract">
+      <Section title="Rejected data loads">
         {!runs.ok ? (
           <Notice kind="error" title="Load history unavailable">{runs.error}</Notice>
         ) : rejected.length === 0 ? (
-          <Notice kind="empty" title="No rejected loads">
-            When a source changes format, the batch is refused and shows up here with its reason.
-          </Notice>
+          <p className="text-sm text-muted">None: every batch passed its data contract.</p>
         ) : (
           <table className="ledger bg-sheet">
             <thead><tr><th>Run</th><th>File</th><th>Status</th><th className="num">Quarantined</th><th>Reason</th></tr></thead>
@@ -70,10 +71,8 @@ function Reconciliation({ r }: { r: EvaluationReport }) {
   const d = b.deductions;
   return (
     <>
-      <p className="-mt-4 mb-8 max-w-3xl text-sm text-muted">
-        Report #{r.report_id}, {when(r.created_at)}, code {r.code_version}. World: {b.world?.description}, ledger date {b.world?.as_of}.
-        Data origin: real M5 sales and published KeHE terms, with payments and deductions generated on top
-        (real_anchored_generated). The engines run as a database role that cannot read the answer key.
+      <p className="mb-6 text-sm text-muted">
+        Report #{r.report_id} · {when(r.created_at)} · real M5 sales, generated payments · engines cannot read the answer key
       </p>
 
       <Section title="Cash application" note={`Automatic posting at confidence ≥ ${b.cash_application.auto_threshold}`}>
@@ -128,12 +127,8 @@ function Reconciliation({ r }: { r: EvaluationReport }) {
         <DeductionScores d={d} />
       </Section>
 
-      <Section title="Recovery with limited review time" note="Same validator, different order of work">
-        <p className="mb-4 max-w-3xl text-sm text-muted">
-          Each week an analyst can review a fixed number of claims. Claims below {money(String(b.assumptions.dispute_handling_cost))} are
-          not worth a dispute; claims within {b.assumptions.urgent_days} days of their deadline jump the queue.
-          Assumption shared by every policy: {b.assumptions.dispute_win}.
-        </p>
+      <Section title="Dollars recovered with limited review time">
+        <p className="mb-4 text-sm text-muted">Same checker, three orders of work, fixed reviews per week.</p>
         <table className="ledger bg-sheet">
           <thead>
             <tr><th className="num">Reviews a week</th><th className="num">Engine order</th><th className="num">Largest first</th><th className="num">Oldest first</th><th className="num">Lost to deadlines (engine / largest / oldest)</th></tr>
