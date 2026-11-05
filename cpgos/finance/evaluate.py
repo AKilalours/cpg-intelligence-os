@@ -60,6 +60,8 @@ def score_cash_application(conn: psycopg.Connection, matches: list[Match]) -> di
             "share": round(float(sum((m.amount for m, t in auto if correct(m, t)), Decimal(0)) / total_dollars), 4) if total_dollars else None,
         },
     }
+    # Lines a person must confirm only because another open invoice has the same amount (decision 72).
+    out["held_for_twin_amount"] = sum("caution" in (m.explanation or {}) for m, _ in scored)
     by_noise = defaultdict(lambda: {"n": 0, "auto_correct": 0, "auto_wrong": 0, "review": 0, "unmatched": 0})
     for m, t in scored:
         b = by_noise[t[2]]
@@ -109,10 +111,12 @@ def score_deductions(conn: psycopg.Connection, assessments: list[deductions.Asse
     store = dict(conn.execute("SELECT deduction_id, store_id FROM deduction"))     # the true store (records are never altered)
     region = {sid: code[:2] for sid, code in conn.execute("SELECT store_id, external_code FROM store")}
     scored = [(a, truth[a.deduction_id]) for a in assessments if a.deduction_id in truth]
-    by_reason = defaultdict(lambda: {"n": 0, "verdict_correct": 0, "needs_evidence": 0, "true_recoverable": Decimal(0)})
+    by_reason = defaultdict(lambda: {"n": 0, "verdict_correct": 0, "needs_evidence": 0, "named_duplicate": 0,
+                                     "true_recoverable": Decimal(0)})
     for a, t in scored:
         b = by_reason[t[2]]
         b["n"] += 1
+        b["named_duplicate"] += a.rule.endswith("_duplicate")
         b["needs_evidence"] += a.verdict == "needs_evidence"
         b["verdict_correct"] += a.verdict != "needs_evidence" and (a.verdict == "valid") == t[0]
         b["true_recoverable"] += t[1]

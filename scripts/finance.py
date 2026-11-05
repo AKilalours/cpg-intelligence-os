@@ -102,6 +102,15 @@ def cmd_evaluate(conn) -> int:
           f"  baseline {base['false_match_rate']['k']}/{base['auto_applied']['k']}")
     print(f"                  dollars posted correctly without a person: full {ca['dollars_auto_applied_correctly']['share']}"
           f"  baseline {base['dollars_auto_applied_correctly']['share']}")
+    sp = ca["by_noise"].get("deducted_at_payment")
+    if sp:
+        print(f"                  short-pays explained on the line: {sp['n']}, posted automatically and right {sp['auto_correct']},"
+              f" wrong {sp['auto_wrong']}, sent to a person {sp['review']}")
+    print(f"                  held for a person because another open invoice has the same amount: {ca.get('held_for_twin_amount', 0)}")
+    dup = d["by_reason"].get("duplicate")
+    if dup:
+        print(f"deductions        duplicates in the answer key: {dup['n']}, rejected {dup['verdict_correct']},"
+              f" named as a duplicate with the earlier claim {dup['named_duplicate']}, needs evidence {dup['needs_evidence']}")
     for name in ("design_region", "report_region"):
         b = d[name]
         print(f"deductions {name} {'+'.join(b['regions'])}: {b['deductions']} claims, needs evidence {b['needs_evidence']['k']},"

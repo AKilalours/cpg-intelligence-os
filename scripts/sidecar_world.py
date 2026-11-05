@@ -3,7 +3,7 @@
 The main database holds one world plus the document work (decisions, reviews, and recorded model
 answers that cost money), and a world can only be built once per database. So a new generator is
 scored next door: this creates `<main name>_world12` on the same server, migrates it, loads M5,
-builds the world, reconciles, and evaluates, all with the side database's address passed to the
+builds the world, degrades its evidence as in the main world, reconciles, and evaluates, all with the side database's address passed to the
 usual make targets. The address is derived from CPGOS_DATABASE_URL and never printed.
 
     make world-sidecar            # build and score once
@@ -18,7 +18,9 @@ import sys
 from urllib.parse import urlsplit, urlunsplit
 
 SUFFIX = "_world12"
-STEPS = ["migrate", "load-m5", "finance-world", "reconcile", "eval-recon"]
+# finance-evidence makes the evidence imperfect, as in the main world; without it the side world is
+# cleaner than the main one and its deduction scores are not comparable (found 2026-11-05).
+STEPS = ["migrate", "load-m5", "finance-world", "finance-evidence", "reconcile", "eval-recon"]
 
 
 def sibling(url: str, suffix: str = SUFFIX) -> tuple[str, str, str]:

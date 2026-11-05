@@ -535,3 +535,16 @@ the match is now suggested at 0.85 for a person to confirm. A wrong posting
 marks the wrong invoice paid and sends collections after a customer who
 paid; the coverage cost is visible in the precision-coverage curve, and must
 be read on the full world (the 3-product test world exaggerates twins).
+
+## 73. Names stay with a person: rule 1.5 rejected on evidence
+`make names-analysis` (development rounds 1 to 4, 910 invoices, 1,820 name
+fields, no model calls) measured accepting a name the local model and Claude
+read alike when OCR does not confirm it: 732 such fields, 728 right (99.45%,
+95% CI 98.60-99.79%). The bar is the lower bound rule 1.4 holds on accepted
+values in round 5, 99.72%; the candidate's lower bound is below it, so it would
+lower accuracy and is not proposed. The four misses were not misspellings:
+both models read a different person ("Martha Elliott" for "Jason Holland").
+These invoices print two parties, buyer and bill-to, and the models took the
+wrong one. Requiring the name to be found on the page filtered nothing, since
+the wrong name is printed there too. Role confusion, not reading, is the
+failure; it needs the field's position or its printed label, not a second vote.

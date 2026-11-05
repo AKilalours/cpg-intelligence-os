@@ -89,3 +89,13 @@ def test_a_reference_quoting_the_wrong_invoice_with_a_twin_amount_is_not_auto_po
     twins = [m for m in matches if "caution" in m.explanation]
     assert twins and all(m.decision == "review" and m.confidence < 0.90 for m in twins)
     assert any(truth[m.remittance_line_id][1] == "wrong_ref" for m in twins)
+
+
+def test_the_report_counts_twins_and_named_duplicates(conn):
+    from cpgos.finance.evaluate import score_deductions
+    _world(conn, p_deduct_at_payment=1.0, p_double_dip=1.0, p_promo_unsupported=1.0, p_false_late_fee=0.3)
+    matches = cashapp.match_all(conn, "full")
+    s = score_cash_application(conn, matches)
+    assert s["held_for_twin_amount"] == sum("caution" in m.explanation for m in matches)
+    dup = score_deductions(conn, deductions.assess_all(conn))["by_reason"]["duplicate"]
+    assert dup["n"] > 0 and dup["named_duplicate"] > 0 and dup["named_duplicate"] <= dup["verdict_correct"]

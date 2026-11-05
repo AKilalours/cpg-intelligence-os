@@ -438,7 +438,10 @@ def cmd_decide(conn, split: str) -> int:
         return 1
     n = review.save_decisions(conn, res["decisions"], routing.POLICY_VERSION, res["inputs"])
     q = review.queue(conn, 10_000)
-    print(json.dumps({"documents": len(ids), "decisions_stored": n, "policy": routing.POLICY_VERSION,
+    stored = conn.execute("SELECT count(*) FROM routing_input WHERE policy_version = %s AND source_document_id = ANY(%s)",
+                          (routing.POLICY_VERSION, ids)).fetchone()[0]
+    print(json.dumps({"documents": len(ids), "decisions_stored": n, "replayable_inputs": f"{stored} of {len(ids)}",
+                      "policy": routing.POLICY_VERSION,
                       "documents_waiting_for_review": len(q)}, indent=1))
     return 0
 

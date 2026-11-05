@@ -93,8 +93,8 @@ engines by a database role). Details and caveats:
 
 | | This engine | Baseline |
 |---|---|---|
-| Wrong automatic cash postings | **0 of 875** (95% CI 0.0% to 0.4%) | 5 of 876 (exact reference only) |
-| Cash dollars posted correctly with no person | **90.2%** | 88.4% |
+| Wrong automatic cash postings | **0 of 868** (95% CI 0.0% to 0.4%) | 5 of 876 (exact reference only) |
+| Cash dollars posted correctly with no person | **89.5%** (90.2% before matches with a same-amount twin invoice went to a person, decision 72) | 88.4% |
 | Cash lines left with no suggestion | **0** | 108 |
 | Deductions on imperfect evidence (report region): invalid claims approved | **0 of 39** | |
 | Valid claims disputed | 2 of 121 (calendar gaps the Phase 3 agent will read past) | |
@@ -125,6 +125,7 @@ On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):
 | Tier 1, never-seen layouts: precision / coverage | **98.1% / 84.0%** (seller names left to the models) |
 | Full cascade on never-seen layouts: complete invoices with no human needed | **69.5%** of 210 (rule 1.4, round 5, scored once); all 90 invoices missing a required field sent to a person |
 | Accepted values that were correct (round 5) | **3,662 of 3,666 (99.89%, CI 99.72-99.96%)**; $0.0044 per invoice |
+| Rule 1.5 (accept names two models agree on) | **Rejected on evidence**: 728 of 732 right on development rounds, lower bound 98.6% below the 99.72% bar; the misses are the other party printed on the page (buyer vs bill-to), which a page check cannot catch (decision 73) |
 | Fields a reviewer checks per invoice | 0.78 (was 0.98 under rule 1.3) |
 
 On CORD (real photographed receipts, line items; rule frozen on validation, test scored once):
