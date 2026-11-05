@@ -33,6 +33,16 @@ app.add_middleware(
 )
 
 
+DB_DOWN = "The database isn't running. Start it with: make db"
+
+
+@app.exception_handler(psycopg.OperationalError)
+def database_unreachable(_request, exc: psycopg.OperationalError):
+    """A stopped database used to surface as a bare 500 on every page. Say what is wrong and how to fix it."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=503, content={"detail": DB_DOWN})
+
+
 def get_write_conn() -> Iterator[psycopg.Connection]:
     """For human reviews only; the review code switches to the reviewer role inside its transaction."""
     url = config.get("CPGOS_DATABASE_URL")

@@ -46,6 +46,13 @@ ensure_node() {
 
 case "$kind" in
   api)
+    # The database runs in Docker, which does not come back by itself after a restart or sleep.
+    # Every page then failed with a bare 500 (2026-11-04). Start it first; dev_db.sh is safe to re-run.
+    db_port="$(env_get CPGOS_DB_PORT)"; db_port="${db_port:-5432}"
+    if ! (exec 3<>"/dev/tcp/127.0.0.1/$db_port") 2>/dev/null; then
+      echo "The database is not running. Starting it (same as: make db)..."
+      bash scripts/dev_db.sh
+    fi
     echo "API: http://localhost:$api_port/api/health"
     CPGOS_CORS_ORIGINS="http://127.0.0.1:$web_port,http://localhost:$web_port" exec .venv/bin/python -m uvicorn cpgos.api.app:app --port "$api_port" --reload
     ;;

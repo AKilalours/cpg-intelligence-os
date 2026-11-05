@@ -174,3 +174,13 @@ def test_dataset_files_found_in_subfolders(client, tmp_path, monkeypatch):
     monkeypatch.setattr(type(spec), "raw_dir", property(lambda self: nested if self.key == "cord" else tmp_path / "none"))
     rows = {d["key"]: d for d in client.get("/api/datasets").json()}
     assert rows["cord"]["files_present"] is True
+
+
+def test_a_stopped_database_says_so_instead_of_a_bare_500(monkeypatch):
+    # 2026-11-04: Docker had stopped; every page showed "API returned 500: Internal Server Error".
+    from cpgos.api import app as api
+    monkeypatch.setenv("CPGOS_DATABASE_URL", "postgresql://nobody@127.0.0.1:1/none?connect_timeout=1")
+    c = TestClient(api.app, raise_server_exceptions=False)
+    for path in ("/api/datasets", "/api/overview", "/api/documents/queue"):
+        r = c.get(path)
+        assert r.status_code == 503 and "make db" in r.json()["detail"], path

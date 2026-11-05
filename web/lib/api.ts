@@ -10,7 +10,9 @@ export async function api<T>(path: string): Promise<ApiResult<T>> {
     const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
     if (!res.ok) {
       const body = await res.text();
-      return { ok: false, error: `API returned ${res.status} for ${path}: ${body.slice(0, 200)}` };
+      let detail = "";
+      try { detail = (JSON.parse(body) as { detail?: string }).detail ?? ""; } catch { /* not JSON */ }
+      return { ok: false, error: detail || `API returned ${res.status} for ${path}: ${body.slice(0, 200)}` };
     }
     return { ok: true, data: (await res.json()) as T };
   } catch {
