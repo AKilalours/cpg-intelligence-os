@@ -27,6 +27,19 @@ export function Workbench({ doc, nextId }: { doc: DocumentView; nextId: number |
   const [hover, setHover] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(fields.find((f) => f.status === "review" && !f.review)?.field ?? null);
   const [step, setStep] = useState<number | null>(null);    // null: show the decided page
+  const [natural, setNatural] = useState<[number, number] | null>(null);
+  const img = useRef<HTMLImageElement | null>(null);
+  // A cached image can finish loading before React attaches onLoad, so also read it once mounted.
+  useEffect(() => {
+    const el = img.current;
+    if (el?.complete && el.naturalWidth) setNatural([el.naturalWidth, el.naturalHeight]);
+  }, []);
+  // Where each field is on the page: the decision's box, else the first reader that located it.
+  const boxOf = useCallback((f: FieldDecision): Box | null =>
+    f.bbox ?? doc.readings.find((r) => r.field === f.field && r.bbox)?.bbox ?? null, [doc.readings]);
+  const imgSrc = `/documents/${doc.source_document_id}/image`;
+  const openField = fields.find((f) => f.field === open) ?? null;
+  const openBox = openField ? boxOf(openField) : null;
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stop = useCallback(() => { if (timer.current) clearInterval(timer.current); timer.current = null; }, []);
@@ -74,17 +87,26 @@ export function Workbench({ doc, nextId }: { doc: DocumentView; nextId: number |
         </div>
         <div className="relative overflow-hidden rounded-2xl border border-rule bg-sheet shadow-[0_8px_30px_rgba(31,42,36,0.08)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`/documents/${doc.source_document_id}/image`} alt={`Invoice ${doc.source_document_id}`} className="block w-full" />
+          <img ref={img} src={imgSrc} alt={`Invoice ${doc.source_document_id}`} className="block w-full"
+               onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
+          {decided && openBox ? (
+            <div className="pointer-events-none absolute rounded-sm transition-all duration-300"
+                 style={{ ...pos(pad(openBox, 0.006)), boxShadow: "0 0 0 9999px rgba(31,42,36,0.38)" }} />
+          ) : null}
+          {decided && openField ? doc.readings.filter((r) => r.field === openField.field && r.bbox).map((r) => (
+            <div key={`o-${r.reader}`} className={`pointer-events-none absolute rounded-sm border-2 border-dashed animate-land ${READER_TONE[r.reader]}`}
+                 style={pos(r.bbox!)} title={READER[r.reader]} />
+          )) : null}
           {playing ? <div className="pointer-events-none absolute inset-x-0 h-0.5 animate-sweep bg-sky/60" /> : null}
           {shown.map((s, i) => s.kind === "read" && s.r.bbox ? (
             <Mark key={`r${i}`} box={s.r.bbox} cls={decided ? "border-transparent" :
               s.r.reader === "rules" ? "border-ink/60" : "border-sky"} land />
           ) : null)}
-          {decided ? fields.map((f) => f.bbox ? (
+          {decided ? fields.map((f) => boxOf(f) ? (
             <button key={f.field} onClick={() => setOpen(f.field)} onMouseEnter={() => setHover(f.field)} onMouseLeave={() => setHover(null)}
                     aria-label={`${label(f.field)}: ${f.value ?? "no value"}`}
                     className={"absolute rounded-sm border-2 transition " + tone(f) + (hover === f.field || open === f.field ? " ring-4 ring-tag" : "")}
-                    style={pos(f.bbox)} />
+                    style={pos(boxOf(f)!)} />
           ) : null) : null}
         </div>
         <p className="mt-2 text-xs text-muted">j / k next field · r replay</p>
@@ -108,12 +130,15 @@ export function Workbench({ doc, nextId }: { doc: DocumentView; nextId: number |
                         className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
                   <span>
                     <span className="block text-xs text-muted">{label(f.field)}</span>
-                    <span className="font-serif text-xl tabular-nums">{f.review ? (f.review.value ?? "not on page") : (f.value ?? "?")}</span>
+                    {f.review || f.value !== null ? (
+                      <span className="font-serif text-xl tabular-nums">{f.review ? (f.review.value ?? "not on page") : f.value}</span>
+                    ) : <Split candidates={f.candidates} />}
                   </span>
                   <Pill f={f} />
                 </button>
                 {isOpen ? (
                   <div className="border-t border-rule px-4 pb-4 pt-3 text-sm">
+                    {boxOf(f) && natural ? <Loupe src={imgSrc} box={pad(boxOf(f)!, 0.02)} natural={natural} /> : null}
                     <div className="mb-3 flex flex-wrap gap-2">
                       {Object.entries(f.candidates).map(([k, v]) => (
                         <span key={k} className="rounded-md bg-paper px-2 py-1"><span className="text-muted">{READER[k] ?? k}</span> {v}</span>
@@ -152,4 +177,61 @@ function Pill({ f }: { f: FieldDecision }) {
   if (f.review) return <span className="rounded-full bg-ink px-2.5 py-0.5 text-xs text-paper">{f.review.action === "approve" ? "Approved" : "Corrected"}</span>;
   if (f.status === "accepted") return <span className="rounded-full bg-leaf/20 px-2.5 py-0.5 text-xs text-forest">Accepted</span>;
   return <span className="rounded-full bg-tag px-2.5 py-0.5 text-xs font-bold">Check</span>;
+}
+
+const READER_TONE: Record<string, string> = { rules: "border-paper", local_model: "border-sky", claude: "border-tag" };
+
+function pad(b: Box, m: number): Box {
+  return [Math.max(0, b[0] - m), Math.max(0, b[1] - m), Math.min(1, b[2] + m), Math.min(1, b[3] + m)];
+}
+
+// What each reader saw, side by side: the disagreement is the reason a person is asked.
+function Split({ candidates }: { candidates: Record<string, string> }) {
+  const e = Object.entries(candidates);
+  if (e.length === 0) return <span className="font-serif text-xl text-muted">Not found</span>;
+  const same = new Set(e.map(([, v]) => v)).size === 1;
+  return (
+    <span className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      {e.map(([k, v]) => (
+        <span key={k} className="tabular-nums">
+          <span className="font-serif text-xl">{v}</span>
+          <span className="ml-1 text-xs text-muted">{READER[k] ?? k}</span>
+        </span>
+      ))}
+      {!same ? <span className="rounded bg-debit/10 px-1.5 text-xs font-semibold text-debit">disagree</span> : null}
+    </span>
+  );
+}
+
+// A magnified crop of the field on the page, so the digits can be checked without squinting.
+// The crop is first grown to a readable shape (between 2.2:1 and 6:1) around the field, so the
+// image is scaled the same on both axes and never stretched.
+const MIN_CROP = 0.34;
+
+function Loupe({ src, box, natural }: { src: string; box: Box; natural: [number, number] }) {
+  const [nw, nh] = natural;
+  let [x0, y0, x1, y1] = box;
+  if (x1 - x0 < MIN_CROP) { const c = (x0 + x1) / 2; x0 = c - MIN_CROP / 2; x1 = c + MIN_CROP / 2; }  // at most ~3x zoom: sharp, with context
+  const ratio = ((x1 - x0) * nw) / ((y1 - y0) * nh);
+  const R = Math.min(Math.max(ratio, 2.2), 6);
+  if (ratio < R) {                                   // too tall: widen around the centre
+    const w = ((y1 - y0) * nh * R) / nw, c = (x0 + x1) / 2;
+    x0 = c - w / 2; x1 = c + w / 2;
+  } else if (ratio > R) {                            // too wide: add height around the centre
+    const h = ((x1 - x0) * nw) / (R * nh), c = (y0 + y1) / 2;
+    y0 = c - h / 2; y1 = c + h / 2;
+  }
+  const shift = (a: number, b: number): [number, number] => (b - a >= 1 ? [0, 1] : a < 0 ? [0, b - a] : b > 1 ? [1 - (b - a), 1] : [a, b]);
+  [x0, x1] = shift(x0, x1); [y0, y1] = shift(y0, y1);
+  const bw = x1 - x0, bh = y1 - y0;
+  return (
+    <div className="mb-3 overflow-hidden rounded-lg border border-rule bg-paper animate-rise" aria-label="Magnified view of the field">
+      <div className="w-full" style={{
+        aspectRatio: String((bw * nw) / (bh * nh)),
+        backgroundImage: `url(${src})`, backgroundRepeat: "no-repeat",
+        backgroundSize: `${100 / bw}% ${100 / bh}%`,
+        backgroundPosition: `${bw < 1 ? (x0 / (1 - bw)) * 100 : 0}% ${bh < 1 ? (y0 / (1 - bh)) * 100 : 0}%`,
+      }} />
+    </div>
+  );
 }
