@@ -64,7 +64,7 @@ export function RuleStory({ points }: { points: RulePoint[] }) {
         ))}
       </ol>
 
-      <p key={`l${i}`} className="mb-8 max-w-2xl animate-land font-serif text-2xl font-light md:text-3xl">{LESSON[p.policy] ?? short(p.policy)}</p>
+      <p key={`l${i}`} className="mb-8 max-w-2xl animate-land font-serif text-2xl font-light text-paper md:text-3xl">{LESSON[p.policy] ?? short(p.policy)}</p>
 
       <div className="grid gap-8 md:grid-cols-3">
         <Meter label="accepted values right" value={acc} text={`${acc.toFixed(2)}%`} min={97} sub={`${p.accepted_correct.k.toLocaleString()} of ${p.accepted_correct.n.toLocaleString()} · scale 97 to 100%`} />
@@ -93,7 +93,7 @@ function Meter({ label, value, text, min, sub }: { label: string; value: number;
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-paper/15">
         <div className="h-full rounded-full bg-tag transition-[width] duration-700 ease-out" style={{ width: `${w}%` }} />
       </div>
-      <div className="mt-1 text-xs text-paper/60">{sub}</div>
+      <div className="mt-1 text-xs text-paper/75">{sub}</div>
     </div>
   );
 }
