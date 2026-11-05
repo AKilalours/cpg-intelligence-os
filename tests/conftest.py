@@ -14,7 +14,7 @@ import psycopg
 import pytest
 
 from cpgos import config
-from cpgos.db import migrate
+from cpgos.db import DatabaseNotReady, migrate, wait_until_ready
 
 def _admin_url() -> str:
     """Where tests create throwaway databases.
@@ -52,6 +52,12 @@ def _isolate_processed_data(tmp_path, monkeypatch):
 
 @pytest.fixture(scope="session")
 def template_db():
+    # A database that is still starting up used to fail every database test at once
+    # (114 errors, 2026-11-04). Wait for it, and fail once with a clear message if it never comes.
+    try:
+        wait_until_ready(ADMIN_URL, timeout=float(os.environ.get("CPGOS_TEST_DB_WAIT", "30")))
+    except DatabaseNotReady as e:
+        pytest.exit(str(e), returncode=3)
     name = f"cpgos_tmpl_{uuid.uuid4().hex[:8]}"
     with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
         admin.execute(f'CREATE DATABASE "{name}"')

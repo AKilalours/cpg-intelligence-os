@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 import psycopg
@@ -20,6 +22,35 @@ MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "db" / "migrations"
 
 class MigrationDriftError(RuntimeError):
     """An already-applied migration file was modified."""
+
+
+class DatabaseNotReady(RuntimeError):
+    """Postgres did not accept a connection before the deadline."""
+
+
+def wait_until_ready(url: str, timeout: float = 30.0, interval: float = 0.5,
+                     connect: Callable[..., psycopg.Connection] = psycopg.connect,
+                     sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> int:
+    """Block until Postgres answers a real query, or raise DatabaseNotReady with what to do.
+
+    An open port is not a ready database: during start-up Postgres refuses connections with
+    "the database system is starting up". Every caller that runs right after a start (tests,
+    `make migrate`) goes through here instead of failing on the first try. Returns attempts used.
+    """
+    deadline, attempt, last = clock() + timeout, 0, None
+    while True:
+        attempt += 1
+        try:
+            with connect(url, connect_timeout=3) as c:
+                c.execute("SELECT 1")
+            return attempt
+        except psycopg.OperationalError as e:
+            last = e
+        if clock() >= deadline:
+            first = str(last).strip().splitlines()[0] if last else "no answer"
+            raise DatabaseNotReady(f"Postgres is not accepting connections after {timeout:.0f}s ({first}). "
+                                   "Start it with: make db") from last
+        sleep(interval)
 
 
 def database_url() -> str:
@@ -90,6 +121,7 @@ def migrate(conn: psycopg.Connection, migrations_dir: Path = MIGRATIONS_DIR) -> 
 
 
 if __name__ == "__main__":
+    wait_until_ready(database_url())
     with connect() as c:
         done = migrate(c)
         print("applied:", done or "nothing (up to date)")
