@@ -21,7 +21,7 @@ from psycopg.types.json import Jsonb
 from cpgos.agent.tools import Tools, price_drop_weeks
 from cpgos.finance.deductions import _iso_weeks, _verdict
 
-AGENT_VERSION = "investigator-1.0.0"
+AGENT_VERSION = "investigator-1.1.0"   # 1.1: a missing store is found by the units claimed, not only by the promotion
 
 REQUESTS = {   # what a supplier asks the retailer for, by engine rule
     "scan_back_pos_incomplete": "POS detail for the missing weeks",
@@ -112,11 +112,31 @@ def _infer_store(t: Tools, c: dict, f: Finding) -> Finding:
     """A scan-back with no store: if exactly one store ran a promotion for this item in that period, check it."""
     promos = t.promotions(c["partner_id"], c["sku_id"], c["period_start"], c["period_end"])
     stores = sorted({p["store_id"] for p in promos})
+    how = "the only store with a promotion for this item then"
+    if len(stores) > 1 and c["claimed_units"]:
+        # A scan-back claims the units a store sold. Of the stores that ran the promotion, keep those whose
+        # POS (as provided) shows exactly the claimed units over the promoted weeks of the period.
+        match = []
+        for st in stores:
+            weeks = t.pos_weeks(st, c["sku_id"], c["period_start"], c["period_end"])
+            sold = sum(int(w["units"]) for w in weeks
+                       if any(max(p["start_date"], c["period_start"]) <= w["week_start"] <=
+                              min(p["end_date"], c["period_end"]) for p in promos if p["store_id"] == st))
+            if sold == int(c["claimed_units"]):
+                match.append(st)
+        f.facts.append({"fact": "stores that ran the promotion", "value": len(stores)})
+        f.facts.append({"fact": "of those, stores whose POS shows exactly the claimed units",
+                        "value": f"{len(match)} ({c['claimed_units']} units)"})
+        if len(match) == 1:
+            how = f"the only one of {len(stores)} promoting stores whose POS shows the claimed units"
+            stores = match
+            promos = [p for p in promos if p["store_id"] == match[0]]
     if len(stores) != 1:
         f.action, f.request = "request", "the store this claim is for"
-        f.reason = f"the claim has no store and {len(stores)} stores ran a promotion for this item then"
+        f.reason = f"the claim has no store and {len(stores)} stores could be the one"
         return f
     store = stores[0]
+    promos = [p for p in promos if p["store_id"] == store]
     weeks = t.pos_weeks(store, c["sku_id"], c["period_start"], c["period_end"])
     earned, parts = Decimal(0), []
     for p in promos:
@@ -138,7 +158,7 @@ def _infer_store(t: Tools, c: dict, f: Finding) -> Finding:
                    {"deduction_id": c["deduction_id"], "inferred_store_id": store, "promotions": parts,
                     "already_accepted": str(taken), "amount": str(c["amount"])}, support)
     f.calculation_ids.append(cid)
-    f.facts += [{"fact": "store inferred", "value": f"the only store with a promotion for this item then (store {store})"},
+    f.facts += [{"fact": "store inferred", "value": f"{how} (store {store})"},
                 {"fact": "supported by POS at that store", "value": str(support)}]
     f.recoverable = recoverable
     if verdict == "valid":

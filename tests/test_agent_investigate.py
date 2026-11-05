@@ -123,3 +123,25 @@ def test_the_scoring_region_is_scored_once_per_agent_version(conn, capsys):
     assert cli.cmd_agent_score(conn) == 0
     assert "false disputes" in capsys.readouterr().out
     assert cli.cmd_agent_score(conn) == 1 and "already scored" in capsys.readouterr().out
+
+
+def test_with_several_promoting_stores_the_claimed_units_pick_the_store(conn):
+    # Found on California (R-0000278): 10 stores promoted the item, so 1.0 asked for the store. A scan-back
+    # claims the units one store sold; the store whose POS shows exactly those units is the one.
+    _world(conn, damage={"p_claim_store_missing": 1.0}, p_promo_overclaim=0.0)
+    other = conn.execute("SELECT store_id FROM store WHERE external_code = 'TX_1'").fetchone()[0]
+    for pid, in conn.execute("SELECT promotion_id FROM promotion").fetchall():
+        new = conn.execute("""INSERT INTO promotion (brand_id, partner_id, promo_type, start_date, end_date, store_id,
+                                  allowance_per_unit, dataset_version_id)
+                              SELECT brand_id, partner_id, promo_type, start_date, end_date, %s, allowance_per_unit,
+                                     dataset_version_id FROM promotion WHERE promotion_id = %s
+                              RETURNING promotion_id""", (other, pid)).fetchone()[0]
+        conn.execute("INSERT INTO promotion_sku SELECT %s, sku_id FROM promotion_sku WHERE promotion_id = %s", (new, pid))
+    truth = dict(conn.execute("SELECT deduction_id, store_id FROM deduction").fetchall())
+    out = [f for f in inv.investigate(conn) if f.engine_rule == "scan_back_missing_fields"]
+    assert out, "scenario did not occur"
+    for f in out:
+        fact = {x["fact"]: x["value"] for x in f.facts}
+        assert fact["stores that ran the promotion"] == 2
+        assert "store inferred" in fact and str(truth[f.deduction_id]) in fact["store inferred"]
+        assert f.action == "accept"

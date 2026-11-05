@@ -572,3 +572,15 @@ When no agreement is on file, a promotion-level shelf price in the claimed
 weeks means one probably ran: the agent asks for it instead of disputing, since
 a lost dispute costs a relationship and analyst time. The same signal is never
 enough to accept, because a price drop does not say what allowance was agreed.
+
+## 77. Design-region review of the agent: what it added, and the one fix before scoring
+California (142 claims): 0 false approvals of 87 and 0 false disputes of 41,
+the same as the engine; the agent's only difference was turning the engine's
+14 undecided claims into named document requests (11 of those claims were
+valid, so asking rather than disputing was right). The price playbooks never
+fired: California has no claim where a missing agreement or shifted end date
+misled the engine, so they meet real data first on the scoring region, as
+designed from business rules rather than tuned. One weakness: a claim with no
+store where 10 stores ran the promotion was sent back for the store. 1.1 keeps
+the promoting stores whose POS (as provided) shows exactly the claimed units,
+since a scan-back claims the units one store sold; a unique match is the store.
