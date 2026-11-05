@@ -21,7 +21,7 @@ forecasting and promotion analytics.
 |---|---|---|
 | 1 | Data foundation and product shell | **Done**, verified on full real M5 |
 | 2 | Document AI and reconciliation | **Reconciliation done** (2a); document AI measured on FATURA invoices and CORD receipt photos (2b); review UI next |
-| 3 | Agentic investigation | Not started |
+| 3 | Agentic investigation | **Investigator scored** (Texas and Wisconsin, once); dispute letters next |
 | 4 | Evaluation and production controls | Not started |
 | 5 | Forecasting and promotion analytics | Not started |
 | 6 | Product polish and technical proof | Not started |
@@ -124,6 +124,26 @@ make finance-world   # once per database, after make load-m5 (~20 s)
 make reconcile       # cash application + deduction validation, as the engine role
 make eval-recon      # replay both engines, score against the answer key, store the report
 ```
+
+## Phase 3 so far: the investigation agent (measured)
+
+A read-only agent goes through the engine's work and accepts, disputes with its arithmetic, or asks
+the retailer for one named document. It sees only what a supplier really has (the damaged evidence,
+invoices, terms, shelf prices), enforced by database grants, never the truth under the damage.
+Designed on California; scored once on Texas and Wisconsin (report 28, investigator 1.1).
+
+| Texas and Wisconsin, 170 claims | Agent | Engine alone |
+|---|---|---|
+| Valid claims disputed | **0 of 38** | 2 of 41 |
+| Invalid claims approved | **0 of 119** | 0 of 119 |
+| Disputes exact to the cent | **38 of 38** | |
+| Claims left undecided | 13 named document requests (12 of those claims were valid) | 10 "needs evidence" |
+| Cost | 1 real over-claim asked about instead of disputed (a slower dispute, not a lost one) | |
+
+Both engine false disputes came from damaged records: a promotion missing from the calendar, and a
+promotion end date keyed a week early. In both, the shelf price showed the promotion was running,
+so the agent asked for the agreement instead of disputing. A price drop can stop a dispute; it can
+never approve a claim. See [docs/phase3_agent.md](docs/phase3_agent.md).
 
 ## Phase 2b so far: document intelligence (measured)
 

@@ -584,3 +584,13 @@ designed from business rules rather than tuned. One weakness: a claim with no
 store where 10 stores ran the promotion was sent back for the store. 1.1 keeps
 the promoting stores whose POS (as provided) shows exactly the claimed units,
 since a scan-back claims the units one store sold; a unique match is the store.
+
+## 78. Investigator 1.1, scored once on Texas and Wisconsin (report 28)
+0 false disputes of 38 (the engine alone: 2 of 41), 0 false approvals of 119,
+38 of 38 disputes exact to the cent. Both engine false disputes were damaged
+records the price playbooks were written for: R-0000268 (promotion missing
+from the calendar) and R-0000357 (promotion end keyed a week early); both
+became document requests. The cost: R-0000295, a real over-claim whose end
+date was also shifted, was asked about rather than disputed. 13 requests in
+all, 12 for claims that were valid. Not tuned on these regions: the price
+playbooks never fired on California and were written from business rules.
