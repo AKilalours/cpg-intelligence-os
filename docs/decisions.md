@@ -670,3 +670,18 @@ share one deadline sentence, and prompt 1.3 gives it to the model to copy. A
 third check rejects wording that echoes the instructions (field names, "as
 instructed", "we will not be asking"). All 312 template letters pass all three
 checks.
+
+## 87. Addition 12 is scored on phrasings no reader has seen
+Free-text deduction reasons decide which check runs; KeHE's IA code alone covers
+shortages, late fees, and price differences. The reason text is generated from
+industry vocabulary with abbreviations, keying errors, and remittance noise,
+and each of 10 categories has phrase families held out entirely ("OTIF FINE"
+for a late fee, "SWELL ALLOWANCE" for spoils), so a reader is judged on wording
+it never saw. Baselines first: keyword rules reach 27% on unseen phrasings and
+a character n-gram Naive Bayes 51% (100% on seen ones), because no letters link
+"IRC" to "COUPON". A language model has to earn its place on that gap: the
+local model prompted with plain definitions (a test proves no held-out word is
+in the prompt; it caught "fine", "credit", and "invoice" in the first draft),
+and a LoRA fine-tune of Qwen2.5-0.5B with settings fixed before any score.
+Each reader is scored on held-out once per version. This is generated text,
+not real remittances; the held-out families are what keep it honest.
