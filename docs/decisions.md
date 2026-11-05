@@ -641,3 +641,15 @@ with it, all 20 drafts pass. Reading the passing drafts also showed engine
 wording ("the engine could not decide") reaching the retailer: request
 letters now give a plain reason, prompt 1.1, and a draft from an older prompt
 is never shown.
+
+## 84. Passing the number check is not the same as being right
+The full local-model run (prompt 1.1) passed the number and date check on 105
+of 105 letters, which looked like a perfect result. Reading three of them found
+one asking for a document "by the dispute deadline of 2015-05-06" a year after
+it closed (R-0000268). Applying a deadline rule to all 105 found 12 such
+drafts (11%): numbers right, meaning wrong. The honest result for prompt 1.1 is
+93 of 105 letters correct on every checked property. Letter 1.4 adds the rule
+(a closed window may not be asked to act by its date; an open one may not be
+called passed), rejects such drafts in favour of the template, and prompt 1.2
+tells the model so and not to claim more than the evidence shows ("dropped like
+a promotion" is not "part of a promotion").

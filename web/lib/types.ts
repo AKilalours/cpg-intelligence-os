@@ -271,5 +271,5 @@ export interface CaseDetail extends CaseRow {
            payload: Record<string, unknown> }[];
   claim: Record<string, unknown>;
   letter: { version: string; source: string; text: string; unsupported: string[]; model?: string;
-            model_rejected?: { unsupported_numbers: string[] } };
+            model_rejected?: { unsupported_numbers: string[]; window_problems?: string[] }; window_problems?: string[] };
 }

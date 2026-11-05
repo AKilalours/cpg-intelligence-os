@@ -22,7 +22,7 @@ def test_a_model_letter_with_an_invented_number_is_rejected():
     def model(**kw):
         return "We dispute claim R-0000268. You owe us $512.50 for 150 units."     # 512.50 appears nowhere
     out = L.draft(CLAIM, DISPUTE, CALCS, "Northfield Pantry Co.", "KeHE", model=model)
-    assert out["source"] == "template" and out["model_rejected"] == {"unsupported_numbers": ["512.50"]}
+    assert out["source"] == "template" and out["model_rejected"] == {"unsupported_numbers": ["512.50"], "window_problems": []}
 
 
 def test_a_model_letter_whose_numbers_are_all_sourced_is_used():
@@ -81,3 +81,26 @@ def test_request_letters_give_the_retailer_a_plain_reason():
            "reason": "the engine could not decide (scan back pos incomplete); this document closes the gap", "facts": []}
     text = L.draft(CLAIM, req, [], "N", "K")["text"]
     assert "missing weeks in the claimed period" in text and "engine" not in text
+
+
+# ---------- letter 1.4: the deadline is described truthfully ----------
+
+def test_a_letter_may_not_ask_for_anything_by_a_deadline_that_has_passed():
+    # Full local-model run: R-0000268's draft passed every number check yet asked for a document
+    # "by the dispute deadline of 2015-05-06", a year after it.
+    claim = dict(CLAIM, dispute_deadline="2015-05-06")
+    t = "Please provide the necessary document by the dispute deadline of 2015-05-06."
+    assert L.window_problems(t, claim, "2016-05-22") == ["asks for action by 2015-05-06, which has passed"]
+    assert L.window_problems("The dispute deadline was 2015-05-06 and has passed; we raise this for the record.",
+                             claim, "2016-05-22") == []
+    assert L.window_problems("The deadline has not yet passed.", claim, "2016-05-22") == ["says the deadline has not passed; it has"]
+    assert L.window_problems(t, claim, "2015-04-01") == []                    # still open: asking by it is right
+
+
+def test_a_model_draft_that_misstates_the_deadline_falls_back_to_the_template():
+    claim = dict(CLAIM, dispute_deadline="2015-05-06")
+    req = {"action": "request", "reason": "no agreement", "request": "the promotion agreement", "facts": []}
+    out = L.draft(claim, req, [], "N", "K", as_of="2016-05-22",
+                  model=lambda **kw: "Claim R-0000268: please send the promotion agreement by 2015-05-06.")
+    assert out["source"] == "template" and out["model_rejected"]["window_problems"]
+    assert out["window_problems"] == []                                        # the template itself is truthful

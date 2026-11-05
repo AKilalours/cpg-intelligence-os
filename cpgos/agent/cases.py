@@ -124,7 +124,7 @@ def write_letters(conn, provider, limit: int | None = None, progress=print) -> d
         text = write(claim=d["claim"], finding=d["finding"], calculations=d["calculations"],
                      supplier=d["supplier"], partner=d["partner"], as_of=d["as_of"])
         bad = letter.verify(text, d["claim"], d["finding"].get("facts"), str(d["finding"].get("recoverable")),
-                            d["calculations"], d["finding"].get("request"))
+                            d["calculations"], d["finding"].get("request")) + letter.window_problems(text, d["claim"], d["as_of"])
         passed += not bad
         rejected += bool(bad)
         if bad and len(examples) < 10:

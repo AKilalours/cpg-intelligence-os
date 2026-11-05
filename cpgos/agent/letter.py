@@ -13,7 +13,7 @@ import json
 import re
 from decimal import Decimal, InvalidOperation
 
-LETTER_VERSION = "letter-1.3.0"   # 1.2: plain reasons. 1.3: dates are checked too, in any common form; plain request reasons
+LETTER_VERSION = "letter-1.4.0"   # 1.3: dates checked in any form. 1.4: the deadline must be described truthfully
 
 _MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august",
                                        "september", "october", "november", "december"], 1)}
@@ -127,6 +127,31 @@ def why(finding: dict, calculations: list[dict]) -> str:
     return r[0].upper() + r[1:]
 
 
+_ASK_BY = re.compile(r"\b(by|before|until|no later than|prior to|on or before)\b", re.I)
+_SAYS_PASSED = re.compile(r"\b(has|have) (already )?(passed|expired|lapsed)\b|\bwas \d{4}-\d{2}-\d{2}\b", re.I)
+_SAYS_NOT_PASSED = re.compile(r"\b(has not|hasn't|not yet|is not yet) (yet )?(passed|expired)\b", re.I)
+
+
+def window_problems(text: str, claim: dict, as_of) -> list[str]:
+    """What a letter says about the dispute deadline must be true on the ledger date.
+    Found on the full run: a draft passed every number and date check yet asked for a document "by the
+    dispute deadline of 2015-05-06", a year after that deadline (claim R-0000268)."""
+    deadline = claim.get("dispute_deadline")
+    if as_of is None or deadline is None:
+        return []
+    closed = str(deadline) < str(as_of)
+    problems = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        names_it = str(deadline) in dates_in(sentence)
+        if closed and names_it and _ASK_BY.search(sentence) and not _SAYS_PASSED.search(sentence):
+            problems.append(f"asks for action by {deadline}, which has passed")
+        if closed and _SAYS_NOT_PASSED.search(sentence):
+            problems.append("says the deadline has not passed; it has")
+        if not closed and _SAYS_PASSED.search(sentence) and not _SAYS_NOT_PASSED.search(sentence) and names_it:
+            problems.append(f"says the deadline {deadline} has passed; it has not")
+    return sorted(set(problems))
+
+
 def _money(x) -> str:
     return f"${Decimal(str(x)):,.2f}"
 
@@ -164,24 +189,27 @@ def draft(claim: dict, finding: dict, calculations: list[dict], supplier: str, p
     otherwise the template is used and the model's unsupported numbers are reported."""
     sources = (claim, finding.get("facts"), str(finding.get("recoverable")), calculations, finding.get("request"))
     fallback = template(claim, finding, supplier, partner, as_of, calculations)
-    out = {"version": LETTER_VERSION, "source": "template", "text": fallback, "unsupported": verify(fallback, *sources)}
+    out = {"version": LETTER_VERSION, "source": "template", "text": fallback, "unsupported": verify(fallback, *sources),
+           "window_problems": window_problems(fallback, claim, as_of)}
     if model is not None:
         text = model(claim=claim, finding=finding, calculations=calculations, supplier=supplier, partner=partner,
                      as_of=as_of)
-        bad = verify(text, *sources)
-        if bad:
-            out["model_rejected"] = {"unsupported_numbers": bad}
+        bad, wrong = verify(text, *sources), window_problems(text, claim, as_of)
+        if bad or wrong:
+            out["model_rejected"] = {"unsupported_numbers": bad, "window_problems": wrong}
         else:
-            out.update(source="model", text=text, unsupported=[])
+            out.update(source="model", text=text, unsupported=[], window_problems=[])
     return out
 
 
 # ---------- a model writes the letter; the check decides whether it may be used ----------
 
-PROMPT_VERSION = "letter-prompt-1.1.0"   # 1.1: plain request reasons, no engine wording
+PROMPT_VERSION = "letter-prompt-1.2.0"   # 1.1: plain request reasons. 1.2: say what the evidence shows, not more
 SYSTEM = ("You write short, firm, polite accounts-receivable letters from a food supplier to a distributor's "
           "deductions department. Use only the facts given. Never add a number, date, percentage, claim number, "
-          "or deadline that is not in the facts. Plain text, no markdown, under 150 words, signed by the sender.")
+          "or deadline that is not in the facts. If deadline_has_passed is true, do not ask for anything by that date. "
+          "State only what the facts say: a price that dropped like a promotion is not proof that a promotion ran. "
+          "Plain text, no markdown, under 150 words, signed by the sender.")
 
 
 def model_writer(provider):

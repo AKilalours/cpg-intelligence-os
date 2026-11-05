@@ -158,8 +158,9 @@ function Letter({ c }: { c: CaseDetail }) {
       </div>
       {c.letter.model_rejected ? (
         <p className="mb-3 rounded-lg bg-debit/10 px-3 py-2 text-xs text-debit">
-          The {c.letter.model ?? "model"} draft was rejected: it contained {c.letter.model_rejected.unsupported_numbers.join(", ")},
-          which nothing on this case supports. Showing the template instead.
+          The {c.letter.model ?? "model"} draft was rejected:{" "}
+          {[c.letter.model_rejected.unsupported_numbers.length ? `${c.letter.model_rejected.unsupported_numbers.join(", ")} has no source on this case` : "",
+            ...(c.letter.model_rejected.window_problems ?? [])].filter(Boolean).join("; ")}. Showing the template instead.
         </p>
       ) : null}
       <pre className="whitespace-pre-wrap font-sans text-sm leading-6">
