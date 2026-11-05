@@ -271,3 +271,23 @@ def test_an_unpriced_line_never_switches_off_the_line_sum():
     assert R.arithmetic(R.parse(d, LABELS))[0] is True                          # an unpriced add-on is harmless
     d["items"].append({"name": "FOOD", "quantity": None, "unit_price": "214.000", "price": "214.000"})
     assert R.arithmetic(R.parse(d, LABELS))[0] is False                         # an invented line breaks the sum
+
+
+# ---------- labels 1.1: reliability before length ----------
+
+def test_cash_payment_is_cash_because_cash_is_reliable_and_payment_is_generic():
+    # CORD test receipt 0016: "Cash Payment" was read as a card payment because PAYMENT is longer than CASH.
+    labels = {"labels": {"cash": ["CASH"], "card": ["PAYMENT"]}, "purity": {"CASH": 0.9943, "PAYMENT": 0.5714}}
+    assert R.classify("Cash Payment", labels) == "cash"
+    assert R.classify("Cash Payment", {"labels": labels["labels"]}) == "card"      # 1.0 behaviour without purity
+    assert R.classify("PAYMENT", labels) == "card"                                 # an exact label still wins
+
+
+def test_learned_labels_carry_a_smoothed_reliability():
+    rec = lambda split, lines: (None, {"meta": {"split": split}, "valid_line": lines})
+    line = lambda cat, text: {"category": cat, "words": [{"text": text, "is_key": 1}]}
+    recs = [rec("train", [line("total.cashprice", "CASH")]) for _ in range(9)] + \
+           [rec("train", [line("total.creditcardprice", "PAYMENT")]) for _ in range(3)] + \
+           [rec("train", [line("total.cashprice", "PAYMENT")]) for _ in range(2)]
+    out = R.learn_labels(recs)
+    assert out["purity"]["CASH"] == round(10 / 11, 4) and out["purity"]["PAYMENT"] == round(4 / 7, 4)

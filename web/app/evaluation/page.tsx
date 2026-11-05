@@ -1,3 +1,4 @@
+import { AgentProof, type AgentReport } from "./AgentProof";
 import { api } from "@/lib/api";
 import { count, money, pct, rateText, when } from "@/lib/format";
 import type { CashAppScore, EvaluationReport, IngestionRun, Phase2aReport } from "@/lib/types";
@@ -17,10 +18,11 @@ const NOISE: Record<string, string> = {
 };
 
 export default async function EvaluationPage() {
-  const [report, runs, story] = await Promise.all([
+  const [report, runs, story, agent] = await Promise.all([
     api<EvaluationReport | null>("/api/evaluation/latest?kind=phase2a"),
     api<IngestionRun[]>("/api/ingestion-runs?limit=100"),
     api<RulePoint[]>("/api/evaluation/routing-history"),
+    api<AgentReport | null>("/api/evaluation/latest?kind=agent"),
   ]);
   const rejected = runs.ok ? runs.data.filter((r) => r.status === "rejected") : [];
   return (
@@ -30,6 +32,7 @@ export default async function EvaluationPage() {
         purpose="Every number scored against a hidden answer key, with its uncertainty."
       />
       {story.ok ? <RuleStory points={story.data} /> : null}
+      {agent.ok && agent.data ? <AgentProof r={agent.data} /> : null}
       {!report.ok ? (
         <Notice kind="error" title="Evaluation unavailable">{report.error}</Notice>
       ) : report.data === null ? (

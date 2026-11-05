@@ -201,7 +201,7 @@ def arithmetic(body: dict | None) -> tuple[bool, dict]:
 # printed labels map to the right field; the misses are rare spellings ("Srv Ch"), which give no value.
 # (Checking labels with OCR was tried and dropped: Tesseract finds no words at all on some clear photos.)
 
-LABELS_VERSION = "labels-1.0.0"
+LABELS_VERSION = "labels-1.1.0"   # 1.1: each label carries how reliably it means its field
 LABEL_MIN_COUNT = 2
 _CATEGORY = {f"{block}.{key}": name for (block, key), name in cord.TOTAL_FIELDS.items() if not name.endswith("_count")}
 _CATEGORY["total.emoneyprice"] = "card"           # "card" = any card or e-wallet payment, as the prompt says
@@ -228,14 +228,18 @@ def learn_labels(records) -> dict:
             if field and label:
                 counts[label][field] += 1
     out: dict[str, list[str]] = defaultdict(list)
+    purity: dict[str, float] = {}
     reassigned = 0
     for label, by_field in counts.items():
         field, n = max(by_field.items(), key=lambda kv: (kv[1], kv[0]))
         reassigned += len(by_field) > 1
         if n >= LABEL_MIN_COUNT:
             out[field].append(label)
+            # Smoothed share of the label's train lines that are this field: "CASH" 351 of 352 is reliable,
+            # "PAYMENT" 3 of 5 is a generic word. One sighting never counts as certain.
+            purity[label] = round((n + 1) / (sum(by_field.values()) + 2), 4)
     return {"version": LABELS_VERSION, "labels": {f: sorted(v) for f, v in sorted(out.items())},
-            "labels_claimed_by_several_fields": reassigned}
+            "purity": dict(sorted(purity.items())), "labels_claimed_by_several_fields": reassigned}
 
 
 def load_labels(raw_root: Path, path: Path = LABELS_FILE) -> dict:
@@ -262,20 +266,23 @@ def _contains(words: list[str], lab: list[str]) -> bool:
 
 
 def classify(label: str, labels: dict) -> str | None:
-    """The field a printed label names: an exact learned label, else the longest learned label inside it
-    (whole words, cut-off words allowed), so "SUBTOTAL" is never "TOTAL" and "TOTAL KEMBALIAN" is change.
+    """The field a printed label names: an exact learned label, else the most reliable learned label inside it
+    (whole words, cut-off words allowed), longest on a tie, so "SUBTOTAL" is never "TOTAL", "TOTAL KEMBALIAN"
+    is change, and "CASH PAYMENT" is cash: CASH means cash in 351 of 352 train lines, while the longer PAYMENT
+    is a generic word (3 of 5), which 1.0 let win by length (CORD test receipt 0016).
     One field per line; a tie between fields gives no field."""
     t = norm_label(label)
     if not t:
         return None
     words = t.split()
+    purity = labels.get("purity") or {}     # absent in 1.0 caches: length alone decides, as before
     hits = []
     for f, labs in labels["labels"].items():
         for lab in labs:
             if lab == t:
                 return f
             if _contains(words, lab.split()):
-                hits.append((len(lab), f))
+                hits.append(((purity.get(lab, 1.0), len(lab)), f))
     if not hits:
         return None
     top = max(n for n, _ in hits)
