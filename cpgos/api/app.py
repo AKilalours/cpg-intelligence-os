@@ -445,3 +445,47 @@ def deduction_review(deduction_id: int, body: DecisionIn, conn: psycopg.Connecti
         return finance_review.decide_deduction(conn, deduction_id, body.action, body.reviewer, body.note)
     except finance_review.DecisionError as e:
         raise HTTPException(400, str(e)) from None
+
+
+# ---------- Today: money flow ----------
+
+@app.get("/api/overview/flow", response_model=s.MoneyFlow)
+def money_flow(conn: psycopg.Connection = Depends(get_conn)) -> s.MoneyFlow:
+    """Cash paid splits by who posted it; deductions taken split by what is left to do. Disjoint streams."""
+    as_of = _as_of(conn)
+    cash = conn.execute(
+        """WITH latest AS (
+               SELECT DISTINCT ON (remittance_line_id) remittance_line_id, cash_application_id, status
+               FROM cash_application ORDER BY remittance_line_id, cash_application_id DESC),
+           people AS (
+               SELECT DISTINCT (payload->>'cash_application_id')::bigint AS cash_application_id FROM audit_event
+               WHERE actor_type = 'human' AND action = 'cash_approve'),
+           lines AS (
+               SELECT r.net_amount AS amount,
+                      CASE WHEN l.status = 'approved' AND p.cash_application_id IS NULL THEN 'engine'
+                           WHEN l.status = 'approved' THEN 'person'
+                           WHEN l.status = 'proposed' THEN 'waiting'
+                           ELSE 'unmatched' END AS key
+               FROM remittance_line r LEFT JOIN latest l USING (remittance_line_id)
+               LEFT JOIN people p ON p.cash_application_id = l.cash_application_id
+               WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0)
+           SELECT key, coalesce(sum(amount), 0) AS amount, count(*) AS count FROM lines GROUP BY key""").fetchall()
+    ded = conn.execute(
+        """WITH a AS (
+               SELECT DISTINCT ON (deduction_id) deduction_id, verdict, recoverable_amount
+               FROM deduction_assessment ORDER BY deduction_id, assessment_id DESC),
+           d AS (
+               SELECT d.amount, a.recoverable_amount,
+                      CASE WHEN d.status NOT IN ('open', 'investigating') THEN 'decided'
+                           WHEN d.dispute_deadline < %s THEN 'closed'
+                           WHEN a.verdict IN ('invalid', 'partially_valid') THEN 'dispute'
+                           WHEN a.verdict = 'valid' THEN 'valid'
+                           ELSE 'evidence' END AS key
+               FROM deduction d LEFT JOIN a USING (deduction_id))
+           SELECT key, coalesce(sum(amount), 0) AS amount, count(*) AS count,
+                  coalesce(sum(recoverable_amount), 0) AS recoverable FROM d GROUP BY key""", (as_of,)).fetchall()
+    order_c = ["engine", "person", "waiting", "unmatched"]
+    order_d = ["dispute", "evidence", "valid", "closed", "decided"]
+    return s.MoneyFlow(as_of=as_of,
+                       cash=sorted([s.FlowStream(**r) for r in cash], key=lambda x: order_c.index(x.key)),
+                       deductions=sorted([s.FlowStream(**r) for r in ded], key=lambda x: order_d.index(x.key)))

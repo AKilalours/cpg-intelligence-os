@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { count, when } from "@/lib/format";
-import type { EvaluationReport, Overview, ReviewQueueItem } from "@/lib/types";
+import type { EvaluationReport, MoneyFlow as Flow, Overview, ReviewQueueItem } from "@/lib/types";
+import { MoneyFlow } from "./MoneyFlow";
 import { CountUp } from "@/components/CountUp";
 import { Cmd, Notice, Status } from "@/components/ui";
 
@@ -10,12 +11,13 @@ export const dynamic = "force-dynamic";
 type Rate = { k: number; n: number; rate: number | null };
 
 export default async function TodayPage() {
-  const [ov, queue, inv, rec, ded] = await Promise.all([
+  const [ov, queue, inv, rec, ded, flow] = await Promise.all([
     api<Overview>("/api/overview"),
     api<ReviewQueueItem[]>("/api/documents/queue?limit=500"),
     api<EvaluationReport | null>("/api/evaluation/latest?kind=routing_holdout"),
     api<EvaluationReport | null>("/api/evaluation/latest?kind=cord_receipts_test"),
     api<EvaluationReport | null>("/api/evaluation/latest?kind=phase2a"),
+    api<Flow>("/api/overview/flow"),
   ]);
   if (!ov.ok) return <Notice kind="error" title="Can't load today's numbers">{ov.error}</Notice>;
   const e = ov.data.exposure;
@@ -45,6 +47,13 @@ export default async function TodayPage() {
           <CountUp to={Number(e.open_deduction_amount)} format="money" />
         </Tile>
       </div>
+
+      {flow.ok && flow.data.cash.length + flow.data.deductions.length > 0 ? (
+        <section className="mt-10" aria-label="Where the money went">
+          <h2 className="mb-4 text-3xl">Where the retailers&apos; money went</h2>
+          <MoneyFlow flow={flow.data} />
+        </section>
+      ) : null}
 
       <section className="mt-12" aria-label="Proof">
         <h2 className="mb-4 text-3xl">Scored once, on data the system never saw</h2>

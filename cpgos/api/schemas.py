@@ -187,3 +187,17 @@ class Phase2aDeductions(DeductionScore):
     report_region: RegionScore
     mistakes: list[dict]
     by_reason: dict[str, dict]
+
+
+class FlowStream(BaseModel):
+    key: str
+    amount: Decimal
+    count: int
+    recoverable: Decimal | None = None
+
+
+class MoneyFlow(BaseModel):
+    """Where the retailers' money went, to the cent. Every stream is disjoint, so they add up."""
+    as_of: date | None
+    cash: list[FlowStream]
+    deductions: list[FlowStream]

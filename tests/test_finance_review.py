@@ -108,3 +108,19 @@ def test_api_counts_people_apart_from_the_engine(client, world):
     after = client.get("/api/finance/cash-application").json()
     assert after["auto_applied"] == before["auto_applied"]                   # a person's approval is not automatic
     assert after["approved_by_person"] == 1 and after["in_review"] == before["in_review"] - 1
+
+
+def test_money_flow_streams_are_disjoint_and_add_up(client, world):
+    from decimal import Decimal
+    f = client.get("/api/overview/flow").json()
+    cash_total = world.execute("""SELECT coalesce(sum(net_amount), 0), count(*) FROM remittance_line
+                                  WHERE raw_code IS NULL AND deduction_amount = 0 AND net_amount > 0""").fetchone()
+    assert sum(Decimal(x["amount"]) for x in f["cash"]) == cash_total[0]
+    assert sum(x["count"] for x in f["cash"]) == cash_total[1]
+    ded_total = world.execute("SELECT sum(amount), count(*) FROM deduction").fetchone()
+    assert sum(Decimal(x["amount"]) for x in f["deductions"]) == ded_total[0]
+    assert sum(x["count"] for x in f["deductions"]) == ded_total[1]
+    d = _open_deduction(world, "invalid")[0]
+    client.post(f"/api/deductions/{d}/review", json={"action": "dispute", "reviewer": "akila"})
+    after = {x["key"]: x["count"] for x in client.get("/api/overview/flow").json()["deductions"]}
+    assert after["decided"] == 1                                          # a person's decision moves the money
