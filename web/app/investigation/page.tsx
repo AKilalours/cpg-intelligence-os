@@ -1,17 +1,19 @@
-import { Notice, PageHeader, Section } from "@/components/ui";
+import { api } from "@/lib/api";
+import type { CaseRow } from "@/lib/types";
+import { Notice, PageHeader, Cmd } from "@/components/ui";
+import { CaseQueue } from "./CaseQueue";
 
-export default function InvestigationPage() {
+export const dynamic = "force-dynamic";
+
+export default async function InvestigationPage() {
+  const res = await api<CaseRow[]>("/api/cases");
   return (
     <>
-      <PageHeader
-        title="Investigate"
-        purpose="Ask why a claim doesn't add up. The agent cites evidence and waits for your approval."
-      />
-      <Section title="Investigations">
-        <Notice kind="planned" title="Arrives in Phase 3">
-          The agent can read the ledger but the database blocks it from changing any amount. Every step is written to an append-only audit log.
-        </Notice>
-      </Section>
+      <PageHeader title="Investigate" purpose="The agent reads every claim. You decide." />
+      {!res.ok ? <Notice kind="error" title="Cases unavailable">{res.error}</Notice>
+        : res.data.length === 0 ? (
+          <Notice kind="empty" title="No investigations yet">Run the agent: <Cmd>make agent-score</Cmd></Notice>
+        ) : <CaseQueue rows={res.data} />}
     </>
   );
 }

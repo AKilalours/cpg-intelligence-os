@@ -252,3 +252,23 @@ export interface RegressionGate {
   passed: boolean; not_replayable_yet: number;
   wrong: { doc: number; field: string; truth: string | null; now_accepts: string | null; kind: "regression" | "open_mistake"; reviewed_under: string }[];
 }
+
+export interface CaseRow {
+  case_id: number; deduction_id: number; status: string; claim_number: string; amount: Decimal;
+  deduction_date: string; dispute_deadline: string | null; deduction_status: string; code: string;
+  raw_reason: string | null; agent_action: "accept" | "dispute" | "request"; agent_reason: string;
+  agent_request: string | null; recoverable: string | null; engine_verdict: string; engine_rule: string;
+  agent_version: string; human_action: string | null; reviewer: string | null; differs_from_engine: boolean;
+  as_of: string; window_open: boolean;
+}
+export interface ToolCall { tool: string; params?: string[]; rows?: number; kind?: string; calculation_id?: number }
+export interface CaseDetail extends CaseRow {
+  finding: { action: string; reason: string; request: string | null; recoverable: string;
+             facts: { fact: string; value: unknown }[]; tool_calls: ToolCall[] };
+  calculations: { calculation_id: number; kind: string; formula_version: string; inputs: Record<string, unknown>;
+                  result: string; computed_by: string; created_at: string }[];
+  trail: { audit_event_id: number; actor_type: string; actor_id: string; action: string; created_at: string;
+           payload: Record<string, unknown> }[];
+  claim: Record<string, unknown>;
+  letter: { version: string; source: string; text: string; unsupported: string[] };
+}

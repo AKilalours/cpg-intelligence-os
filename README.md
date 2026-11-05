@@ -21,7 +21,7 @@ forecasting and promotion analytics.
 |---|---|---|
 | 1 | Data foundation and product shell | **Done**, verified on full real M5 |
 | 2 | Document AI and reconciliation | **Reconciliation done** (2a); document AI measured on FATURA invoices and CORD receipt photos (2b); review UI next |
-| 3 | Agentic investigation | **Investigator scored** (Texas and Wisconsin, once); dispute letters next |
+| 3 | Agentic investigation | **Investigator scored** (Texas and Wisconsin, once); case screen and number-checked letters done; fine-tuned code model next |
 | 4 | Evaluation and production controls | Not started |
 | 5 | Forecasting and promotion analytics | Not started |
 | 6 | Product polish and technical proof | Not started |

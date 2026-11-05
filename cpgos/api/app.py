@@ -500,3 +500,30 @@ def money_flow(conn: psycopg.Connection = Depends(get_conn)) -> s.MoneyFlow:
                        cash=sorted([s.FlowStream(**r) for r in cash], key=lambda x: order_c.index(x.key)),
                        deductions=sorted([s.FlowStream(**r) for r in ded], key=lambda x: order_d.index(x.key)))
 
+
+
+# ---------- investigations (Phase 3) ----------
+
+from cpgos.agent import cases as agent_cases  # noqa: E402
+
+
+@app.get("/api/cases")
+def cases_queue(action: str | None = Query(None, pattern="^(accept|dispute|request)$"),
+                conn: psycopg.Connection = Depends(get_conn)):
+    return agent_cases.queue(conn, action)
+
+
+@app.get("/api/cases/{case_id}")
+def case_detail(case_id: int, conn: psycopg.Connection = Depends(get_conn)):
+    d = agent_cases.detail(conn, case_id)
+    if d is None:
+        raise HTTPException(404, f"no case {case_id}")
+    return d
+
+
+@app.post("/api/cases/{case_id}/decision")
+def case_decision(case_id: int, body: DecisionIn, conn: psycopg.Connection = Depends(get_write_conn)):
+    try:
+        return agent_cases.decide(conn, case_id, body.action, body.reviewer, body.note)
+    except agent_cases.CaseError as e:
+        raise HTTPException(400, str(e)) from None

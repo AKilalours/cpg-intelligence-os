@@ -594,3 +594,22 @@ became document requests. The cost: R-0000295, a real over-claim whose end
 date was also shifted, was asked about rather than disputed. 13 requests in
 all, 12 for claims that were valid. Not tuned on these regions: the price
 playbooks never fired on California and were written from business rules.
+
+## 79. A letter may only contain numbers the case can trace
+Every amount, unit count, and percentage in a dispute or request letter must
+appear in the agent's facts or a calculation the case cites; dates and record
+ids are checked as ids, not amounts. A template letter is always available at
+no cost; a model-written letter is used only if it passes the same check,
+otherwise the template is used and the invented numbers are shown (tested
+with a model that adds $512.50). On the full data, all 312 letters pass and
+all 79 dispute letters state the fact from the records ("shows 24 of 24
+units received") rather than a rule name.
+
+## 80. The case screen tells the truth about the dispute window
+249 of 312 claims are past their dispute deadline at the ledger date. The
+agent's analysis is unchanged (the evidence says what it says), but the case
+screen marks each window, sorts claims that can still be recovered first, and
+letters never ask for anything by a deadline that has passed. Found by reading
+a real case on screen. Also found there: plain dict endpoints let FastAPI turn
+Decimal money into floats, which crashed the screen; case data keeps money as
+exact strings, with a test that fails on a float.
