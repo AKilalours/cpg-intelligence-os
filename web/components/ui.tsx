@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 
-export function PageHeader({ title, purpose }: { title: string; purpose: string }) {
+// One serif line and at most one short sentence: people act on figures, not paragraphs.
+export function PageHeader({ title, purpose }: { title: string; purpose?: string }) {
   return (
     <header className="mb-8 max-w-2xl">
-      <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-      <p className="mt-2 text-muted">{purpose}</p>
+      <h1 className="text-4xl font-light tracking-tight md:text-5xl">{title}</h1>
+      {purpose ? <p className="mt-2 text-muted">{purpose}</p> : null}
     </header>
   );
 }
@@ -18,8 +19,8 @@ export function Figure({
     <div className="px-5 py-4 first:pl-0">
       <div
         className={
-          "font-figure text-5xl leading-none tabular-nums " +
-          (due ? "inline-block bg-tag px-2 -mx-2" : "")
+          "font-figure text-5xl font-light leading-none tabular-nums " +
+          (due ? "inline-block rounded-md bg-tag px-2 -mx-2" : "")
         }
       >
         {value}
@@ -33,7 +34,7 @@ export function Section({ title, note, children }: { title: string; note?: strin
   return (
     <section className="mb-10">
       <div className="mb-3 flex items-baseline justify-between gap-4">
-        <h2 className="text-lg font-semibold">{title}</h2>
+        <h2 className="text-2xl">{title}</h2>
         {note ? <p className="text-sm text-muted">{note}</p> : null}
       </div>
       {children}
@@ -48,7 +49,7 @@ export function Notice({
   const tone =
     kind === "error" ? "border-debit" : kind === "planned" ? "border-muted" : "border-ink";
   return (
-    <div className={`border-l-4 ${tone} bg-sheet px-4 py-3`} role={kind === "error" ? "alert" : undefined}>
+    <div className={`rounded-xl border-l-4 ${tone} bg-sheet px-4 py-3`} role={kind === "error" ? "alert" : undefined}>
       <p className="font-semibold">{title}</p>
       {children ? <div className="mt-1 text-sm text-muted">{children}</div> : null}
     </div>

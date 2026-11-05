@@ -25,7 +25,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader
         title="Planning"
-        purpose="Forecast demand for every SKU at every store, and judge promotions against what would have sold without them."
+        purpose="Real Walmart sales by store and item."
       />
       {!keys.ok ? (
         <Notice kind="error" title="Sales data unavailable">{keys.error}</Notice>

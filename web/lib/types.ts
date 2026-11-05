@@ -229,4 +229,12 @@ export interface DocumentView {
   fields: FieldDecision[];
   open_fields: number;
   image_url: string;
+  readings: Reading[];
+}
+
+export interface Reading {
+  reader: "rules" | "local_model" | "claude";
+  field: string;
+  value: string | null;
+  bbox: [number, number, number, number] | null;
 }

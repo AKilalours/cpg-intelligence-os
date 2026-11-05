@@ -6,19 +6,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        paper: "#F2F4F0",
-        sheet: "#FBFCFA",
-        ink: "#1C2B3A",
-        muted: "#5D6B64",
-        rule: "#C9D8C6",
-        tag: "#F4C430",
-        debit: "#A8322A",
-        credit: "#2E6B4A",      // accepted by the routing rule
+        paper: "#FAF8F4",       // the page: warm cream
+        sheet: "#FFFFFF",       // cards and tables
+        ink: "#1F2A24",         // text: green-black
+        muted: "#6C6C6C",
+        rule: "#E4E1D8",
+        forest: "#28543E",      // primary actions
+        leaf: "#609D7B",        // accepted / done
+        tag: "#E5FF87",         // needs you now (lime): used sparingly
+        sky: "#2881D4",         // the AI readers
+        debit: "#B3402F",       // errors, money at risk
+        credit: "#2E6B4A",
       },
       fontFamily: {
-        sans: ['"Public Sans"', "system-ui", "sans-serif"],
-        figure: ['"Barlow Condensed"', '"Public Sans"', "sans-serif"],
+        sans: ["var(--font-body)", "system-ui", "sans-serif"],
+        figure: ["var(--font-serif)", "Georgia", "serif"],
+        serif: ["var(--font-serif)", "Georgia", "serif"],
       },
+      keyframes: {
+        land: { "0%": { opacity: "0", transform: "scale(1.25)" }, "100%": { opacity: "1", transform: "scale(1)" } },
+        sweep: { "0%": { top: "0%" }, "100%": { top: "100%" } },
+      },
+      animation: { land: "land 260ms ease-out both", sweep: "sweep 1.4s linear infinite" },
     },
   },
   plugins: [],

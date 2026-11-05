@@ -4,8 +4,8 @@ export default function InvestigationPage() {
   return (
     <>
       <PageHeader
-        title="AI Investigation"
-        purpose="Ask why a deduction or payment doesn't add up. The agent gathers records, recomputes amounts, cites evidence, and waits for your approval before anything changes."
+        title="Investigate"
+        purpose="Ask why a claim doesn't add up. The agent cites evidence and waits for your approval."
       />
       <Section title="Investigations">
         <Notice kind="planned" title="Arrives in Phase 3">

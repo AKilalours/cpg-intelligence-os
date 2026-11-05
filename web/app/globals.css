@@ -1,7 +1,3 @@
-@import "@fontsource/public-sans/400.css";
-@import "@fontsource/public-sans/600.css";
-@import "@fontsource/barlow-condensed/600.css";
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,14 +7,17 @@
 }
 
 html {
-  background: #F2F4F0;
-  color: #1C2B3A;
+  background: #FAF8F4;
+  color: #1F2A24;
   font-feature-settings: "tnum" 1;
 }
 
-/* Ledger paper: tables sit on green column rules, like an accounting pad. */
+/* Tables: white, soft rules, rounded outer corners, numbers right-aligned. */
 .ledger {
   width: 100%;
+  background: #FFFFFF;
+  border-radius: 12px;
+  overflow: hidden;
   border-collapse: collapse;
   font-size: 0.875rem;
   line-height: 1.4;
@@ -26,29 +25,28 @@ html {
 .ledger th {
   text-align: left;
   font-weight: 600;
-  color: #5D6B64;
+  color: #6C6C6C;
   padding: 0.5rem 0.75rem;
-  border-bottom: 2px solid #C9D8C6;
+  border-bottom: 2px solid #E4E1D8;
 }
 .ledger td {
   padding: 0.55rem 0.75rem;
-  border-bottom: 1px solid #C9D8C6;
+  border-bottom: 1px solid #E4E1D8;
   vertical-align: top;
 }
-.ledger td + td,
-.ledger th + th {
-  border-left: 1px solid #C9D8C6;
-}
+.ledger tbody tr:hover { background: #F4F2EC; }
 .ledger .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 :focus-visible {
-  outline: 2px solid #1C2B3A;
+  outline: 2px solid #28543E;
   outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+h1, h2 { font-family: var(--font-serif), Georgia, serif; font-weight: 300; letter-spacing: -0.01em; }

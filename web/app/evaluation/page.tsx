@@ -23,8 +23,8 @@ export default async function EvaluationPage() {
   return (
     <>
       <PageHeader
-        title="Evaluation Lab"
-        purpose="Measure every engine against a baseline and a hidden answer key, with the uncertainty shown, before trusting it."
+        title="Proof"
+        purpose="Every number scored against a hidden answer key, with its uncertainty."
       />
       {!report.ok ? (
         <Notice kind="error" title="Evaluation unavailable">{report.error}</Notice>

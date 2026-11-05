@@ -1,95 +1,79 @@
+import Link from "next/link";
 import { api } from "@/lib/api";
-import { count, money, when } from "@/lib/format";
-import type { Overview } from "@/lib/types";
-import { Cmd, Figure, Notice, PageHeader, Section, Status } from "@/components/ui";
+import { count, when } from "@/lib/format";
+import type { EvaluationReport, Overview, ReviewQueueItem } from "@/lib/types";
+import { CountUp } from "@/components/CountUp";
+import { Cmd, Notice, Status } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-export default async function OverviewPage() {
-  const res = await api<Overview>("/api/overview");
-  return (
-    <>
-      <PageHeader
-        title="Overview"
-        purpose="What needs attention today, and whether the data behind every number is trustworthy."
-      />
-      {!res.ok ? (
-        <Notice kind="error" title="Overview unavailable">{res.error}</Notice>
-      ) : (
-        <Body data={res.data} />
-      )}
-    </>
-  );
-}
+type Rate = { k: number; n: number; rate: number | null };
 
-function Body({ data }: { data: Overview }) {
-  const { exposure: e, coverage: c } = data;
+export default async function TodayPage() {
+  const [ov, queue, inv, rec, ded] = await Promise.all([
+    api<Overview>("/api/overview"),
+    api<ReviewQueueItem[]>("/api/documents/queue?limit=500"),
+    api<EvaluationReport | null>("/api/evaluation/latest?kind=routing_holdout"),
+    api<EvaluationReport | null>("/api/evaluation/latest?kind=cord_receipts_test"),
+    api<EvaluationReport | null>("/api/evaluation/latest?kind=phase2a"),
+  ]);
+  if (!ov.ok) return <Notice kind="error" title="Can't load today's numbers">{ov.error}</Notice>;
+  const e = ov.data.exposure;
+  const c = ov.data.coverage;
+  const waiting = queue.ok ? queue.data.length : 0;
+
+  // Proof: the latest one-time scores, read from stored reports (never typed in by hand).
+  const invAcc = inv.ok && inv.data ? (inv.data.body as { with_third_reader?: { accepted_correct?: Rate } }).with_third_reader?.accepted_correct : undefined;
+  const recAcc = rec.ok && rec.data ? Object.values((rec.data.body as { policies?: Record<string, { accepted_amounts_exact: Rate }> }).policies ?? {})[0]?.accepted_amounts_exact : undefined;
+  const dedBad = ded.ok && ded.data ? (ded.data.body as { deductions?: { report_region?: { false_approval: Rate } } }).deductions?.report_region?.false_approval : undefined;
+
   return (
     <>
-      <Section title="What needs attention">
-        <div className="flex flex-wrap divide-x divide-rule border-y border-rule">
-          <Figure value={money(e.open_deduction_amount)} label={`Open deductions (${count(e.open_deductions)})`} />
-          <Figure value={count(e.deductions_due_14d)} label={`Disputes due in 14 days of ${e.as_of}`} due={e.deductions_due_14d > 0} />
-          <Figure value={money(e.unapplied_cash)} label="Unapplied cash" />
-          <Figure value={count(e.proposed_cash_applications)} label="Cash matches awaiting review" />
+      <h1 className="mb-8 font-serif text-5xl font-light tracking-tight md:text-6xl">Today, as of {e.as_of}</h1>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Tile href="/finance" hot={e.deductions_due_14d > 0} label="disputes due in 14 days">
+          <CountUp to={e.deductions_due_14d} format="int" />
+        </Tile>
+        <Tile href="/documents" hot={waiting > 0} label="invoices need you">
+          <CountUp to={waiting} format="int" />
+        </Tile>
+        <Tile href="/finance" label="cash matches to review">
+          <CountUp to={e.proposed_cash_applications} format="int" />
+        </Tile>
+        <Tile href="/finance" label={`open deductions (${count(e.open_deductions)})`}>
+          <CountUp to={Number(e.open_deduction_amount)} format="money" />
+        </Tile>
+      </div>
+
+      <section className="mt-12" aria-label="Proof">
+        <h2 className="mb-4 text-3xl">Scored once, on data the system never saw</h2>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Proof rate={invAcc} label="invoice values right when accepted" href="/evaluation" />
+          <Proof rate={recAcc} label="receipt photos right when accepted" href="/evaluation" />
+          <Proof rate={dedBad} label="bad deduction claims approved" href="/evaluation" count />
         </div>
-        {e.open_deductions === 0 && e.proposed_cash_applications === 0 ? (
-          <p className="mt-3 text-sm text-muted">
-            No payments or deductions are loaded yet. They arrive with the reconciliation module.
-          </p>
-        ) : null}
-      </Section>
+      </section>
 
-      <Section title="Data behind the numbers" note={`${count(c.real_dataset_versions)} of ${count(c.dataset_versions)} dataset files are real public data`}>
-        <table className="ledger max-w-3xl bg-sheet">
-          <tbody>
-            <Row label="Sales observations" value={count(c.sales_observations)} />
-            <Row label="SKUs" value={count(c.skus)} />
-            <Row label="Stores" value={count(c.stores)} />
-            <Row label="Source documents" value={count(c.source_documents)} />
-            <Row label="Rows held in quarantine" value={count(c.quarantined_rows)} />
-          </tbody>
-        </table>
-      </Section>
+      <p className="mt-12 text-sm text-muted">
+        {count(c.sales_observations)} real sales rows · {count(c.source_documents)} documents · {count(c.skus)} SKUs · {count(c.stores)} stores · {count(c.quarantined_rows)} rows quarantined
+      </p>
 
-      <Section title="Recent data loads">
-        {data.recent_runs.length === 0 ? (
-          <Notice kind="empty" title="No data loaded yet">
-            Download a dataset, then load it: <Cmd>python scripts/download_data.py m5</Cmd>
-          </Notice>
+      <details className="mt-4 rounded-xl border border-rule bg-sheet p-4">
+        <summary className="cursor-pointer font-bold">Data loads</summary>
+        {ov.data.recent_runs.length === 0 ? (
+          <p className="mt-3 text-sm">Nothing loaded yet: <Cmd>make download DATASET=m5</Cmd></p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="ledger bg-sheet">
-              <thead>
-                <tr>
-                  <th>Dataset</th><th>File</th><th>Origin</th><th>Status</th>
-                  <th className="num">Rows in</th><th className="num">Loaded</th>
-                  <th className="num">Quarantined</th><th>Code</th><th>Started</th>
-                </tr>
-              </thead>
+          <div className="mt-3 overflow-x-auto">
+            <table className="ledger">
+              <thead><tr><th>Dataset</th><th>Status</th><th className="num">Rows loaded</th><th className="num">Quarantined</th><th>Started</th></tr></thead>
               <tbody>
-                {data.recent_runs.map((r) => (
+                {ov.data.recent_runs.map((r) => (
                   <tr key={r.run_id}>
-                    <td>{r.dataset_key}</td>
-                    <td>
-                      {r.file_name}
-                      {r.scope.partial ? (
-                        <div className="text-xs text-muted">
-                          {(r.scope.batch ? `Part ${r.scope.batch.part} of ${r.scope.batch.of}` : "Partial load") +
-                            (r.scope.stores ? `: ${r.scope.stores.join(", ")}` : "") +
-                            (r.scope.limit_series ? `, first ${count(r.scope.limit_series)} series` : "")}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td>{r.data_origin.replace(/_/g, " ")}</td>
-                    <td>
-                      <Status value={r.status} />
-                      {r.failure_reason ? <div className="text-xs text-muted">{r.failure_reason}</div> : null}
-                    </td>
-                    <td className="num">{r.rows_in === null ? "" : count(r.rows_in)}</td>
+                    <td>{r.dataset_key}{r.scope.batch ? ` ${r.scope.batch.part}/${r.scope.batch.of}` : ""}</td>
+                    <td><Status value={r.status} /></td>
                     <td className="num">{r.rows_loaded === null ? "" : count(r.rows_loaded)}</td>
                     <td className="num">{r.rows_quarantined === null ? "" : count(r.rows_quarantined)}</td>
-                    <td>{r.code_version}</td>
                     <td>{when(r.started_at)}</td>
                   </tr>
                 ))}
@@ -97,16 +81,30 @@ function Body({ data }: { data: Overview }) {
             </table>
           </div>
         )}
-      </Section>
+      </details>
     </>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Tile({ href, label, hot = false, children }: { href: string; label: string; hot?: boolean; children: React.ReactNode }) {
   return (
-    <tr>
-      <td>{label}</td>
-      <td className="num w-40">{value}</td>
-    </tr>
+    <Link href={href}
+          className={"group rounded-2xl border p-5 transition hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(31,42,36,0.10)] " +
+            (hot ? "border-ink bg-tag" : "border-rule bg-sheet hover:border-forest")}>
+      <div className="font-serif text-5xl font-light leading-none">{children}</div>
+      <div className="mt-3 text-sm">{label}</div>
+    </Link>
+  );
+}
+
+function Proof({ rate, label, href, count: asCount = false }: { rate?: Rate; label: string; href: string; count?: boolean }) {
+  return (
+    <Link href={href} className="rounded-2xl bg-forest p-5 text-paper transition hover:bg-ink">
+      <div className="font-serif text-5xl font-light leading-none">
+        {!rate ? "–" : asCount ? `${rate.k} of ${rate.n}` : <CountUp to={(rate.rate ?? 0) * 100} format="pct" />}
+      </div>
+      <div className="mt-3 text-sm text-paper/80">{label}</div>
+      {rate && !asCount ? <div className="mt-1 text-xs text-paper/60">{count(rate.k)} of {count(rate.n)}</div> : null}
+    </Link>
   );
 }

@@ -129,7 +129,32 @@ def document_view(conn: psycopg.Connection, source_document_id: int) -> dict | N
                                                                 "at": rev[3].isoformat()}})
     open_ = sum(1 for x in fields if x["status"] == "review" and x["review"] is None)
     return {"source_document_id": doc[0], "storage_key": doc[1], "source_type": doc[2], "mime_type": doc[3],
-            "policy_version": policy, "fields": fields, "open_fields": open_}
+            "policy_version": policy, "fields": fields, "open_fields": open_, "readings": readings(conn, source_document_id)}
+
+
+def reader_of(extractor_version: str) -> str | None:
+    if extractor_version.startswith("rules-"):
+        return "rules"
+    if "+anthropic:" in extractor_version:
+        return "claude"
+    if "+ollama:" in extractor_version:
+        return "local_model"
+    return None
+
+
+def readings(conn: psycopg.Connection, source_document_id: int) -> list[dict]:
+    """What each reader read, with where on the page (for the replay). Latest version of each reader."""
+    out, seen = [], set()
+    for ver, f, value, bbox in _q(conn, """SELECT extractor_version, field_name, value, bbox FROM field_extraction
+                                           WHERE source_document_id = %s ORDER BY extractor_version DESC, field_name""",
+                                  (source_document_id,)):
+        who = reader_of(ver)
+        if who is None or (who, f) in seen:
+            continue
+        seen.add((who, f))
+        out.append({"reader": who, "field": f, "value": value, "bbox": bbox})
+    order = {"rules": 0, "local_model": 1, "claude": 2}
+    return sorted(out, key=lambda r: (order[r["reader"]], r["field"]))
 
 
 def queue(conn: psycopg.Connection, limit: int = 50) -> list[dict]:

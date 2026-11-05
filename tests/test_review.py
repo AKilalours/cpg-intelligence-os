@@ -115,3 +115,15 @@ def test_api_image_never_leaves_the_data_folder(client, conn):
     sid = conn.execute("""INSERT INTO source_document (sha256, storage_key, source_type)
                           VALUES (%s, '../../../etc/passwd', 'other') RETURNING source_document_id""", ("b" * 64,)).fetchone()[0]
     assert client.get(f"/api/documents/{sid}/image").status_code == 404
+
+
+def test_document_view_lists_each_readers_value_and_box(conn, doc):
+    from psycopg.types.json import Jsonb
+    for ver, extractor, val, box in (("rules-1.0.0+model1+tess", "rules", "734.33", [0.1, 0.2, 0.3, 0.25]),
+                                     ("invoice-header-1.0.0+ollama:qwen@x", "vlm", "734.33", None),
+                                     ("invoice-header-1.0.0+anthropic:claude@x", "vlm", "743.33", [0.1, 0.2, 0.3, 0.25])):
+        conn.execute("""INSERT INTO field_extraction (source_document_id, extractor, extractor_version, field_name, value, bbox, path)
+                        VALUES (%s, %s, %s, 'total', %s, %s, 'test')""", (doc, extractor, ver, val, Jsonb(box) if box else None))
+    r = {(x["reader"], x["field"]): x for x in review.document_view(conn, doc)["readings"]}
+    assert set(r) == {("rules", "total"), ("local_model", "total"), ("claude", "total")}
+    assert r[("claude", "total")]["value"] == "743.33" and r[("rules", "total")]["bbox"] == [0.1, 0.2, 0.3, 0.25]

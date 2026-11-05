@@ -44,8 +44,8 @@ export default async function FinancePage() {
   return (
     <>
       <PageHeader
-        title="Finance"
-        purpose="Match payments to invoices, check every deduction against its evidence, and dispute the ones that aren't valid before the window closes."
+        title="Cash & deductions"
+        purpose="Match the cash. Check every claim. Dispute before the window closes."
       />
       {asOf ? (
         <p className="-mt-6 mb-8 text-sm text-muted">

@@ -1,51 +1,36 @@
 import { api } from "@/lib/api";
 import { count } from "@/lib/format";
 import type { DatasetStatus, ReviewQueueItem } from "@/lib/types";
-import Link from "next/link";
-import { Cmd, Notice, PageHeader, Section } from "@/components/ui";
+import { QueueBrowser } from "./QueueBrowser";
+import { Cmd, Notice, PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function DocumentsPage() {
   const [res, queue] = await Promise.all([
     api<DatasetStatus[]>("/api/datasets"),
-    api<ReviewQueueItem[]>("/api/documents/queue"),
+    api<ReviewQueueItem[]>("/api/documents/queue?limit=500"),
   ]);
   return (
     <>
       <PageHeader
         title="Documents"
-        purpose="Invoices read by three readers; a routing rule accepts what is safe, and people check the rest. Every review is attributed and kept."
+        purpose="Three readers per invoice. You check only what they can't settle."
       />
-      <Section title="Review queue" note="Documents with fields the routing rule would not accept on its own">
-        {!queue.ok ? (
-          <Notice kind="error" title="Review queue unavailable">{queue.error}</Notice>
-        ) : queue.data.length === 0 ? (
-          <Notice kind="empty" title="Nothing waiting for a person">
-            Store routing decisions first: <Cmd>make decide-docs ROUND=5</Cmd>
-          </Notice>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="ledger bg-sheet">
-              <thead>
-                <tr><th>Document</th><th className="num">Waiting</th><th className="num">Accepted</th><th>Fields to check</th><th>Rule</th></tr>
-              </thead>
-              <tbody>
-                {queue.data.map((q) => (
-                  <tr key={q.source_document_id}>
-                    <td><Link className="underline underline-offset-4" href={`/documents/${q.source_document_id}`}>{q.source_document_id}</Link></td>
-                    <td className="num">{count(q.open_fields)}</td>
-                    <td className="num">{count(q.accepted_fields)}</td>
-                    <td>{q.review_fields.map((f) => f.replace(/_/g, " ")).join(", ")}</td>
-                    <td className="text-sm text-muted">{q.policy_version}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
-      <Section title="Source data readiness" note="Every dataset needs accepted terms and downloaded files before it loads">
+      {!queue.ok ? (
+        <Notice kind="error" title="Review queue unavailable">{queue.error}</Notice>
+      ) : queue.data.length === 0 ? (
+        <Notice kind="empty" title="Nothing waiting for you">
+          Load decisions: <Cmd>make decide-docs ROUND=5</Cmd>
+        </Notice>
+      ) : (
+        <QueueBrowser items={queue.data} />
+      )}
+
+      <details className="mt-12 rounded-xl border border-rule bg-sheet p-4">
+        <summary className="cursor-pointer font-bold">Data sources</summary>
+        <div className="mt-4">
+      <div>
         {!res.ok ? (
           <Notice kind="error" title="Dataset status unavailable">{res.error}</Notice>
         ) : (
@@ -79,7 +64,9 @@ export default async function DocumentsPage() {
             </table>
           </div>
         )}
-      </Section>
+      </div>
+        </div>
+      </details>
     </>
   );
 }
