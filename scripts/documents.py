@@ -467,6 +467,44 @@ def cmd_export_regressions(conn) -> int:
     return 0
 
 
+def cmd_names_analysis(conn) -> int:
+    """Rule 1.5 question, on development rounds only (1 to 4): accept names two models agree on?"""
+    from cpgos.documents import cascade
+    from cpgos.documents.names_analysis import NAME_FIELDS, NameCase, analyze
+    gs = conn.execute("SELECT max(gold_set_id) FROM eval.gold_set WHERE name = 'fatura_header_fields'").fetchone()[0]
+    reports = conn.execute("""SELECT kind, body FROM eval.report WHERE kind IN ('routing_holdout', 'routing_calibration')
+                              ORDER BY report_id""").fetchall()
+    latest = conn.execute("""SELECT body FROM eval.report WHERE kind = 'routing_holdout' AND body->'rounds' = '[5]'
+                             ORDER BY report_id DESC LIMIT 1""").fetchone()
+    try:
+        bar = latest[0]["with_third_reader"]["accepted_correct"]["ci95"][0]
+    except (TypeError, KeyError, IndexError):
+        print("No complete round 5 report to set the bar; run the round 5 evaluation first.")
+        return 1
+    cases, seen = [], set()
+    for kind, body in reports:
+        rounds = body.get("rounds") or []
+        third = (body.get("third_reader") or {}).get("version")
+        if not rounds or max(rounds) >= 5 or not third:     # fresh rounds are for scoring only
+            continue
+        split = kind.removeprefix("routing_")
+        ids = sorted({sid for r in rounds for sid in cascade.sample(conn, r)[split]} - seen)
+        seen |= set(ids)
+        v = body["reader_versions"]
+        r1, r2, r3 = (cascade._values(conn, x, ids) for x in (v["rules"], v["local_model"], third))
+        _, nf2 = cascade._printed_typed(conn, v["local_model"], ids)
+        _, nf3 = cascade._printed_typed(conn, third, ids)
+        gold = cascade._gold(conn, gs, ids)
+        for sid in ids:
+            for f in NAME_FIELDS:
+                cases.append(NameCase(sid, f, r1[sid].get(f), r2[sid].get(f), r3[sid].get(f), gold[sid].get(f),
+                                      f not in nf2[sid] and f not in nf3[sid]))
+    out = analyze(cases, bar)
+    out["development_invoices"] = len(seen)
+    print(json.dumps(out, indent=1))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--split", choices=["calibration", "holdout", "validation", "test"], default="calibration")
@@ -474,7 +512,7 @@ def main() -> int:
     ap.add_argument("--round", type=int, default=2, help="sample round (holdout round 3 scores routing 1.2)")
     ap.add_argument("command", choices=["load-fatura", "load-cord", "train-router", "eval-router", "route", "routing-estimate", "routing",
                                         "learn-rules", "extract", "eval-extract", "vlm-dev",
-                                        "eval-cascade", "vlm-collect", "receipts-collect", "receipts-eval", "decide", "regress", "export-regressions"])
+                                        "eval-cascade", "vlm-collect", "receipts-collect", "receipts-eval", "decide", "regress", "export-regressions", "names-analysis"])
     args = ap.parse_args()
     global ROUND
     ROUND = args.round
@@ -489,6 +527,7 @@ def main() -> int:
                 "routing": lambda c: cmd_routing(c, args.split, not args.no_claude),
                 "decide": lambda c: cmd_decide(c, args.split),
                 "regress": cmd_regress, "export-regressions": cmd_export_regressions,
+                "names-analysis": cmd_names_analysis,
                 "receipts-collect": lambda c: cmd_receipts_collect(c, _receipt_split(args.split)),
                 "receipts-eval": lambda c: cmd_receipts_eval(c, _receipt_split(args.split), not args.no_claude)}[args.command](conn)
 
