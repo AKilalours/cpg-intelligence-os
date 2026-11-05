@@ -26,7 +26,7 @@ from psycopg.types.json import Jsonb
 
 from cpgos.money import Money
 
-ENGINE_VERSION = "deductions-2.1.0"   # 2.1: double-dips are named and linked to the claims they repeat
+ENGINE_VERSION = "deductions-2.1.0"   # 2.1: double-dips named; any rejected repeat lists the claims it repeats
 
 # Assumptions, stated where they are used and shown in the docs.
 DISPUTE_HANDLING_COST = Decimal("25.00")   # analyst time per dispute; below this a dispute loses money
@@ -114,6 +114,19 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
     used_spoils: dict[tuple, Decimal] = defaultdict(Decimal)   # spoils accepted per store and period
     # Who used the support, so a double-dip names the claims it repeats (what a dispute letter says).
     takers: dict[tuple, list[str]] = defaultdict(list)
+    # Every earlier claim against the same thing, whatever its verdict: a repeat of a bogus claim uses up
+    # no support, so takers alone missed it (found on the full world, 2026-11-05).
+    claimed: dict[tuple, list[str]] = defaultdict(list)
+
+    def remember(a: Assessment, keys: list[tuple]) -> None:
+        """A rejected claim lists the earlier claims against the same thing; then this one is recorded."""
+        before = {c for k in keys for c in claimed[k]}
+        if before and a.verdict in ("invalid", "partially_valid"):
+            ev = dict(a.evidence or {})
+            ev["earlier_claims"] = sorted(set(ev.get("earlier_claims", [])) | before)
+            a.evidence = ev
+        for k in keys:
+            claimed[k].append(a.claim_number)
 
     out = []
     for (did, claim, partner, code, reason, amount, ddate, deadline, inv_ref, sku, units,
@@ -123,6 +136,9 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
         a = Assessment(did, claim, code, reason, amount, ddate, deadline, "needs_evidence", "", None, Decimal(0))
         kind = _kind(code, reason)
         t = terms.get(partner, {})
+        keys: list[tuple] = []          # what this claim is a claim against, for repeat detection
+        if kind == "scan_back" and store and sku and p0 and p1:
+            keys.append(("scan_back", partner, store, sku, p0, p1))
 
         if kind == "scan_back":
             if not (store and sku and p0 and p1):
@@ -160,6 +176,7 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                         # A missing POS week makes a valid claim look over-claimed: ask for the data instead.
                         a.verdict, a.recoverable, a.rule = "needs_evidence", Decimal(0), "scan_back_pos_incomplete"
                         a.evidence = {"promotions": used, "pos_gaps": gaps, "claimed_amount": str(amount)}
+                        remember(a, keys)
                         out.append(a)
                         continue
                     a.verdict, a.recoverable = _verdict(amount, a.supported)
@@ -200,6 +217,7 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                     a.evidence = {"invoice_id": inv[0], "sku_id": sku, "receipt_found": False}
                 else:
                     lid, qty, price, received = line
+                    keys.append(("line", lid))
                     short_units = max(int(qty) - int(received), 0)
                     earned = Money.of(price).times(short_units).amount
                     a.supported = max(earned - used_line[lid], Decimal(0))
@@ -225,6 +243,7 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                     a.rule, a.evidence = "late_fee_no_delivery_record", {"invoice_id": inv[0]}
                 else:
                     sched, delivered = ship
+                    keys.append(("fee", inv[0]))
                     fee = Decimal(str(t.get("late_shipment_fee", "0")))
                     late_days = (delivered - sched).days
                     a.supported = max((fee if late_days > 0 else Decimal(0)) - used_fee[inv[0]], Decimal(0))
@@ -262,6 +281,7 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                               "allowance_pct": str(pct), "allowed_amount": str(allowed)}
         else:
             a.rule, a.evidence = "unknown_deduction_type", {"code": code, "reason": reason}
+        remember(a, keys)
         out.append(a)
     return out
 

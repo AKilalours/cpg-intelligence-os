@@ -110,7 +110,7 @@ def cmd_evaluate(conn) -> int:
     dup = d["by_reason"].get("duplicate")
     if dup:
         print(f"deductions        duplicates in the answer key: {dup['n']}, rejected {dup['verdict_correct']},"
-              f" named as a duplicate with the earlier claim {dup['named_duplicate']}, needs evidence {dup['needs_evidence']}")
+              f" linked to the earlier claim {dup['named_duplicate']}, needs evidence {dup['needs_evidence']}")
     for name in ("design_region", "report_region"):
         b = d[name]
         print(f"deductions {name} {'+'.join(b['regions'])}: {b['deductions']} claims, needs evidence {b['needs_evidence']['k']},"

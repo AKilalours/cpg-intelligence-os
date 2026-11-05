@@ -116,7 +116,7 @@ def score_deductions(conn: psycopg.Connection, assessments: list[deductions.Asse
     for a, t in scored:
         b = by_reason[t[2]]
         b["n"] += 1
-        b["named_duplicate"] += a.rule.endswith("_duplicate")
+        b["named_duplicate"] += a.rule.endswith("_duplicate") or bool((a.evidence or {}).get("earlier_claims"))
         b["needs_evidence"] += a.verdict == "needs_evidence"
         b["verdict_correct"] += a.verdict != "needs_evidence" and (a.verdict == "valid") == t[0]
         b["true_recoverable"] += t[1]

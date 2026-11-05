@@ -548,3 +548,13 @@ These invoices print two parties, buyer and bill-to, and the models took the
 wrong one. Requiring the name to be found on the page filtered nothing, since
 the wrong name is printed there too. Role confusion, not reading, is the
 failure; it needs the field's position or its printed label, not a second vote.
+
+## 74. A rejected repeat names the first claim even when that claim used nothing up
+On the full 1.2 world all 4 duplicate claims were rejected but only 3 named
+the claim they repeated. The fourth repeated a bogus claim (a shortage the
+receipt does not show): the first was rejected too, used up no support, and so
+left nothing to link. The engine now remembers every earlier claim against
+the same thing (receipt line, invoice late fee, or promotion store, product
+and period) whatever its verdict, and any rejected claim lists them. The
+verdict still comes from the evidence; the link only strengthens the dispute.
+Both regression tests fail on the previous engine and pass on this one.

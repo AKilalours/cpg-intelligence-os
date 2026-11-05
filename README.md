@@ -100,6 +100,19 @@ engines by a database role). Details and caveats:
 | Valid claims disputed | 2 of 121 (calendar gaps the Phase 3 agent will read past) | |
 | Recovered at 1 review a week | **$3,408.41 (all that unlimited reviews recover)** | $2,542.13 largest first, $214.14 oldest first |
 
+World generator 1.2 adds the two remittance patterns fix 5 handles: invoices paid net of a claim on the
+same line, and claims taken twice. Scored in a side database (`make world-sidecar`) with the same
+imperfect evidence as above, so the numbers compare like for like:
+
+| World 1.2 | This engine | Baseline |
+|---|---|---|
+| Short-pays explained on the remittance line | **33 of 33 posted automatically and right**, 0 wrong | |
+| Wrong automatic cash postings | **0 of 861** | 10 of 868 |
+| Cash dollars posted correctly with no person | **89.3%** | 87.0% |
+| Held for a person because another open invoice has the same amount | 9 lines | |
+| Duplicate claims (double-dips) rejected | **4 of 4**; each now lists the claim it repeats (decision 74; re-measure with `make real-run`) | |
+| Valid claims disputed (report region) | 2 of 121, as in world 1.1 | |
+
 The deduction checker is scored on deliberately imperfect evidence (missing
 POS weeks, unscanned receipts, calendar typos), tuned on California stores
 and reported on Texas and Wisconsin. The damage is an overlay decided by

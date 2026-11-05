@@ -13,7 +13,7 @@ from tests.test_finance_world import cfg, sales_fixture
 
 def _world(conn, **kw):
     load_deduction_codes(conn)
-    return build_world(conn, sales_fixture(), cfg(**kw))
+    return build_world(conn, sales_fixture(weeks=kw.get("weeks", 40)), cfg(**kw))
 
 
 def test_a_netted_line_is_consistent_and_its_claim_points_back_to_it(conn):
@@ -99,3 +99,25 @@ def test_the_report_counts_twins_and_named_duplicates(conn):
     assert s["held_for_twin_amount"] == sum("caution" in m.explanation for m in matches)
     dup = score_deductions(conn, deductions.assess_all(conn))["by_reason"]["duplicate"]
     assert dup["n"] > 0 and dup["named_duplicate"] > 0 and dup["named_duplicate"] <= dup["verdict_correct"]
+
+
+
+def test_a_repeat_of_a_bogus_claim_is_rejected_and_still_points_at_the_first(conn):
+    # Found on the full world: a false shortage (the receipt shows none) claimed twice. The first claim
+    # used up no support, so the repeat had no "taker" and was rejected without naming the first.
+    _world(conn, p_deduct_at_payment=1.0, p_double_dip=1.0, p_false_shortage_invoice=1.0, p_shortage_invoice=0.0)
+    truth = dict(conn.execute("SELECT deduction_id, reason FROM eval.gt_deduction").fetchall())
+    claims = dict(conn.execute("SELECT deduction_id, claim_number FROM deduction").fetchall())
+    out = {a.deduction_id: a for a in deductions.assess_all(conn)}
+    repeats = [out[d] for d, r in truth.items() if r == "duplicate" and out[d].rule == "shortage_not_on_receipt"]
+    assert repeats, "the scenario did not occur"
+    for a in repeats:
+        assert a.verdict == "invalid" and a.evidence["earlier_claims"]
+        assert all(c < claims[a.deduction_id] for c in a.evidence["earlier_claims"])
+
+
+def test_every_rejected_duplicate_is_linked_on_clean_evidence(conn):
+    from cpgos.finance.evaluate import score_deductions
+    _world(conn, weeks=60, p_promo_duplicate=1.0, p_deduct_at_payment=1.0, p_double_dip=1.0)
+    dup = score_deductions(conn, deductions.assess_all(conn))["by_reason"]["duplicate"]
+    assert dup["n"] > 0 and dup["named_duplicate"] == dup["verdict_correct"] == dup["n"]
