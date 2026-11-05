@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { count, quantity } from "@/lib/format";
 import type { SalesSeries, SeriesKey } from "@/lib/types";
 import { Notice, PageHeader, Section } from "@/components/ui";
-import { Sparkline } from "@/components/Sparkline";
+import { SeriesExplorer } from "./SeriesExplorer";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader
         title="Planning"
-        purpose="Real Walmart sales by store and item."
+        purpose="Real Walmart sales (M5), by store and item."
       />
       {!keys.ok ? (
         <Notice kind="error" title="Sales data unavailable">{keys.error}</Notice>
@@ -34,17 +34,13 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
           Load the real M5 Walmart data to see series here.
         </Notice>
       ) : (
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_18rem]">
           <Section title={pick ? `${pick.sku} at ${pick.store}` : "Series"}>
             {series && series.ok ? (
               <>
-                <Sparkline
-                  values={series.data.points.map((p) => p.units)}
-                  label={series.data.granularity === "week" ? "Weekly units" : "Daily units"}
-                />
-                <p className="mt-2 text-sm text-muted">
-                  {`${count(series.data.points.length)} ${series.data.granularity === "week" ? "weeks" : "days"} of units sold, data origin: ${series.data.data_origin.replace(/_/g, " ")}. `}
-                  Periods before the item was first priced are excluded.
+                <SeriesExplorer key={`${pick!.sku}-${pick!.store}`} series={series.data} />
+                <p className="mt-3 text-xs text-muted">
+                  {count(series.data.points.length)} {series.data.granularity === "week" ? "weeks" : "days"}, {series.data.data_origin.replace(/_/g, " ")}. Periods before the item was first priced are excluded.
                 </p>
               </>
             ) : series ? (
