@@ -9,7 +9,7 @@ ROUND ?= 2
 SPLIT ?= validation
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -70,6 +70,9 @@ agent-design: $(PY)  ## Phase 3 agent on California only: where it differs from 
 
 agent-score: $(PY)  ## Phase 3 agent scored once on Texas and Wisconsin per agent version; saves cases and reasoning
 	$(PY) scripts/finance.py agent-score
+
+agent-report: $(PY)  ## Print the latest stored agent report again (no scoring)
+	$(PY) scripts/finance.py agent-report
 
 reconcile: $(PY)  ## Cash application + deduction validation, written by the engine role
 	$(PY) scripts/finance.py reconcile

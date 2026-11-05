@@ -123,6 +123,7 @@ def test_the_scoring_region_is_scored_once_per_agent_version(conn, capsys):
     assert cli.cmd_agent_score(conn) == 0
     assert "false disputes" in capsys.readouterr().out
     assert cli.cmd_agent_score(conn) == 1 and "already scored" in capsys.readouterr().out
+    assert cli.cmd_agent_report(conn) == 0 and "false disputes" in capsys.readouterr().out
 
 
 def test_with_several_promoting_stores_the_claimed_units_pick_the_store(conn):

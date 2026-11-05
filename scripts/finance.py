@@ -154,8 +154,23 @@ def cmd_agent_score(conn) -> int:
     s = score(conn, findings)
     rid = conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES ('agent', %s, %s) RETURNING report_id",
                        (code_version(), Jsonb(json.loads(json.dumps(s, default=str))))).fetchone()[0]
+    _print_agent(rid, s)
+    return 0
+
+
+def cmd_agent_report(conn) -> int:
+    """Print the latest stored agent report (scored by make agent-score) without scoring again."""
+    row = conn.execute("SELECT report_id, body FROM eval.report WHERE kind = 'agent' ORDER BY report_id DESC LIMIT 1").fetchone()
+    if row is None:
+        print("No agent report yet: run make agent-score")
+        return 1
+    _print_agent(row[0], row[1])
+    return 0
+
+
+def _print_agent(rid, s) -> None:
     r = s["report_region"]
-    print(f"report {rid}: {inv.AGENT_VERSION} on {'+'.join(r['regions'])}, {r['claims']} claims")
+    print(f"report {rid}: {s['agent']} on {'+'.join(r['regions'])}, {r['claims']} claims")
     print(f"  actions {r['actions']}")
     print(f"  false disputes   agent {r['false_disputes']['k']}/{r['false_disputes']['n']}"
           f"   engine {r['engine']['false_disputes']['k']}/{r['engine']['false_disputes']['n']}")
@@ -168,20 +183,20 @@ def cmd_agent_score(conn) -> int:
     for x in s["agent_differs_from_engine"]:
         if x["region"] in r["regions"]:
             print(f"  differs: {x}")
-    return 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["world", "reconcile", "evaluate", "evidence", "restore-evidence",
-                                        "agent-design", "agent-score"])
+                                        "agent-design", "agent-score", "agent-report"])
     args = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
         return {"world": cmd_world, "reconcile": cmd_reconcile, "evaluate": cmd_evaluate,
                 "evidence": cmd_evidence, "restore-evidence": cmd_restore_evidence,
-                "agent-design": cmd_agent_design, "agent-score": cmd_agent_score}[args.command](conn)
+                "agent-design": cmd_agent_design, "agent-score": cmd_agent_score,
+                "agent-report": cmd_agent_report}[args.command](conn)
 
 
 if __name__ == "__main__":
