@@ -153,3 +153,33 @@ class EvaluationReport(BaseModel):
     code_version: str
     created_at: datetime
     body: dict
+
+
+# ---------- the phase 2a report's deduction section, declared (an undeclared shape broke the web page) ----------
+
+class RateOut(BaseModel):
+    k: int
+    n: int
+    rate: float | None
+    ci95: list[float] | tuple[float, float] | None
+
+
+class DeductionScore(BaseModel):
+    deductions: int
+    needs_evidence: RateOut
+    recoverable_exact_to_the_cent_when_decided: RateOut
+    false_approval: RateOut
+    false_dispute: RateOut
+    true_recoverable_total: str
+    found_recoverable_total: str
+
+
+class RegionScore(DeductionScore):
+    regions: list[str]
+
+
+class Phase2aDeductions(DeductionScore):
+    design_region: RegionScore
+    report_region: RegionScore
+    mistakes: list[dict]
+    by_reason: dict[str, dict]

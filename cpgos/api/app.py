@@ -131,7 +131,8 @@ def datasets(conn: psycopg.Connection = Depends(get_conn)) -> list[s.DatasetStat
     )
     out = []
     for key, spec in load_registry().items():
-        present = spec.raw_dir.exists() and any(p.is_file() for p in spec.raw_dir.iterdir())
+        # Look inside subfolders: CORD keeps its files in cord/data/ and cord/images/ (shown as "Missing" before).
+        present = spec.raw_dir.exists() and any(p.is_file() for p in spec.raw_dir.rglob("*"))
         if spec.method == "bundled":
             present = True
         out.append(s.DatasetStatus(
@@ -251,6 +252,12 @@ def latest_evaluation(kind: str = Query("phase2a", pattern="^[a-z0-9_]+$"), conn
     r = conn.execute(
         """SELECT report_id, kind, code_version, created_at, body FROM eval.report
            WHERE kind = %s ORDER BY report_id DESC LIMIT 1""", (kind,)).fetchone()
+    if r and kind == "phase2a":
+        from pydantic import ValidationError
+        try:
+            s.Phase2aDeductions.model_validate(r["body"].get("deductions") or {})
+        except ValidationError:
+            raise HTTPException(409, f"report {r['report_id']} was written by older code; run: make eval-recon") from None
     return s.EvaluationReport(**r) if r else None
 
 

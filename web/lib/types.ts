@@ -155,19 +155,29 @@ export interface PolicyResult {
   recoverable_lost_to_deadline: Decimal; share_of_disputable: number | null;
 }
 
+// Mirrors cpgos/api/schemas.py Phase2aDeductions (validated by the API, tested in tests/test_api.py).
+export interface DeductionScore {
+  deductions: number;
+  needs_evidence: Rate;
+  recoverable_exact_to_the_cent_when_decided: Rate;
+  false_approval: Rate;
+  false_dispute: Rate;
+  true_recoverable_total: Decimal;
+  found_recoverable_total: Decimal;
+}
+
+export interface RegionScore extends DeductionScore {
+  regions: string[];
+}
+
 export interface Phase2aReport {
   world: { dataset_version_id: number; description: string; as_of: string } | null;
   cash_application: { full: CashAppScore; exact_only_baseline: CashAppScore; auto_threshold: number };
-  deductions: {
-    deductions: number;
-    invalid_in_truth: number;
-    recoverable_exact_to_the_cent: Rate;
-    false_approval: Rate;
-    false_dispute: Rate;
-    needs_evidence: Rate;
-    true_recoverable_total: Decimal;
-    found_recoverable_total: Decimal;
-    by_reason: Record<string, { n: number; verdict_correct: number; recoverable_exact: number; true_recoverable: Decimal }>;
+  deductions: DeductionScore & {
+    design_region: RegionScore;
+    report_region: RegionScore;
+    mistakes: { claim: string; rule: string; truth: string; verdict: string; region: string | null }[];
+    by_reason: Record<string, { n: number; verdict_correct: number; needs_evidence: number; true_recoverable: Decimal }>;
   };
   recovery_simulation: ({ reviews_per_week: number; disputable_recoverable: Decimal } &
     Record<"engine" | "largest_amount" | "oldest_first", PolicyResult>)[];

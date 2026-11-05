@@ -1,6 +1,7 @@
 from datetime import date
 
 import psycopg
+from psycopg.types.json import Jsonb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -152,3 +153,24 @@ def test_finance_endpoints_on_a_reconciled_world(client, conn):
     body = client.get("/api/evaluation/latest").json()["body"]
     assert body["cash_application"]["full"]["false_match_rate"]["k"] == 0
     assert body["deductions"]["false_approval"]["k"] == 0
+    # The deduction section has a declared shape the web page relies on (the page crashed on a renamed key).
+    assert set(body["deductions"]["report_region"]) >= {"regions", "false_dispute", "needs_evidence",
+                                                         "recoverable_exact_to_the_cent_when_decided"}
+    old = {**body, "deductions": {"deductions": 1, "recoverable_exact_to_the_cent": {"k": 1, "n": 1}}}
+    conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES ('phase2a', 'old', %s)", (Jsonb(old),))
+    r = client.get("/api/evaluation/latest")
+    assert r.status_code == 409 and "make eval-recon" in r.json()["detail"]
+
+
+
+def test_dataset_files_found_in_subfolders(client, tmp_path, monkeypatch):
+    # CORD keeps its files in cord/data/ and cord/images/: the top-level-only check reported it missing.
+    from cpgos.datasets import registry
+    specs = registry.load_registry()
+    spec = specs["cord"]
+    nested = tmp_path / "cord"
+    (nested / "data").mkdir(parents=True)
+    (nested / "data" / "x.parquet").write_bytes(b"x")
+    monkeypatch.setattr(type(spec), "raw_dir", property(lambda self: nested if self.key == "cord" else tmp_path / "none"))
+    rows = {d["key"]: d for d in client.get("/api/datasets").json()}
+    assert rows["cord"]["files_present"] is True

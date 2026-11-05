@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { count, money, pct, rateText, when } from "@/lib/format";
 import type { CashAppScore, EvaluationReport, IngestionRun, Phase2aReport } from "@/lib/types";
 import { Cmd, Figure, Notice, PageHeader, Section, Status } from "@/components/ui";
+import { DeductionScores } from "./DeductionScores";
 
 export const dynamic = "force-dynamic";
 
@@ -123,29 +124,8 @@ function Reconciliation({ r }: { r: EvaluationReport }) {
         </div>
       </Section>
 
-      <Section title="Deduction validation" note="Verdicts against the hidden answer key">
-        <div className="mb-6 flex flex-wrap divide-x divide-rule border-y border-rule">
-          <Figure value={`${d.recoverable_exact_to_the_cent.k}/${d.deductions}`} label="Recoverable amount exact to the cent" />
-          <Figure value={count(d.false_approval.k)} label={`Invalid claims accepted (of ${d.false_approval.n})`} />
-          <Figure value={count(d.false_dispute.k)} label={`Valid claims disputed (of ${d.false_dispute.n})`} />
-          <Figure value={money(d.true_recoverable_total)} label="Recoverable in the answer key" />
-        </div>
-        <p className="mb-4 max-w-3xl text-sm text-muted">
-          Read with care: the validator applies the same published terms the world was generated from, so a perfect
-          score shows the evidence lookups and arithmetic are right, not that messy real claims are solved. Intervals:
-          false approvals {rateText(d.false_approval)}; false disputes {rateText(d.false_dispute)}.
-        </p>
-        <table className="ledger bg-sheet">
-          <thead><tr><th>Truth</th><th className="num">Claims</th><th className="num">Verdict right</th><th className="num">Amount exact</th><th className="num">Recoverable</th></tr></thead>
-          <tbody>
-            {Object.entries(d.by_reason).map(([k, v]) => (
-              <tr key={k}>
-                <td>{k.replace(/_/g, " ")}</td><td className="num">{v.n}</td><td className="num">{v.verdict_correct}</td>
-                <td className="num">{v.recoverable_exact}</td><td className="num font-figure text-lg">{money(v.true_recoverable)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <Section title="Deduction checker" note="Scored on damaged evidence">
+        <DeductionScores d={d} />
       </Section>
 
       <Section title="Recovery with limited review time" note="Same validator, different order of work">
