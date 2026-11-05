@@ -104,3 +104,24 @@ def test_a_model_draft_that_misstates_the_deadline_falls_back_to_the_template():
                   model=lambda **kw: "Claim R-0000268: please send the promotion agreement by 2015-05-06.")
     assert out["source"] == "template" and out["model_rejected"]["window_problems"]
     assert out["window_problems"] == []                                        # the template itself is truthful
+
+
+# ---------- letter 1.5: one deadline sentence, no instruction echoes ----------
+
+def test_a_letter_that_echoes_its_instructions_is_rejected():
+    # Prompt 1.2: "As the dispute deadline of 2015-05-06 has passed, we will not be asking for anything by that date."
+    claim = dict(CLAIM, dispute_deadline="2015-05-06")
+    req = {"action": "request", "reason": "no agreement", "request": "the promotion agreement", "facts": []}
+    echo = "Claim R-0000268. As the deadline has passed, we will not be asking for anything by that date."
+    out = L.draft(claim, req, [], "N", "K", as_of="2016-05-22", model=lambda **kw: echo)
+    assert out["source"] == "template" and any("echoes" in p for p in out["model_rejected"]["window_problems"])
+
+
+def test_template_and_model_share_one_true_deadline_sentence():
+    claim = dict(CLAIM, dispute_deadline="2015-05-06")
+    req = {"action": "request", "reason": "no agreement", "request": "the promotion agreement", "facts": []}
+    s = L.deadline_sentence(claim, req, "2016-05-22")
+    assert s == "The dispute deadline (2015-05-06) has passed, so we ask for it for our records."
+    assert s in L.draft(claim, req, [], "N", "K", as_of="2016-05-22")["text"]
+    good = f"Claim R-0000268: we need the promotion agreement. {s}"
+    assert L.draft(claim, req, [], "N", "K", as_of="2016-05-22", model=lambda **kw: good)["source"] == "model"

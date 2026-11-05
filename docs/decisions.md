@@ -661,3 +661,12 @@ of a sample found no engine wording and no "part of a promotion" overclaim;
 some letters echo the instruction ("we will not be asking for anything by that
 date"), true but stilted, left as a style note rather than tuned further on
 the same 105 letters.
+
+## 86. The model copies the deadline sentence; it never words it
+Prompt 1.2 told the model a rule about the deadline, and some letters
+repeated the rule to the retailer ("we will not be asking for anything by
+that date"). The cure is to remove the choice: template and model letters now
+share one deadline sentence, and prompt 1.3 gives it to the model to copy. A
+third check rejects wording that echoes the instructions (field names, "as
+instructed", "we will not be asking"). All 312 template letters pass all three
+checks.

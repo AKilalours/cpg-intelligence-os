@@ -13,7 +13,7 @@ import json
 import re
 from decimal import Decimal, InvalidOperation
 
-LETTER_VERSION = "letter-1.4.0"   # 1.3: dates checked in any form. 1.4: the deadline must be described truthfully
+LETTER_VERSION = "letter-1.5.0"   # 1.4: deadline truthful. 1.5: one deadline sentence for all letters; no instruction echoes
 
 _MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august",
                                        "september", "october", "november", "december"], 1)}
@@ -156,6 +156,32 @@ def _money(x) -> str:
     return f"${Decimal(str(x)):,.2f}"
 
 
+def deadline_sentence(claim: dict, finding: dict, as_of=None) -> str:
+    """The one true sentence about the deadline. Template and model letters both end with it, so the model never
+    has to word the deadline itself (prompt 1.2 echoed its instruction: "we will not be asking for anything by
+    that date")."""
+    deadline = claim.get("dispute_deadline")
+    closed = as_of is not None and deadline is not None and str(deadline) < str(as_of)
+    if finding["action"] == "dispute":
+        return (f"The dispute deadline ({deadline}) has passed; we raise this for the record and ask you to repay "
+                "it as a matter of goodwill." if closed else
+                "Please repay the amount above on your next remittance, or send the documents that support the "
+                f"full claim before the dispute deadline of {deadline}.")
+    if finding["action"] == "request":
+        return (f"The dispute deadline ({deadline}) has passed, so we ask for it for our records." if closed else
+                f"Please send it before {deadline}. Until then we hold the claim open and take no action on it.")
+    return "No action is needed."
+
+
+_ECHO = re.compile(r"we will not be (asking|requesting)|deadline_has_passed|deadline_sentence|"
+                   r"as (instructed|requested in the facts)|(according to|based on) the (facts|json)|\bjson\b", re.I)
+
+
+def echo_problems(text: str) -> list[str]:
+    """Wording that repeats the model's instructions back to the retailer instead of writing the letter."""
+    return [f'echoes an instruction ("{m.group(0)}")' for m in _ECHO.finditer(text)][:3]
+
+
 def template(claim: dict, finding: dict, supplier: str, partner: str, as_of=None,
              calculations: list[dict] | None = None) -> str:
     """The letter a careful AR analyst would send, from the agent's finding only. When the dispute window
@@ -168,16 +194,11 @@ def template(claim: dict, finding: dict, supplier: str, partner: str, as_of=None
     if finding["action"] == "dispute":
         body = (f"We dispute this deduction. {why(finding, calculations)}.\n\n"
                 f"Amount we ask you to repay: {_money(finding['recoverable'])}.\n")
-        body += "\nThe calculation and the records it uses are attached. "
-        body += (f"The dispute deadline ({deadline}) has passed; we raise this for the record and ask you to "
-                 "repay it as a matter of goodwill.\n" if closed else
-                 "Please repay the amount above on your next remittance, or send the documents that support "
-                 f"the full claim before the dispute deadline of {deadline}.\n")
+        body += "\nThe calculation and the records it uses are attached. " + deadline_sentence(claim, finding, as_of) + "\n"
     elif finding["action"] == "request":
         body = (f"Before we accept or dispute this deduction we need one document: {finding['request']}.\n\n"
                 f"Reason: {request_why(finding)}.\n\n")
-        body += (f"The dispute deadline ({deadline}) has passed, so we ask for it for our records.\n" if closed else
-                 f"Please send it before {deadline}. Until then we hold the claim open and take no action on it.\n")
+        body += deadline_sentence(claim, finding, as_of) + "\n"
     else:
         body = "We have checked this deduction against our records and accept it. No action is needed.\n"
     return head + body + f"\nRegards,\nAccounts Receivable, {supplier}\n"
@@ -194,7 +215,7 @@ def draft(claim: dict, finding: dict, calculations: list[dict], supplier: str, p
     if model is not None:
         text = model(claim=claim, finding=finding, calculations=calculations, supplier=supplier, partner=partner,
                      as_of=as_of)
-        bad, wrong = verify(text, *sources), window_problems(text, claim, as_of)
+        bad, wrong = verify(text, *sources), window_problems(text, claim, as_of) + echo_problems(text)
         if bad or wrong:
             out["model_rejected"] = {"unsupported_numbers": bad, "window_problems": wrong}
         else:
@@ -204,10 +225,10 @@ def draft(claim: dict, finding: dict, calculations: list[dict], supplier: str, p
 
 # ---------- a model writes the letter; the check decides whether it may be used ----------
 
-PROMPT_VERSION = "letter-prompt-1.2.0"   # 1.1: plain request reasons. 1.2: say what the evidence shows, not more
+PROMPT_VERSION = "letter-prompt-1.3.0"   # 1.2: no overclaiming. 1.3: end with the given deadline sentence, verbatim
 SYSTEM = ("You write short, firm, polite accounts-receivable letters from a food supplier to a distributor's "
           "deductions department. Use only the facts given. Never add a number, date, percentage, claim number, "
-          "or deadline that is not in the facts. If deadline_has_passed is true, do not ask for anything by that date. "
+          "or deadline that is not in the facts. End the letter body with closing_sentence, copied exactly. "
           "State only what the facts say: a price that dropped like a promotion is not proof that a promotion ran. "
           "Plain text, no markdown, under 150 words, signed by the sender.")
 
@@ -226,8 +247,7 @@ def model_writer(provider):
                  "reason": why(finding, calculations) if finding["action"] == "dispute" else request_why(finding),
                  "document_needed": finding.get("request"),
                  "amount_to_repay": _money(finding["recoverable"]) if finding["action"] == "dispute" else None,
-                 "dispute_deadline": str(deadline),
-                 "deadline_has_passed": closed}
+                 "closing_sentence": deadline_sentence(claim, finding, as_of)}
         prompt = ("Write the letter.\nFacts (JSON):\n" + json.dumps({k: v for k, v in facts.items() if v is not None},
                                                                    indent=1))
         return provider.complete(LLMRequest(system=SYSTEM, prompt=prompt, temperature=0.0, max_tokens=400)).text.strip()
