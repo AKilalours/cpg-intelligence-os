@@ -59,3 +59,25 @@ def test_a_dispute_states_the_fact_from_the_records_and_every_number_is_sourced(
     out = L.draft(c, f, calc, "N", "K")
     assert "shows 24 of 24 units received, so there was no shortage" in out["text"] and out["unsupported"] == []
     assert "shortage_not_on_receipt" not in out["text"]
+
+
+# ---------- letter 1.3: dates are checked, in any common form ----------
+
+def test_a_correct_date_written_in_words_passes():
+    # Local model, 2026-11-05: "The dispute deadline is September 26, 2016" was rejected as the numbers 26 and 2016.
+    assert L.dates_in("deadline September 26, 2016, taken 1 Mar 2016, or 2016-05-01") == {"2016-09-26", "2016-03-01", "2016-05-01"}
+    claim = dict(CLAIM, dispute_deadline="2016-09-26")
+    assert L.verify("The dispute deadline is September 26, 2016. Claim R-0000268, $412.50.", claim) == []
+
+
+def test_an_invented_date_is_rejected_in_any_form():
+    # 1.2 skipped dates entirely: an invented deadline in YYYY-MM-DD form would have passed.
+    assert L.verify("Please reply by 2016-10-26.", CLAIM) == ["2016-10-26"]
+    assert L.verify("Please reply by October 26, 2016.", CLAIM) == ["2016-10-26"]
+
+
+def test_request_letters_give_the_retailer_a_plain_reason():
+    req = {"action": "request", "engine_rule": "scan_back_pos_incomplete", "request": "POS detail for the missing weeks",
+           "reason": "the engine could not decide (scan back pos incomplete); this document closes the gap", "facts": []}
+    text = L.draft(CLAIM, req, [], "N", "K")["text"]
+    assert "missing weeks in the claimed period" in text and "engine" not in text

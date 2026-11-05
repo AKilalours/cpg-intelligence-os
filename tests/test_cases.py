@@ -119,3 +119,12 @@ def test_model_letters_are_used_only_when_every_number_traces(investigated):
     assert sources == {"model", "template"}                    # good drafts used, invented ones fell back
     who = investigated.execute("SELECT DISTINCT actor_type, model_version FROM audit_event WHERE action = 'letter_draft'").fetchall()
     assert who == [("agent", "fake:letters-v1")]
+
+
+
+def test_a_draft_from_an_older_prompt_is_never_shown(investigated, monkeypatch):
+    from cpgos.agent import letter
+    cases.write_letters(investigated, FakeModel(), progress=lambda m: None)
+    monkeypatch.setattr(letter, "PROMPT_VERSION", "letter-prompt-9.9.9")
+    q = [r for r in cases.queue(investigated) if r["agent_action"] in ("dispute", "request")]
+    assert {cases.detail(investigated, r["case_id"])["letter"]["source"] for r in q} == {"template"}

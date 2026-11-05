@@ -99,9 +99,11 @@ def detail(conn: psycopg.Connection, case_id: int) -> dict | None:
 
 
 def _letter(conn, case_id, claim, finding, calcs, names, as_of) -> dict:
-    """The model's latest draft if one exists and every number in it is traceable today; else the template."""
+    """The model's latest draft written with the current prompt, if every number and date in it is traceable
+    today; else the template. A draft from an older prompt is never shown (prompt 1.0 drafts kept the
+    engine's wording after 1.1 fixed it)."""
     d = _rows(conn, """SELECT payload, actor_id FROM audit_event WHERE case_id = %s AND action = 'letter_draft'
-                       ORDER BY audit_event_id DESC LIMIT 1""", (case_id,))
+                       AND prompt_version = %s ORDER BY audit_event_id DESC LIMIT 1""", (case_id, letter.PROMPT_VERSION))
     supplier, partner = names["supplier"] or "Supplier", names["partner"] or "Partner"
     if not d:
         return letter.draft(claim, finding, calcs, supplier, partner, as_of=as_of)

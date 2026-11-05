@@ -630,3 +630,14 @@ longer than CASH. Labels now carry a smoothed share of their train lines that
 are their field. Every CORD label line that changed is now right and none got
 worse; validation is unchanged, so this fixes a known mistake rather than
 raising a score.
+
+## 83. The number check reads dates too, and the first local-model run measured it
+Local model (qwen2.5-VL 7B) on 20 letters: 18 passed, 2 rejected. Both
+rejections were the checker's fault: correct dates written in words
+("September 26, 2016") read as the stray numbers 26 and 2016. Worse, 1.2
+skipped YYYY-MM-DD dates entirely, so an invented deadline would have passed.
+Letter 1.3 reads dates in any common form and checks each against the case;
+with it, all 20 drafts pass. Reading the passing drafts also showed engine
+wording ("the engine could not decide") reaching the retailer: request
+letters now give a plain reason, prompt 1.1, and a draft from an older prompt
+is never shown.

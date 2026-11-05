@@ -13,8 +13,13 @@ import json
 import re
 from decimal import Decimal, InvalidOperation
 
-LETTER_VERSION = "letter-1.2.0"   # 1.1: no past deadlines. 1.2: disputes state the fact from the records, not the rule name
+LETTER_VERSION = "letter-1.3.0"   # 1.2: plain reasons. 1.3: dates are checked too, in any common form; plain request reasons
 
+_MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august",
+                                       "september", "october", "november", "december"], 1)}
+_MON = r"(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?"
+_WORD_DATES = [re.compile(_MON + r"\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})", re.I),
+               re.compile(r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?" + _MON + r",?\s+(\d{4})", re.I)]
 _IDS = re.compile(r"\b(?:R-\d+|NP\d+|[A-Z]{2}_\d+|FOODS_\d+_\d+|ACH\d+)\b")      # claim, invoice, store, item ids
 _DATES = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _NUM = re.compile(r"(?<![\w.])\$?-?\d[\d,]*(?:\.\d+)?%?")
@@ -29,9 +34,30 @@ def _canon(tok: str) -> str | None:
     return format(d.normalize(), "f") if d == d.to_integral() else format(d.quantize(Decimal("0.01")), "f")
 
 
+def _month(name: str) -> int:
+    n = name.lower().rstrip(".")
+    return next(v for k, v in _MONTHS.items() if k.startswith(n[:3]))
+
+
+def dates_in(text: str) -> set[str]:
+    """Every date in free text as YYYY-MM-DD: "2016-09-26", "September 26, 2016", "26 Sep 2016"."""
+    out = set(_DATES.findall(text))
+    for m in _WORD_DATES[0].finditer(text):
+        out.add(f"{int(m.group(3)):04d}-{_month(m.group(1)):02d}-{int(m.group(2)):02d}")
+    for m in _WORD_DATES[1].finditer(text):
+        out.add(f"{int(m.group(3)):04d}-{_month(m.group(2)):02d}-{int(m.group(1)):02d}")
+    return out
+
+
+def _strip_dates(text: str) -> str:
+    for r in _WORD_DATES:
+        text = r.sub(" ", text)
+    return _DATES.sub(" ", text)
+
+
 def numbers_in(text: str) -> set[str]:
-    """Every number in free text, ignoring dates and record ids (which are checked as ids, not amounts)."""
-    t = _DATES.sub(" ", _IDS.sub(" ", text))
+    """Every number in free text, apart from dates and record ids (dates are checked separately, ids are ids)."""
+    t = _strip_dates(_IDS.sub(" ", text))
     return {c for tok in _NUM.findall(t) if (c := _canon(tok)) is not None}
 
 
@@ -41,9 +67,30 @@ def allowed_numbers(*sources) -> set[str]:
 
 
 def verify(letter: str, *sources) -> list[str]:
-    """Numbers in the letter with no source. Empty means every figure is traceable."""
-    ok = allowed_numbers(*sources)
-    return sorted(n for n in numbers_in(letter) if n not in ok)
+    """Numbers and dates in the letter with no source. Empty means every figure and date is traceable.
+    1.2 skipped dates entirely, so an invented deadline in YYYY-MM-DD form would have passed, and a correct
+    date written as "September 26, 2016" was rejected as the numbers 26 and 2016 (local model, 2026-11-05)."""
+    src = json.dumps(sources, default=str)
+    ok_numbers, ok_dates = numbers_in(src), dates_in(src)
+    return sorted([n for n in numbers_in(letter) if n not in ok_numbers] +
+                  [d for d in dates_in(letter) if d not in ok_dates])
+
+
+REQUEST_WHY = {   # the reason for a document request, as a retailer should read it
+    "scan_back_pos_incomplete": "The POS data you sent is missing weeks in the claimed period",
+    "shortage_no_receipt": "We have no receiving record for this delivery",
+    "late_fee_no_delivery_record": "We have no delivery date on record for this shipment",
+    "spoils_missing_fields": "The claim does not say which store and period it is for",
+    "scan_back_missing_fields": "The claim does not say which store it is for",
+}
+
+
+def request_why(finding: dict) -> str:
+    r = REQUEST_WHY.get(finding.get("engine_rule") or "")
+    if r:
+        return r
+    t = finding.get("reason") or "We need this document to check the claim"
+    return t[0].upper() + t[1:]
 
 
 def why(finding: dict, calculations: list[dict]) -> str:
@@ -103,7 +150,7 @@ def template(claim: dict, finding: dict, supplier: str, partner: str, as_of=None
                  f"the full claim before the dispute deadline of {deadline}.\n")
     elif finding["action"] == "request":
         body = (f"Before we accept or dispute this deduction we need one document: {finding['request']}.\n\n"
-                f"Reason: {finding['reason'][0].upper() + finding['reason'][1:]}.\n\n")
+                f"Reason: {request_why(finding)}.\n\n")
         body += (f"The dispute deadline ({deadline}) has passed, so we ask for it for our records.\n" if closed else
                  f"Please send it before {deadline}. Until then we hold the claim open and take no action on it.\n")
     else:
@@ -131,7 +178,7 @@ def draft(claim: dict, finding: dict, calculations: list[dict], supplier: str, p
 
 # ---------- a model writes the letter; the check decides whether it may be used ----------
 
-PROMPT_VERSION = "letter-prompt-1.0.0"
+PROMPT_VERSION = "letter-prompt-1.1.0"   # 1.1: plain request reasons, no engine wording
 SYSTEM = ("You write short, firm, polite accounts-receivable letters from a food supplier to a distributor's "
           "deductions department. Use only the facts given. Never add a number, date, percentage, claim number, "
           "or deadline that is not in the facts. Plain text, no markdown, under 150 words, signed by the sender.")
@@ -148,7 +195,7 @@ def model_writer(provider):
                  "taken_on": str(claim.get("deduction_date")), "claim_amount": _money(claim["amount"]),
                  "decision": {"dispute": "we dispute it", "request": "we need a document before deciding",
                               "accept": "we accept it"}[finding["action"]],
-                 "reason": why(finding, calculations) if finding["action"] == "dispute" else finding.get("reason"),
+                 "reason": why(finding, calculations) if finding["action"] == "dispute" else request_why(finding),
                  "document_needed": finding.get("request"),
                  "amount_to_repay": _money(finding["recoverable"]) if finding["action"] == "dispute" else None,
                  "dispute_deadline": str(deadline),
