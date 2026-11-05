@@ -119,10 +119,42 @@ def draft(claim: dict, finding: dict, calculations: list[dict], supplier: str, p
     fallback = template(claim, finding, supplier, partner, as_of, calculations)
     out = {"version": LETTER_VERSION, "source": "template", "text": fallback, "unsupported": verify(fallback, *sources)}
     if model is not None:
-        text = model(claim=claim, finding=finding, calculations=calculations, supplier=supplier, partner=partner)
+        text = model(claim=claim, finding=finding, calculations=calculations, supplier=supplier, partner=partner,
+                     as_of=as_of)
         bad = verify(text, *sources)
         if bad:
             out["model_rejected"] = {"unsupported_numbers": bad}
         else:
             out.update(source="model", text=text, unsupported=[])
     return out
+
+
+# ---------- a model writes the letter; the check decides whether it may be used ----------
+
+PROMPT_VERSION = "letter-prompt-1.0.0"
+SYSTEM = ("You write short, firm, polite accounts-receivable letters from a food supplier to a distributor's "
+          "deductions department. Use only the facts given. Never add a number, date, percentage, claim number, "
+          "or deadline that is not in the facts. Plain text, no markdown, under 150 words, signed by the sender.")
+
+
+def model_writer(provider):
+    """A function that asks a model for the letter. The caller still checks every number in what comes back."""
+    from cpgos.llm import LLMRequest
+
+    def write(*, claim, finding, calculations, supplier, partner, as_of=None) -> str:
+        deadline = claim.get("dispute_deadline")
+        closed = as_of is not None and deadline is not None and str(deadline) < str(as_of)
+        facts = {"from": supplier, "to": f"{partner} Deductions", "claim": claim.get("claim_number"),
+                 "taken_on": str(claim.get("deduction_date")), "claim_amount": _money(claim["amount"]),
+                 "decision": {"dispute": "we dispute it", "request": "we need a document before deciding",
+                              "accept": "we accept it"}[finding["action"]],
+                 "reason": why(finding, calculations) if finding["action"] == "dispute" else finding.get("reason"),
+                 "document_needed": finding.get("request"),
+                 "amount_to_repay": _money(finding["recoverable"]) if finding["action"] == "dispute" else None,
+                 "dispute_deadline": str(deadline),
+                 "deadline_has_passed": closed}
+        prompt = ("Write the letter.\nFacts (JSON):\n" + json.dumps({k: v for k, v in facts.items() if v is not None},
+                                                                   indent=1))
+        return provider.complete(LLMRequest(system=SYSTEM, prompt=prompt, temperature=0.0, max_tokens=400)).text.strip()
+
+    return write

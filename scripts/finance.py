@@ -185,10 +185,28 @@ def _print_agent(rid, s) -> None:
             print(f"  differs: {x}")
 
 
+def cmd_letters_local(conn) -> int:
+    """The local model (Ollama, $0) drafts a letter for every open dispute and request case; each draft is kept
+    only if every number in it traces to the case. Prints how many passed and what was invented."""
+    import os
+    from cpgos.agent import cases
+    from cpgos.llm import LLMError, provider
+    p = provider("ollama")
+    try:
+        p.digest()
+    except LLMError as e:
+        print(f"Ollama is not reachable ({e}). Start it with: ollama serve")
+        return 1
+    limit = int(os.environ["LIMIT"]) if os.environ.get("LIMIT") else None
+    out = cases.write_letters(conn, p, limit, lambda m: print(m, flush=True))
+    print(json.dumps(out, indent=1))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["world", "reconcile", "evaluate", "evidence", "restore-evidence",
-                                        "agent-design", "agent-score", "agent-report"])
+                                        "agent-design", "agent-score", "agent-report", "letters-local"])
     args = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
@@ -196,7 +214,7 @@ def main() -> int:
         return {"world": cmd_world, "reconcile": cmd_reconcile, "evaluate": cmd_evaluate,
                 "evidence": cmd_evidence, "restore-evidence": cmd_restore_evidence,
                 "agent-design": cmd_agent_design, "agent-score": cmd_agent_score,
-                "agent-report": cmd_agent_report}[args.command](conn)
+                "agent-report": cmd_agent_report, "letters-local": cmd_letters_local}[args.command](conn)
 
 
 if __name__ == "__main__":

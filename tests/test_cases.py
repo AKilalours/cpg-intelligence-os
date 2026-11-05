@@ -90,3 +90,32 @@ def test_api_round_trip(db_url, investigated, monkeypatch):
     again = client.post(f"/api/cases/{cid}/decision", json={"action": "approve", "reviewer": "akila"})
     assert again.status_code == 400 and "closed" in again.json()["detail"]
     assert client.get("/api/cases/999999").status_code == 404
+
+
+class FakeModel:
+    """A model that writes a sensible letter, but invents a number on every third case."""
+    name, model = "fake", "letters-v1"
+
+    def __init__(self):
+        self.n = 0
+
+    def complete(self, req):
+        from types import SimpleNamespace
+        import json
+        self.n += 1
+        facts = json.loads(req.prompt.split("Facts (JSON):\n", 1)[1])
+        text = f"Dear {facts['to']}, about claim {facts['claim']} ({facts['claim_amount']}): {facts['decision']}."
+        if self.n % 3 == 0:
+            text += " Please also pay a $99.99 handling fee within 30 days."
+        return SimpleNamespace(text=text)
+
+
+def test_model_letters_are_used_only_when_every_number_traces(investigated):
+    out = cases.write_letters(investigated, FakeModel(), progress=lambda m: None)
+    assert out["letters"] > 0 and out["rejected"] == out["letters"] // 3 and out["passed_number_check"] == out["letters"] - out["rejected"]
+    assert all(set(e["invented"]) == {"30", "99.99"} for e in out["examples"])
+    q = [r for r in cases.queue(investigated) if r["agent_action"] in ("dispute", "request")]
+    sources = {cases.detail(investigated, r["case_id"])["letter"]["source"] for r in q}
+    assert sources == {"model", "template"}                    # good drafts used, invented ones fell back
+    who = investigated.execute("SELECT DISTINCT actor_type, model_version FROM audit_event WHERE action = 'letter_draft'").fetchall()
+    assert who == [("agent", "fake:letters-v1")]

@@ -94,8 +94,49 @@ def detail(conn: psycopg.Connection, case_id: int) -> dict | None:
                                    WHERE d.deduction_id = %s) AS partner""", (h["deduction_id"],))[0]
     finding = rec["payload"]
     return {**h, "finding": finding, "calculations": calcs, "trail": trail, "claim": claim,
-            "letter": letter.draft(claim, finding, calcs, names["supplier"] or "Supplier", names["partner"] or "Partner",
-                                   as_of=h["as_of"])}
+            "supplier": names["supplier"] or "Supplier", "partner": names["partner"] or "Partner",
+            "letter": _letter(conn, case_id, claim, finding, calcs, names, h["as_of"])}
+
+
+def _letter(conn, case_id, claim, finding, calcs, names, as_of) -> dict:
+    """The model's latest draft if one exists and every number in it is traceable today; else the template."""
+    d = _rows(conn, """SELECT payload, actor_id FROM audit_event WHERE case_id = %s AND action = 'letter_draft'
+                       ORDER BY audit_event_id DESC LIMIT 1""", (case_id,))
+    supplier, partner = names["supplier"] or "Supplier", names["partner"] or "Partner"
+    if not d:
+        return letter.draft(claim, finding, calcs, supplier, partner, as_of=as_of)
+    out = letter.draft(claim, finding, calcs, supplier, partner, as_of=as_of, model=lambda **_: d[0]["payload"]["text"])
+    out["model"] = d[0]["payload"].get("model")
+    return out
+
+
+def write_letters(conn, provider, limit: int | None = None, progress=print) -> dict:
+    """Ask a model for the letter on every dispute and request case (window open first), check each one, and
+    record the draft and its check as an agent audit event. Returns how many passed the number check."""
+    todo = [r for r in queue(conn, limit=10_000) if r["agent_action"] in ("dispute", "request") and not r["human_action"]]
+    todo = todo[:limit] if limit else todo
+    write = letter.model_writer(provider)
+    passed, rejected, examples = 0, 0, []
+    for i, r in enumerate(todo, 1):
+        d = detail(conn, r["case_id"])
+        text = write(claim=d["claim"], finding=d["finding"], calculations=d["calculations"],
+                     supplier=d["supplier"], partner=d["partner"], as_of=d["as_of"])
+        bad = letter.verify(text, d["claim"], d["finding"].get("facts"), str(d["finding"].get("recoverable")),
+                            d["calculations"], d["finding"].get("request"))
+        passed += not bad
+        rejected += bool(bad)
+        if bad and len(examples) < 10:
+            examples.append({"claim": r["claim_number"], "invented": bad})
+        with conn.transaction():
+            conn.execute("SET LOCAL ROLE cpgos_agent")
+            conn.execute("""INSERT INTO audit_event (case_id, actor_type, actor_id, action, payload, model_version, prompt_version)
+                            VALUES (%s, 'agent', %s, 'letter_draft', %s, %s, %s)""",
+                         (r["case_id"], letter.LETTER_VERSION, Jsonb({"text": text, "unsupported": bad,
+                                                                     "model": f"{provider.name}:{provider.model}"}),
+                          f"{provider.name}:{provider.model}", letter.PROMPT_VERSION))
+        progress(f"[{i}/{len(todo)}] {r['claim_number']}: {'passed' if not bad else 'rejected ' + ', '.join(bad)}")
+    return {"letters": len(todo), "passed_number_check": passed, "rejected": rejected, "examples": examples,
+            "model": f"{provider.name}:{provider.model}", "prompt": letter.PROMPT_VERSION}
 
 
 def decide(conn: psycopg.Connection, case_id: int, action: str, reviewer: str, note: str | None = None) -> dict:

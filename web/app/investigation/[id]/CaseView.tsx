@@ -149,11 +149,19 @@ function Letter({ c }: { c: CaseDetail }) {
   return (
     <div className="mt-4 rounded-2xl border border-rule bg-[#FFFEFB] p-5 shadow-[0_8px_30px_rgba(31,42,36,0.06)]">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="rounded bg-paper px-2 py-1 font-semibold">Draft letter, not sent</span>
+        <span className="rounded bg-paper px-2 py-1 font-semibold">
+          Draft, not sent · {c.letter.source === "model" ? `written by ${c.letter.model ?? "a model"}` : "template"}
+        </span>
         <span className={c.letter.unsupported.length ? "font-semibold text-debit" : "text-credit"}>
           {c.letter.unsupported.length ? `Blocked: ${c.letter.unsupported.join(", ")} has no source` : "Every number checked against the case's facts and calculations"}
         </span>
       </div>
+      {c.letter.model_rejected ? (
+        <p className="mb-3 rounded-lg bg-debit/10 px-3 py-2 text-xs text-debit">
+          The {c.letter.model ?? "model"} draft was rejected: it contained {c.letter.model_rejected.unsupported_numbers.join(", ")},
+          which nothing on this case supports. Showing the template instead.
+        </p>
+      ) : null}
       <pre className="whitespace-pre-wrap font-sans text-sm leading-6">
         {parts.map((p, i) => /^\$|^\d{4}-/.test(p)
           ? <mark key={i} title="traced to a fact or calculation on this case" className="rounded bg-leaf/20 px-0.5 text-ink">{p}</mark>

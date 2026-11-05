@@ -270,5 +270,6 @@ export interface CaseDetail extends CaseRow {
   trail: { audit_event_id: number; actor_type: string; actor_id: string; action: string; created_at: string;
            payload: Record<string, unknown> }[];
   claim: Record<string, unknown>;
-  letter: { version: string; source: string; text: string; unsupported: string[] };
+  letter: { version: string; source: string; text: string; unsupported: string[]; model?: string;
+            model_rejected?: { unsupported_numbers: string[] } };
 }

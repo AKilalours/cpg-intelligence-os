@@ -613,3 +613,20 @@ letters never ask for anything by a deadline that has passed. Found by reading
 a real case on screen. Also found there: plain dict endpoints let FastAPI turn
 Decimal money into floats, which crashed the screen; case data keeps money as
 exact strings, with a test that fails on a float.
+
+## 81. The local model may write letters; the number check decides if they are used
+`make letters-local` asks the local model (Ollama, no per-call cost) for each
+open dispute and request letter, checks every number in the draft against
+the case, and records the draft and the check as an agent audit event (model
+and prompt versions included; answers recorded, so a re-run costs nothing).
+The case screen shows the model's draft only while it still passes, and
+otherwise says what it invented and shows the template. The share of drafts
+that pass is itself a result: how often this model invents a figure when told
+not to.
+
+## 82. Receipt labels: the most reliable label wins, not the longest
+"Cash Payment" was read as a card payment (CORD 0016) because PAYMENT is
+longer than CASH. Labels now carry a smoothed share of their train lines that
+are their field. Every CORD label line that changed is now right and none got
+worse; validation is unchanged, so this fixes a known mistake rather than
+raising a score.
