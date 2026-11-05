@@ -284,8 +284,10 @@ def route(conn: psycopg.Connection, raw_root: Path, ids: list[int], local, claud
     decisions = {sid: routing.decide(r1[sid], r2[sid], r3.get(sid) if claude is not None and sid in need else None,
                                      printed[sid], seen[sid], unverifiable)
                  for sid in ids}
+    inputs = {sid: routing.inputs_of(r1[sid], r2[sid], r3.get(sid) if claude is not None and sid in need else None,
+                                     printed[sid], seen[sid], unverifiable) for sid in ids}
     return {"reader_versions": {"rules": v1, "local_model": v2}, "third_reader": third, "decisions": decisions,
-            "printed_labels": printed, "seen": seen, "unverifiable": unverifiable}
+            "printed_labels": printed, "seen": seen, "unverifiable": unverifiable, "inputs": inputs}
 
 
 def evaluate_routing(conn: psycopg.Connection, raw_root: Path, split: str, rounds: list[int], local, claude=None,
@@ -296,7 +298,7 @@ def evaluate_routing(conn: psycopg.Connection, raw_root: Path, split: str, round
     res = route(conn, raw_root, ids, local, claude, progress)
     if claude is None or res["third_reader"].get("complete", True):
         from cpgos.documents import review
-        review.save_decisions(conn, res["decisions"], routing.POLICY_VERSION)   # what reviewers will see
+        review.save_decisions(conn, res["decisions"], routing.POLICY_VERSION, res["inputs"])   # what reviewers will see
     gold = _gold(conn, gs, ids)
     with_third = routing.summarize(res["decisions"], gold)
     without = routing.summarize({sid: routing.decide(*[_values(conn, v, [sid])[sid] for v in res["reader_versions"].values()],

@@ -182,3 +182,22 @@ def summarize(decisions_by_doc: dict[int, list[Decision]], gold: dict[int, dict]
         out["incomplete_invoices_sent_to_a_person"] = rate(len(set(decisions_by_doc) - complete - thru),
                                                            len(set(decisions_by_doc) - complete))
     return out
+
+
+# ---------- replayable inputs (fix 4) ----------
+
+def inputs_of(r1: dict, r2: dict, r3: dict | None, printed_labels: set[str], seen: dict | set,
+              unverifiable: set[str]) -> dict:
+    """Everything decide() reads, as plain JSON, so the rule can be replayed later on exactly this."""
+    return {"rules": dict(r1), "local_model": dict(r2), "claude": None if r3 is None else dict(r3),
+            "printed_labels": sorted(printed_labels),
+            "seen": dict(seen) if isinstance(seen, dict) else sorted(seen),
+            "unverifiable": sorted(unverifiable)}
+
+
+def decide_from(inputs: dict) -> list[Decision]:
+    """The current rule, replayed on stored inputs."""
+    seen = inputs.get("seen") or {}
+    return decide(inputs.get("rules") or {}, inputs.get("local_model") or {}, inputs.get("claude"),
+                  set(inputs.get("printed_labels") or ()), seen if isinstance(seen, dict) else set(seen),
+                  set(inputs.get("unverifiable") or ()))

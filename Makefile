@@ -9,7 +9,7 @@ ROUND ?= 2
 SPLIT ?= validation
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -76,6 +76,12 @@ receipts-eval: $(PY)  ## Claude for receipts that do not add up, then score (SPL
 
 decide-docs: $(PY)  ## Store routing decisions for the review screens (ROUND=n holdout sample; replays recordings)
 	$(PY) scripts/documents.py decide --split holdout --round $(ROUND)
+
+regress-docs: $(PY)  ## Replay the routing rule on every value a person confirmed; fails if one is now accepted wrong
+	$(PY) scripts/documents.py regress
+
+export-regressions: $(PY)  ## Write confirmed FATURA values to tests/fixtures so the test suite replays them in CI
+	$(PY) scripts/documents.py export-regressions
 
 load-fatura: $(PY)  ## Register FATURA invoices and write their answer key (after make download DATASET=fatura)
 	$(PY) scripts/documents.py load-fatura

@@ -245,3 +245,10 @@ export interface Reading {
 
 export interface FlowStream { key: string; amount: Decimal; count: number; recoverable: Decimal | null }
 export interface MoneyFlow { as_of: string | null; cash: FlowStream[]; deductions: FlowStream[] }
+
+export interface RegressionGate {
+  policy: string; confirmed_values: number; kept_right: number; asks_a_person: number;
+  open_mistakes: number; regressions: number; corrections: number; corrections_now_accepted_right: number;
+  passed: boolean; not_replayable_yet: number;
+  wrong: { doc: number; field: string; truth: string | null; now_accepts: string | null; kind: "regression" | "open_mistake"; reviewed_under: string }[];
+}

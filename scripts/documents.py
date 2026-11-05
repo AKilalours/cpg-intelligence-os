@@ -436,10 +436,34 @@ def cmd_decide(conn, split: str) -> int:
     if not res["third_reader"].get("complete", True):
         print("INCOMPLETE: some third-reader calls failed; rerun before reviewing")
         return 1
-    n = review.save_decisions(conn, res["decisions"], routing.POLICY_VERSION)
+    n = review.save_decisions(conn, res["decisions"], routing.POLICY_VERSION, res["inputs"])
     q = review.queue(conn, 10_000)
     print(json.dumps({"documents": len(ids), "decisions_stored": n, "policy": routing.POLICY_VERSION,
                       "documents_waiting_for_review": len(q)}, indent=1))
+    return 0
+
+
+def cmd_regress(conn) -> int:
+    """Replay the current routing rule on every value a person confirmed. Exit 1 if any is now accepted wrong."""
+    from psycopg.types.json import Jsonb
+    from cpgos.db import code_version
+    from cpgos.documents import regression
+    out = regression.summary(regression.check(regression.cases(conn)))
+    out["not_replayable_yet"] = regression.without_inputs(conn)
+    rid = conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES ('review_regression', %s, %s) "
+                       "RETURNING report_id", (code_version(), Jsonb(out))).fetchone()[0]
+    print(json.dumps({**out, "report_id": rid}, indent=1))
+    if out["not_replayable_yet"]:
+        print(f"note: {out['not_replayable_yet']} reviewed fields were decided before inputs were stored; "
+              "rerun make decide-docs ROUND=n (replays recordings, costs nothing) to include them")
+    return 0 if out["passed"] else 1
+
+
+def cmd_export_regressions(conn) -> int:
+    from cpgos.documents import regression
+    path = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "review_regressions.json"
+    n = regression.export(regression.cases(conn, exportable_only=True), path)
+    print(f"wrote {n} confirmed values to {path.relative_to(path.parents[2])}")
     return 0
 
 
@@ -450,7 +474,7 @@ def main() -> int:
     ap.add_argument("--round", type=int, default=2, help="sample round (holdout round 3 scores routing 1.2)")
     ap.add_argument("command", choices=["load-fatura", "load-cord", "train-router", "eval-router", "route", "routing-estimate", "routing",
                                         "learn-rules", "extract", "eval-extract", "vlm-dev",
-                                        "eval-cascade", "vlm-collect", "receipts-collect", "receipts-eval", "decide"])
+                                        "eval-cascade", "vlm-collect", "receipts-collect", "receipts-eval", "decide", "regress", "export-regressions"])
     args = ap.parse_args()
     global ROUND
     ROUND = args.round
@@ -464,6 +488,7 @@ def main() -> int:
                 "routing-estimate": cmd_routing_estimate,
                 "routing": lambda c: cmd_routing(c, args.split, not args.no_claude),
                 "decide": lambda c: cmd_decide(c, args.split),
+                "regress": cmd_regress, "export-regressions": cmd_export_regressions,
                 "receipts-collect": lambda c: cmd_receipts_collect(c, _receipt_split(args.split)),
                 "receipts-eval": lambda c: cmd_receipts_eval(c, _receipt_split(args.split), not args.no_claude)}[args.command](conn)
 

@@ -29,11 +29,16 @@ def _q(conn: psycopg.Connection, sql: str, params=()):
     return conn.cursor(row_factory=tuple_row).execute(sql, params)
 
 
-def save_decisions(conn: psycopg.Connection, decisions: dict[int, list], policy_version: str) -> int:
-    """Store the routing rule's decisions, as the engine role. Idempotent per document, field, and rule."""
+def save_decisions(conn: psycopg.Connection, decisions: dict[int, list], policy_version: str,
+                   inputs: dict[int, dict] | None = None) -> int:
+    """Store the routing rule's decisions, as the engine role. Idempotent per document, field, and rule.
+    inputs: what the rule saw per document, kept so corrections can be replayed against later rules."""
     n = 0
     with conn.transaction():
         conn.execute("SET LOCAL ROLE cpgos_engine")
+        for sid, inp in (inputs or {}).items():
+            conn.execute("""INSERT INTO routing_input (source_document_id, policy_version, inputs) VALUES (%s, %s, %s)
+                            ON CONFLICT (source_document_id, policy_version) DO NOTHING""", (sid, policy_version, Jsonb(inp)))
         for sid, ds in decisions.items():
             for d in ds:
                 n += _q(conn, 

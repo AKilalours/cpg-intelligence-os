@@ -362,6 +362,15 @@ class ReviewIn(BaseModel):
     note: str | None = None
 
 
+@app.get("/api/documents/regression")
+def documents_regression(conn: psycopg.Connection = Depends(get_conn)):
+    """The current routing rule replayed on every value a person confirmed (pure replay, no model calls)."""
+    from cpgos.documents import regression
+    out = regression.summary(regression.check(regression.cases(conn)))
+    out["not_replayable_yet"] = regression.without_inputs(conn)
+    return out
+
+
 @app.get("/api/documents/queue")
 def document_queue(limit: int = Query(50, ge=1, le=500), conn: psycopg.Connection = Depends(get_conn)):
     return review.queue(conn, limit)
@@ -489,3 +498,4 @@ def money_flow(conn: psycopg.Connection = Depends(get_conn)) -> s.MoneyFlow:
     return s.MoneyFlow(as_of=as_of,
                        cash=sorted([s.FlowStream(**r) for r in cash], key=lambda x: order_c.index(x.key)),
                        deductions=sorted([s.FlowStream(**r) for r in ded], key=lambda x: order_d.index(x.key)))
+

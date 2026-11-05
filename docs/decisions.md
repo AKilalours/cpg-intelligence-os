@@ -478,3 +478,31 @@ Errors now carry a signature (status, type, message) and a fatal flag
 shared FailFast guards both the invoice and receipt runs. Nothing was lost:
 the 70 answers before the failure are recorded and replay for free, and the
 report refused to present an incomplete third-reader run as a result.
+
+## 68. Human finance decisions belong to the reviewer role only
+Migration 0006 let the engine change deduction and cash-match statuses, though
+no engine code did: the grant only meant the engine could record a decision a
+person is supposed to make. 0017 revokes it. Approving a match posts the cash
+and marks the invoice paid, exactly as automatic posting does, and every
+decision is audited with the engine's recommendation and whether the person
+agreed, so overruling the engine is visible rather than silent.
+
+## 69. Wait for a ready database, not an open port
+A Postgres that is still starting refuses connections, so tests and
+`make migrate` run right after a start failed (114 errors on 2026-11-04).
+`wait_until_ready` retries a real query to a deadline and then fails once
+with what to do. Separately, the sandbox test harness trusted a stale
+postmaster.pid whose process id had been reused by another process; it now
+checks that the process really is Postgres.
+
+## 70. Every confirmed value is a test, and a regression differs from an old mistake
+The rule's inputs are stored with each decision (0018), so any later rule can
+be replayed on exactly what it saw, with no model calls. The latest human
+review of each field is its truth. Replayed, a field is kept right, sent to a
+person (slower, never wrong), an open mistake (the rule still accepts the very
+value a person corrected: a known bug, counted but not blocking), or a
+regression (it now accepts a wrong value it did not accept before: the gate
+fails). Blocking on old mistakes would keep the gate red until all are fixed,
+and a gate that is always red gets ignored. FATURA cases are exported to
+tests/fixtures so CI replays them without a database; other document sets are
+never exported.

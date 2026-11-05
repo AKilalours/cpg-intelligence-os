@@ -1,15 +1,17 @@
 import { api } from "@/lib/api";
 import { count } from "@/lib/format";
-import type { DatasetStatus, ReviewQueueItem } from "@/lib/types";
+import type { DatasetStatus, RegressionGate, ReviewQueueItem } from "@/lib/types";
+import { Gate } from "./Gate";
 import { QueueBrowser } from "./QueueBrowser";
 import { Cmd, Notice, PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function DocumentsPage() {
-  const [res, queue] = await Promise.all([
+  const [res, queue, gate] = await Promise.all([
     api<DatasetStatus[]>("/api/datasets"),
     api<ReviewQueueItem[]>("/api/documents/queue?limit=500"),
+    api<RegressionGate>("/api/documents/regression"),
   ]);
   return (
     <>
@@ -17,6 +19,7 @@ export default async function DocumentsPage() {
         title="Documents"
         purpose="Three readers per invoice. You check only what they can't settle."
       />
+      {gate.ok ? <Gate g={gate.data} /> : null}
       {!queue.ok ? (
         <Notice kind="error" title="Review queue unavailable">{queue.error}</Notice>
       ) : queue.data.length === 0 ? (
