@@ -25,7 +25,7 @@ import psycopg
 
 from cpgos.money import Money, to_decimal
 
-GENERATOR_VERSION = "1.1.0"   # 1.1: claim numbers from the world's own line count, not database ids
+GENERATOR_VERSION = "1.2.0"   # 1.1: claim numbers from line count. 1.2: deductions taken at payment, double-dips
 BRAND = "Northfield Pantry Co."      # fictional; owns anonymized M5 FOODS items
 DISTRIBUTOR = "KeHE"
 RETAILER = "Walmart (M5)"
@@ -64,6 +64,11 @@ class WorldConfig:
     p_promo_unsupported: float = 0.03      # share of promotions that also get a claim for a non-promo week
     p_false_shortage_invoice: float = 0.03 # share of deliveries hit with a shortage claim despite full receipt
     p_false_late_fee: float = 0.01
+    # 1.2: how KeHE-style remittances really short-pay. The retailer pays an invoice minus a shortage
+    # or late fee on the same remittance line (gross, deduction, net), and sometimes claims that same
+    # deduction again later on its own (a double-dip). Both 0 reproduces the 1.1 data exactly.
+    p_deduct_at_payment: float = 0.35      # share of payable invoices with an open invoice claim netted on the line
+    p_double_dip: float = 0.10             # share of those netted claims taken again later
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
@@ -406,14 +411,26 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
         friday = weeks[0] + timedelta(days=4)
         di = 0
         backlog: list[dict] = []     # deductions claimed but not yet taken on a check
+        later: list[dict] = []       # 1.2: double-dips, claimed again some weeks after the first
+        held: dict[int, list] = {}   # 1.2: invoice claims the retailer keeps to net against that invoice's payment
+        dips = 0
         while friday <= as_of:
+            backlog += [d for d in later if d["date"] <= friday]
+            later = [d for d in later if d["date"] > friday]
             due = [inv for inv in invoices if inv["id"] not in paid_invoices and inv["pay_on"] <= friday]
             while di < len(ded_rows) and ded_rows[di]["date"] <= friday:
-                backlog.append(ded_rows[di]); di += 1
+                d = ded_rows[di]; di += 1
+                if (cfg.p_deduct_at_payment > 0 and d["code"] == "IA" and d["invoice"] is not None
+                        and d["invoice"]["id"] not in paid_invoices and rng.random() < cfg.p_deduct_at_payment):
+                    held.setdefault(d["invoice"]["id"], []).append(d)
+                else:
+                    backlog.append(d)
             lines = []
             for inv in due:
                 paid_invoices.add(inv["id"])
+                kept = held.pop(inv["id"], [])
                 if rng.random() < cfg.p_unpaid:
+                    backlog += kept            # never paid: the claims are taken on a later check instead
                     continue
                 amount, noise, ref = inv["total"], "clean", inv["number"]
                 r = rng.random()
@@ -428,14 +445,25 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
                               and abs((o["date"] - inv["date"]).days) <= 28]
                     if others:
                         ref, noise = rng.choice(others)["number"], "wrong_ref"
-                noise_counts[noise] += 1
-                lines.append(("pay", inv, ref, amount, noise))
+                netted = None
+                if kept and noise == "clean" and kept[0]["amount"].amount < amount.amount:
+                    netted, noise = kept[0], "deducted_at_payment"
+                    backlog += kept[1:]        # one claim nets on the line; any others are taken on their own
+                    if cfg.p_double_dip > 0 and rng.random() < cfg.p_double_dip:
+                        again = friday + timedelta(days=rng.randint(14, 60))
+                        if again <= as_of:
+                            later.append(dict(netted, date=again, valid=False, valid_amount=Money.of(0), reason="duplicate"))
+                            dips += 1
+                elif kept:
+                    backlog += kept            # a noisy or too-small line: the claims are taken on their own
+                noise_counts[noise] = noise_counts.get(noise, 0) + 1
+                lines.append(("pay", inv, ref, amount, noise, netted))
             # Take deductions oldest first while the check stays positive; the rest wait for a
             # later check. (Carrying the whole week's batch all-or-nothing let the backlog
             # snowball until no check could absorb it, and 3 of 4 deductions were never written.)
             total = Money.of(0)
             for ln in lines:
-                total = total + ln[3]
+                total = total + ln[3] - (ln[5]["amount"] if ln[5] else Money.of(0))
             waiting = []
             for d in backlog:
                 if d["amount"].amount < total.amount:
@@ -447,6 +475,22 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
             if not lines:
                 friday += timedelta(days=7)
                 continue
+            def write_deduction(d, rl, pid):
+                """One deduction row (and its answer key) on remittance line rl."""
+                nonlocal pay_seq
+                pay_seq += 1
+                did = _upsert(conn, """INSERT INTO deduction (claim_number, partner_id, remittance_line_id, deduction_code_id,
+                                           raw_reason, amount, deduction_date, dispute_deadline, raw_invoice_ref, sku_id,
+                                           claimed_units, period_start, period_end, store_id, dataset_version_id)
+                                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING deduction_id""",
+                              (claim_number(rem_count + 1), kehe, rl, codes[d["code"]], d["reason_text"], d["amount"].amount, d["date"],
+                               d["date"] + timedelta(days=window), d["invoice"]["number"] if d["invoice"] else None,
+                               d["sku"], d["units"], d["p0"], d["p1"], stores[d["store"]] if d["store"] else None, ver))
+                conn.execute("INSERT INTO eval.gt_deduction VALUES (%s, %s, %s, %s)",
+                             (did, d["valid"], d["valid_amount"].amount, d["reason"]))
+                rep.deductions += 1
+                rep.deductions_invalid += 0 if d["valid"] else 1
+
             pay_seq += rng.randint(1, 50)
             pid = _upsert(conn, """INSERT INTO payment (partner_id, payment_reference, payment_date, amount, dataset_version_id)
                                    VALUES (%s, %s, %s, %s, %s) RETURNING payment_id""",
@@ -454,12 +498,21 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
             rep.payments += 1
             for n, ln in enumerate(lines, start=1):
                 if ln[0] == "pay":
-                    _, inv, ref, amount, noise = ln
-                    rl = _upsert(conn, """INSERT INTO remittance_line (payment_id, line_number, raw_invoice_ref, gross_amount,
-                                              deduction_amount, net_amount)
-                                          VALUES (%s, %s, %s, %s, 0, %s) RETURNING remittance_line_id""",
-                                 (pid, n, ref, amount.amount, amount.amount))
-                    conn.execute("INSERT INTO eval.gt_remittance_alloc VALUES (%s, %s, %s, %s)", (rl, inv["id"], amount.amount, noise))
+                    _, inv, ref, amount, noise, netted = ln
+                    if netted is None:
+                        rl = _upsert(conn, """INSERT INTO remittance_line (payment_id, line_number, raw_invoice_ref, gross_amount,
+                                                  deduction_amount, net_amount)
+                                              VALUES (%s, %s, %s, %s, 0, %s) RETURNING remittance_line_id""",
+                                     (pid, n, ref, amount.amount, amount.amount))
+                        conn.execute("INSERT INTO eval.gt_remittance_alloc VALUES (%s, %s, %s, %s)", (rl, inv["id"], amount.amount, noise))
+                    else:
+                        net = amount - netted["amount"]
+                        rl = _upsert(conn, """INSERT INTO remittance_line (payment_id, line_number, raw_invoice_ref, raw_code,
+                                                  gross_amount, deduction_amount, net_amount)
+                                              VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING remittance_line_id""",
+                                     (pid, n, ref, netted["code"], amount.amount, netted["amount"].amount, net.amount))
+                        conn.execute("INSERT INTO eval.gt_remittance_alloc VALUES (%s, %s, %s, %s)", (rl, inv["id"], net.amount, noise))
+                        write_deduction(netted, rl, pid)
                 else:
                     d = ln[1]
                     rl = _upsert(conn, """INSERT INTO remittance_line (payment_id, line_number, raw_invoice_ref, raw_code,
@@ -467,22 +520,11 @@ def build_world(conn: psycopg.Connection, sales: list[WeeklySale], cfg: WorldCon
                                           VALUES (%s, %s, %s, %s, NULL, %s, %s) RETURNING remittance_line_id""",
                                  (pid, n, d["invoice"]["number"] if d["invoice"] else None, d["code"],
                                   d["amount"].amount, (-d["amount"]).amount))
-                    pay_seq += 1
-                    did = _upsert(conn, """INSERT INTO deduction (claim_number, partner_id, remittance_line_id, deduction_code_id,
-                                               raw_reason, amount, deduction_date, dispute_deadline, raw_invoice_ref, sku_id,
-                                               claimed_units, period_start, period_end, store_id, dataset_version_id)
-                                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING deduction_id""",
-                                  (claim_number(rem_count + 1), kehe, rl, codes[d["code"]], d["reason_text"], d["amount"].amount, d["date"],
-                                   d["date"] + timedelta(days=window), d["invoice"]["number"] if d["invoice"] else None,
-                                   d["sku"], d["units"], d["p0"], d["p1"], stores[d["store"]] if d["store"] else None, ver))
-                    conn.execute("INSERT INTO eval.gt_deduction VALUES (%s, %s, %s, %s)",
-                                 (did, d["valid"], d["valid_amount"].amount, d["reason"]))
-                    rep.deductions += 1
-                    rep.deductions_invalid += 0 if d["valid"] else 1
+                    write_deduction(d, rl, pid)
                 rem_count += 1
             friday += timedelta(days=7)
-        rep.deductions_generated = len(ded_rows)
-        rep.deductions_pending = len(backlog) + (len(ded_rows) - di)
+        rep.deductions_generated = len(ded_rows) + dips
+        rep.deductions_pending = len(backlog) + len(later) + sum(len(v) for v in held.values()) + (len(ded_rows) - di)
         rep.remittance_lines = rem_count
         rep.noise_counts = noise_counts
     return rep

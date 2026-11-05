@@ -39,12 +39,17 @@ def world(conn):
 
 
 def test_full_strategy_beats_exact_only_without_losing_precision(conn, world):
-    full = score_cash_application(conn, cashapp.match_all(conn, "full"))
+    matches = cashapp.match_all(conn, "full")
+    full = score_cash_application(conn, matches)
     base = score_cash_application(conn, cashapp.match_all(conn, "exact_only"))
     assert full["lines"] == base["lines"] > 50
-    # Clean references are always applied automatically and correctly.
+    # Clean references are applied automatically and correctly, except when another open invoice has
+    # the same amount (decision 72): then a person confirms, and the reason says so.
     clean = full["by_noise"]["clean"]
-    assert clean["auto_correct"] == clean["n"] and clean["auto_wrong"] == 0
+    assert clean["auto_wrong"] == 0 and clean["auto_correct"] > 0
+    noise = dict(conn.execute("SELECT remittance_line_id, noise FROM eval.gt_remittance_alloc").fetchall())
+    held = [m for m in matches if noise.get(m.remittance_line_id) == "clean" and m.decision != "auto"]
+    assert len(held) == clean["n"] - clean["auto_correct"] and all("caution" in m.explanation for m in held)
     # Typos are recovered by the full strategy and never by the baseline.
     assert full["by_noise"]["typo_ref"]["auto_correct"] > 0
     assert base["by_noise"]["typo_ref"]["auto_correct"] == 0

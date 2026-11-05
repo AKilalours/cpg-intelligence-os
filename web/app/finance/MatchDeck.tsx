@@ -25,7 +25,8 @@ function Ring({ value }: { value: number }) {
 
 function chips(e: Record<string, unknown> | null): string[] {
   if (!e) return [];
-  return Object.entries(e).filter(([k]) => k === "reference" || k === "amount").map(([k, v]) => `${k === "reference" ? "Ref" : "Amount"}: ${String(v)}`);
+  const name: Record<string, string> = { reference: "Ref", amount: "Amount", caution: "Careful", short_pay: "Short-pay", risk: "Risk" };
+  return Object.entries(e).filter(([k]) => k in name).map(([k, v]) => `${name[k]}: ${String(v)}`);
 }
 
 export function MatchDeck({ items, total }: { items: CashAppItem[]; total: number }) {

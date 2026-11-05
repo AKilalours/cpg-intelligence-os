@@ -113,8 +113,9 @@ def test_api_counts_people_apart_from_the_engine(client, world):
 def test_money_flow_streams_are_disjoint_and_add_up(client, world):
     from decimal import Decimal
     f = client.get("/api/overview/flow").json()
-    cash_total = world.execute("""SELECT coalesce(sum(net_amount), 0), count(*) FROM remittance_line
-                                  WHERE raw_code IS NULL AND deduction_amount = 0 AND net_amount > 0""").fetchone()
+    from cpgos.finance.cashapp import CASH_LINE_SQL
+    cash_total = world.execute(f"""SELECT coalesce(sum(net_amount), 0), count(*) FROM remittance_line r
+                                   WHERE {CASH_LINE_SQL}""").fetchone()
     assert sum(Decimal(x["amount"]) for x in f["cash"]) == cash_total[0]
     assert sum(x["count"] for x in f["cash"]) == cash_total[1]
     ded_total = world.execute("SELECT sum(amount), count(*) FROM deduction").fetchone()

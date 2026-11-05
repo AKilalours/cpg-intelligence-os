@@ -22,6 +22,7 @@ from cpgos import config
 from cpgos.api import schemas as s
 from cpgos.datasets.registry import ACCEPT_PATH, load_registry
 from cpgos.finance import deductions as ded
+from cpgos.finance.cashapp import CASH_LINE_SQL
 
 app = FastAPI(title="CPG Intelligence OS API", version="0.1.0")
 app.add_middleware(
@@ -219,9 +220,9 @@ def deduction_detail(deduction_id: int, conn: psycopg.Connection = Depends(get_c
 @app.get("/api/finance/cash-application", response_model=s.CashAppSummary)
 def cash_application(limit: int = Query(50, ge=1, le=500), conn: psycopg.Connection = Depends(get_conn)):
     counts = conn.execute(
-        """WITH cash AS (
+        f"""WITH cash AS (
                SELECT r.remittance_line_id FROM remittance_line r
-               WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0),
+               WHERE {CASH_LINE_SQL}),
            latest AS (
                SELECT DISTINCT ON (remittance_line_id) remittance_line_id, cash_application_id, status, applied_amount
                FROM cash_application ORDER BY remittance_line_id, cash_application_id DESC),
@@ -250,10 +251,10 @@ def cash_application(limit: int = Query(50, ge=1, le=500), conn: psycopg.Connect
            WHERE c.status = 'proposed'
            ORDER BY r.net_amount DESC LIMIT %s""", (limit,)).fetchall()
     unmatched = conn.execute(
-        """SELECT r.remittance_line_id, p.payment_reference, p.payment_date, r.raw_invoice_ref, r.net_amount AS amount,
+        f"""SELECT r.remittance_line_id, p.payment_reference, p.payment_date, r.raw_invoice_ref, r.net_amount AS amount,
                   NULL AS suggested_invoice, NULL::numeric AS confidence, NULL::jsonb AS explanation
            FROM remittance_line r JOIN payment p USING (payment_id)
-           WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0
+           WHERE {CASH_LINE_SQL}
              AND NOT EXISTS (SELECT 1 FROM cash_application c WHERE c.remittance_line_id = r.remittance_line_id
                              AND c.status IN ('approved', 'proposed'))
            ORDER BY r.net_amount DESC LIMIT %s""", (limit,)).fetchall()
@@ -463,7 +464,7 @@ def money_flow(conn: psycopg.Connection = Depends(get_conn)) -> s.MoneyFlow:
     """Cash paid splits by who posted it; deductions taken split by what is left to do. Disjoint streams."""
     as_of = _as_of(conn)
     cash = conn.execute(
-        """WITH latest AS (
+        f"""WITH latest AS (
                SELECT DISTINCT ON (remittance_line_id) remittance_line_id, cash_application_id, status
                FROM cash_application ORDER BY remittance_line_id, cash_application_id DESC),
            people AS (
@@ -477,7 +478,7 @@ def money_flow(conn: psycopg.Connection = Depends(get_conn)) -> s.MoneyFlow:
                            ELSE 'unmatched' END AS key
                FROM remittance_line r LEFT JOIN latest l USING (remittance_line_id)
                LEFT JOIN people p ON p.cash_application_id = l.cash_application_id
-               WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0)
+               WHERE {CASH_LINE_SQL})
            SELECT key, coalesce(sum(amount), 0) AS amount, count(*) AS count FROM lines GROUP BY key""").fetchall()
     ded = conn.execute(
         """WITH a AS (

@@ -506,3 +506,32 @@ fails). Blocking on old mistakes would keep the gate red until all are fixed,
 and a gate that is always red gets ignored. FATURA cases are exported to
 tests/fixtures so CI replays them without a database; other document sets are
 never exported.
+
+## 71. Post a short-pay only when the line explains it; name a double-dip by the claim it repeats
+Remittances short-pay in two ways. A KeHE-style line can carry the invoice
+total, the deduction, and the net ("gross 1,000, shortage 50, net 950"); the
+engine used to skip such lines entirely, so their cash was never applied. Now,
+when the reference is exact and the line's total equals the invoice's open
+balance to the cent, the net is posted automatically and the deduction is
+validated as its own claim (cashapp 1.1). A bare partial payment with nothing
+explaining it still goes to a person: it looks the same as a remittance that
+names the wrong invoice. The deduction engine already rejected a repeated claim
+by arithmetic (each claim uses up its support); it now labels it a duplicate
+and links the earlier claims (deductions 2.1), which is the sentence a dispute
+letter needs. World generator 1.2 models both: retailers hold invoice claims
+to net them against that invoice's payment, and sometimes claim them again
+later. With both settings at 0 it reproduces the 1.1 data exactly (checked
+table by table against the previous generator); the fingerprint changes
+because it includes the generator's source. One definition of a cash line
+(CASH_LINE_SQL) replaces five copies.
+
+## 72. An exact reference is not enough when another open invoice has the same amount
+Found while scoring world 1.2: two stores ordered the same goods, so two open
+invoices were both $603.60, and a remittance quoting the wrong one was posted
+at 0.99 (exact reference, exact amount). World 1.1 had simply never drawn
+this coincidence, so its zero false matches was partly luck. When another open
+invoice of the same customer in the last 90 days has the identical amount,
+the match is now suggested at 0.85 for a person to confirm. A wrong posting
+marks the wrong invoice paid and sends collections after a customer who
+paid; the coverage cost is visible in the precision-coverage curve, and must
+be read on the full world (the 3-product test world exaggerates twins).

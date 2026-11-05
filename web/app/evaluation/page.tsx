@@ -12,7 +12,8 @@ const NOISE: Record<string, string> = {
   typo_ref: "Typo in reference",
   missing_ref: "No reference",
   wrong_ref: "Another invoice's number",
-  partial: "Short payment",
+  partial: "Short payment, unexplained",
+  deducted_at_payment: "Short payment, deduction on the line",
 };
 
 export default async function EvaluationPage() {

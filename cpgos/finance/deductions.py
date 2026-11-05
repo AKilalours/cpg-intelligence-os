@@ -26,7 +26,7 @@ from psycopg.types.json import Jsonb
 
 from cpgos.money import Money
 
-ENGINE_VERSION = "deductions-2.0.0"
+ENGINE_VERSION = "deductions-2.1.0"   # 2.1: double-dips are named and linked to the claims they repeat
 
 # Assumptions, stated where they are used and shown in the docs.
 DISPUTE_HANDLING_COST = Decimal("25.00")   # analyst time per dispute; below this a dispute loses money
@@ -112,6 +112,8 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
     used_line: dict[int, Decimal] = defaultdict(Decimal)       # shortage dollars accepted per invoice line
     used_fee: dict[int, Decimal] = defaultdict(Decimal)        # late fees accepted per invoice
     used_spoils: dict[tuple, Decimal] = defaultdict(Decimal)   # spoils accepted per store and period
+    # Who used the support, so a double-dip names the claims it repeats (what a dispute letter says).
+    takers: dict[tuple, list[str]] = defaultdict(list)
 
     out = []
     for (did, claim, partner, code, reason, amount, ddate, deadline, inv_ref, sku, units,
@@ -166,16 +168,21 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                     if within:
                         a.verdict, a.recoverable = "valid", Decimal(0)
                     take = amount - a.recoverable
+                    earlier = sorted({c for u in used for c in takers[("promo", u["promotion_id"])]})
                     for u in used:                          # consume support in promotion order
                         room = Decimal(u["earned"]) - Decimal(u["already_accepted"])
                         step = min(max(room, Decimal(0)), take)
                         used_promo[u["promotion_id"]] += step
                         take -= step
+                        if step > 0:
+                            takers[("promo", u["promotion_id"])].append(claim)
                     a.rule = ("scan_back_duplicate" if a.verdict == "invalid" and any(Decimal(u["already_accepted"]) > 0 for u in used)
                               else "scan_back_overclaim" if a.recoverable > 0
                               else "scan_back_within_tolerance" if within else "scan_back_supported")
                     a.evidence = {"promotions": used, "claimed_units": units, "claimed_amount": str(amount),
                                   "supported_amount": str(a.supported)}
+                    if a.rule == "scan_back_duplicate":
+                        a.evidence["earlier_claims"] = earlier
 
         elif kind in ("shortage", "late_fee"):
             inv = conn.execute(
@@ -197,12 +204,20 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                     earned = Money.of(price).times(short_units).amount
                     a.supported = max(earned - used_line[lid], Decimal(0))
                     a.verdict, a.recoverable = _verdict(amount, a.supported)
+                    earlier = list(takers[("line", lid)])
+                    # A double-dip: the receipt supports this claim on its own, but earlier claims already took it.
+                    dip = a.recoverable > 0 and earlier and amount <= earned
                     used_line[lid] += amount - a.recoverable
+                    if amount - a.recoverable > 0:
+                        takers[("line", lid)].append(claim)
                     a.rule = "shortage_not_on_receipt" if short_units == 0 else (
+                        "shortage_duplicate" if dip else
                         "shortage_exceeds_receipt" if a.recoverable > 0 else "shortage_matches_receipt")
                     a.evidence = {"invoice_id": inv[0], "invoice_number": inv[1], "invoice_line_id": lid,
                                   "shipped_units": int(qty), "received_units": int(received), "unit_price": str(price),
                                   "claimed_units": units, "supported_amount": str(a.supported)}
+                    if dip:
+                        a.evidence["earlier_claims"] = earlier
             else:
                 ship = conn.execute("SELECT scheduled_date, delivered_date FROM observed.shipment WHERE invoice_id = %s",
                                     (inv[0],)).fetchone()
@@ -214,11 +229,18 @@ def assess_all(conn: psycopg.Connection, partner_id: int | None = None) -> list[
                     late_days = (delivered - sched).days
                     a.supported = max((fee if late_days > 0 else Decimal(0)) - used_fee[inv[0]], Decimal(0))
                     a.verdict, a.recoverable = _verdict(amount, a.supported)
+                    earlier = list(takers[("fee", inv[0])])
+                    dip = late_days > 0 and a.recoverable > 0 and earlier and amount <= fee
                     used_fee[inv[0]] += amount - a.recoverable
+                    if amount - a.recoverable > 0:
+                        takers[("fee", inv[0])].append(claim)
                     a.rule = "late_fee_on_time_delivery" if late_days <= 0 else (
+                        "late_fee_duplicate" if dip else
                         "late_fee_above_published_fee" if a.recoverable > 0 else "late_fee_supported")
                     a.evidence = {"invoice_id": inv[0], "invoice_number": inv[1], "scheduled": str(sched),
                                   "delivered": str(delivered), "days_late": late_days, "published_fee": str(fee)}
+                    if dip:
+                        a.evidence["earlier_claims"] = earlier
 
         elif kind == "spoils":
             pct = t.get("spoils_allowance_pct")

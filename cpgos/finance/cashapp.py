@@ -19,7 +19,12 @@ from decimal import Decimal
 import psycopg
 from psycopg.types.json import Jsonb
 
-ENGINE_VERSION = "cashapp-1.0.0"
+ENGINE_VERSION = "cashapp-1.1.0"   # 1.1: netted lines applied (explained short-pays); twin amounts need a person
+
+# A remittance line that carries cash for an invoice: it has a gross amount (deduction-only lines do
+# not) and pays something. Since 1.1 this includes lines netted with a deduction (gross 1,000,
+# shortage 50, net 950). One definition, used by the engine, the API, and the tests.
+CASH_LINE_SQL = "r.gross_amount IS NOT NULL AND r.net_amount > 0"
 AMOUNT_WINDOW_DAYS = 90       # amount-only matches must be invoices from the last 90 days
 STRATEGIES = ("full", "exact_only")
 
@@ -35,6 +40,8 @@ class Match:
     confidence: float
     decision: str                 # 'auto' | 'review' | 'unmatched'
     explanation: dict = field(default_factory=dict)
+    gross: Decimal | None = None     # what the line says the invoice was; differs from amount when netted
+    deducted: Decimal = Decimal(0)   # the deduction netted on this line
 
 
 def normalize_ref(ref: str | None) -> str | None:
@@ -74,9 +81,10 @@ def _load(conn: psycopg.Connection, partner_id: int | None, replay: bool = False
     applied = "0" if replay else """coalesce((SELECT sum(applied_amount) FROM cash_application c
                                           WHERE c.invoice_id = i.invoice_id AND c.status = 'approved'), 0)"""
     lines = conn.execute(f"""
-        SELECT r.remittance_line_id, p.payment_date, r.net_amount, r.raw_invoice_ref, p.partner_id
+        SELECT r.remittance_line_id, p.payment_date, r.net_amount, r.raw_invoice_ref, p.partner_id,
+               r.gross_amount, r.deduction_amount, r.raw_code
         FROM remittance_line r JOIN payment p USING (payment_id)
-        WHERE r.raw_code IS NULL AND r.deduction_amount = 0 AND r.net_amount > 0 {where}{decided}
+        WHERE {CASH_LINE_SQL} {where}{decided}
         ORDER BY p.payment_date, r.payment_id, r.line_number""", {"partner": partner_id}).fetchall()
     invoices = conn.execute(f"""
         SELECT i.invoice_id, i.invoice_number, i.partner_id, i.invoice_date,
@@ -101,10 +109,12 @@ def match_all(conn: psycopg.Connection, strategy: str = "full", partner_id: int 
         balance[inv_id] = Decimal(bal)
 
     out: list[Match] = []
-    for rl_id, pay_date, amount, raw_ref, partner in lines:
-        amount = Decimal(amount)
+    for rl_id, pay_date, net, raw_ref, partner, gross, deducted, code in lines:
+        net, gross, deducted = Decimal(net), Decimal(gross), Decimal(deducted or 0)
+        # Match on what the invoice was (gross); apply what was paid (net). On an ordinary line they are equal.
+        amount = gross
         ref = normalize_ref(raw_ref)
-        m = Match(rl_id, pay_date, amount, raw_ref, None, None, 0.0, "unmatched")
+        m = Match(rl_id, pay_date, net, raw_ref, None, None, 0.0, "unmatched", gross=gross, deducted=deducted)
 
         def open_with_amount(exclude: int | None = None) -> list[int]:
             lo = pay_date - timedelta(days=AMOUNT_WINDOW_DAYS)
@@ -120,9 +130,25 @@ def match_all(conn: psycopg.Connection, strategy: str = "full", partner_id: int 
                              "risk": "duplicate payment or an earlier wrong match"}
         elif exact is not None and balance[exact] > 0:
             bal = balance[exact]
-            if amount == bal:
-                m.invoice_id, m.method, m.confidence = exact, "exact", 0.99
-                m.explanation = {"reference": "exact", "amount": "equals open balance"}
+            if amount == bal and deducted > 0 and strategy == "full":
+                # An explained short-pay: the line itself says invoice total, deduction, and net, and the
+                # total is this invoice's open balance to the cent. Post the cash; the deduction is its own
+                # claim, validated like any other.
+                m.invoice_id, m.method, m.confidence = exact, "exact", 0.98
+                m.explanation = {"reference": "exact", "amount": "invoice total on the line equals open balance",
+                                 "short_pay": f"explained: {deducted} deducted on the same line ({code})"}
+            elif amount == bal:
+                twins = open_with_amount(exclude=exact) if strategy == "full" else []
+                if twins:
+                    # Another open invoice has this exact amount (same order shipped to two stores), so the
+                    # reference alone tells them apart, and a remittance quoting the wrong invoice number
+                    # would look identical. Suggest the referenced invoice; a person confirms.
+                    m.invoice_id, m.method, m.confidence = exact, "exact", 0.85
+                    m.explanation = {"reference": "exact", "amount": "equals open balance",
+                                     "caution": f"{len(twins)} other open invoice(s) have the same amount"}
+                else:
+                    m.invoice_id, m.method, m.confidence = exact, "exact", 0.99
+                    m.explanation = {"reference": "exact", "amount": "equals open balance"}
             elif strategy == "exact_only":
                 if amount < bal:
                     m.invoice_id, m.method, m.confidence = exact, "exact", 0.90
@@ -168,7 +194,7 @@ def match_all(conn: psycopg.Connection, strategy: str = "full", partner_id: int 
         if m.invoice_id is not None:
             m.decision = "auto" if m.confidence >= auto_threshold else "review"
             if m.decision == "auto":
-                balance[m.invoice_id] -= amount   # later lines see the reduced balance
+                balance[m.invoice_id] -= amount   # later lines see the reduced balance (cash plus netted claim)
         out.append(m)
     return out
 
