@@ -33,6 +33,12 @@ def prompt(text: str) -> str:
     return f"Categories:\n{lines}\n\nDeduction reason: {text}\nCategory:"
 
 
+def short_prompt(text: str) -> str:
+    """For fine-tuning: the model learns the categories from labelled examples, so the definitions are not
+    needed, and leaving them out makes each example about a quarter as long (lora-1.0 crawled on a laptop)."""
+    return f"Categories: {', '.join(CATEGORIES)}\nDeduction reason: {text}\nCategory:"
+
+
 def parse(answer: str) -> str | None:
     """The first category name in the answer (models sometimes add punctuation or a sentence)."""
     a = answer.lower().replace("-", "_").replace(" ", "_")

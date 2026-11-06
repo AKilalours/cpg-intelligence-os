@@ -151,6 +151,21 @@ template letter is used and the case screen says why.
 | Deadline described truthfully | **93 of 105** (12 asked for action by a date already past) | **104 of 105** |
 | Used as written | 93 | 104; the 1 failure falls back to the template |
 
+Prompt 1.3 gives the model the one true deadline sentence to copy and rejects wording that echoes the
+instructions: **105 of 105** letters pass all three checks.
+
+**Reading deduction reasons** (addition 12). Free-text reasons decide which check runs; KeHE's IA code
+covers shortages, late fees, and price differences alike. Generated from industry vocabulary with
+abbreviations and keying errors; scored on phrase families no reader saw in training ("OTIF FINE" for a
+late fee, "SWELL ALLOWANCE" for spoils). Generated text, not real remittances.
+
+| Reader | Seen phrasings (400) | Unseen phrasings (800) | Unseen macro-F1 |
+|---|---|---|---|
+| Keyword rules | 84.8% | 26.5% | 0.34 |
+| Character n-gram Naive Bayes | **100%** | 50.5% | 0.50 |
+| Local model qwen2.5-VL 7B, definitions only | 90.5% | **70.9%** | 0.70 |
+| LoRA fine-tune of Qwen2.5-0.5B | pending | pending | |
+
 Both engine false disputes came from damaged records: a promotion missing from the calendar, and a
 promotion end date keyed a week early. In both, the shelf price showed the promotion was running,
 so the agent asked for the agreement instead of disputing. A price drop can stop a dispute; it can

@@ -685,3 +685,15 @@ in the prompt; it caught "fine", "credit", and "invoice" in the first draft),
 and a LoRA fine-tune of Qwen2.5-0.5B with settings fixed before any score.
 Each reader is scored on held-out once per version. This is generated text,
 not real remittances; the held-out families are what keep it honest.
+
+## 88. First reader scores, and why the LoRA run crawled
+Scored once each on 800 unseen phrasings: keyword rules 26.5%, character
+n-gram Naive Bayes 50.5% (100% on seen phrasings), the local 7B model with
+definitions only 70.9% (90.5% on seen). The language model knows "IRC" is a
+coupon; the n-gram model only knows letters it has seen. Neither wins
+everywhere, which is what the fine-tune is for. Letters with prompt 1.3: 105 of
+105 pass all three checks. The first LoRA run took 347 s for one step: the 7B
+model was still loaded in the same memory and every example carried all ten
+definitions (about 200 tokens). lora-1.1, before any LoRA score: Ollama is
+unloaded first, a short prompt with category names only, batch 8, progress
+and time left on screen, and a stop with a plain message if steps stay slow.

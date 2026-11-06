@@ -24,8 +24,11 @@ from cpgos.codes import data, llm  # noqa: E402
 
 BASE = "Qwen/Qwen2.5-0.5B-Instruct"      # Apache-2.0, small enough to train on a laptop
 SETTINGS = {"r": 8, "alpha": 16, "dropout": 0.05, "targets": ["q_proj", "k_proj", "v_proj", "o_proj"],
-            "epochs": 2, "lr": 2e-4, "batch": 16, "max_len": 192, "seed": 12}
-ADAPTER_VERSION = "lora-1.0.0"
+            "epochs": 2, "lr": 2e-4, "batch": 8, "max_len": 96, "seed": 12, "prompt": "short"}
+# 1.1 (before any LoRA score): a short prompt without the definitions, batch 8. 1.0 used the full prompt,
+# about 200 tokens a line, and its first step took 347 s on a laptop that was also holding a 7B model.
+ADAPTER_VERSION = "lora-1.1.0"
+TOO_SLOW_SECONDS = 30        # a step this slow means the machine is swapping; stop and say why
 
 
 def main() -> int:
@@ -37,7 +40,8 @@ def main() -> int:
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
     tok = AutoTokenizer.from_pretrained(BASE)
     tok.padding_side = "left"
-    model = AutoModelForCausalLM.from_pretrained(BASE, torch_dtype=torch.float32).to(dev)
+    print(f"device: {dev} ({'Apple GPU' if dev == 'mps' else 'CPU only: this will be slow'})", flush=True)
+    model = AutoModelForCausalLM.from_pretrained(BASE, dtype=torch.float32).to(dev)
     model = get_peft_model(model, LoraConfig(r=SETTINGS["r"], lora_alpha=SETTINGS["alpha"], lora_dropout=SETTINGS["dropout"],
                                              target_modules=SETTINGS["targets"], task_type="CAUSAL_LM"))
     ex = data.generate()
@@ -45,7 +49,7 @@ def main() -> int:
 
     def chat(text: str) -> str:
         return tok.apply_chat_template([{"role": "system", "content": llm.SYSTEM},
-                                        {"role": "user", "content": llm.prompt(text)}],
+                                        {"role": "user", "content": llm.short_prompt(text)}],
                                        tokenize=False, add_generation_prompt=True)
 
     def batch(items):
@@ -64,15 +68,28 @@ def main() -> int:
 
     opt = torch.optim.AdamW(model.parameters(), lr=SETTINGS["lr"])
     model.train()
-    t0 = time.time()
+    per_epoch = (len(train) + SETTINGS["batch"] - 1) // SETTINGS["batch"]
+    total = per_epoch * SETTINGS["epochs"]
+    print(f"{len(train)} examples, {total} steps; the first steps also warm up the GPU", flush=True)
+    t0, done = time.time(), 0
     for epoch in range(SETTINGS["epochs"]):
         random.shuffle(train)
         for i in range(0, len(train), SETTINGS["batch"]):
+            ts = time.time()
             x, y, m = batch(train[i:i + SETTINGS["batch"]])
             loss = model(input_ids=x, attention_mask=m, labels=y).loss
             loss.backward(); opt.step(); opt.zero_grad()
-            if (i // SETTINGS["batch"]) % 20 == 0:
-                print(f"epoch {epoch + 1} step {i // SETTINGS['batch']:4d} loss {loss.item():.4f}  {time.time() - t0:5.0f}s", flush=True)
+            done += 1
+            step_s = time.time() - ts
+            if done == 4 and (time.time() - t0) / 4 > TOO_SLOW_SECONDS:
+                print(f"stopping: {step_s:.0f} s per step means this Mac is short of memory. Close the web app and "
+                      "other heavy apps, make sure Ollama has unloaded its model (ollama stop qwen2.5vl:7b), and run "
+                      "make codes-lora again.", flush=True)
+                return 2
+            if done <= 5 or done % 25 == 0 or done == total:
+                left = (time.time() - t0) / done * (total - done)
+                print(f"epoch {epoch + 1} step {done:4d}/{total} loss {loss.item():.4f}  {step_s:4.1f}s/step"
+                      f"  about {left / 60:4.1f} min left", flush=True)
 
     model.eval()
     preds = {}

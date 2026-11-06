@@ -70,3 +70,9 @@ def test_lora_predictions_are_scored_from_the_file_and_must_match_the_data(conn,
     assert cli.cmd_score_lora(conn) == 1 and "retrain" in capsys.readouterr().out
     f.write_text(json.dumps({"base_model": "fake", "adapter_version": "t@1", "data": data.DATA_VERSION, "predictions": preds}))
     assert cli.cmd_score_lora(conn) == 0 and "unseen phrasings 800/800" in capsys.readouterr().out
+
+
+def test_the_fine_tuning_prompt_is_short_and_leaks_nothing():
+    p = llm.short_prompt("OTIF FINE WK34")
+    assert len(p) < 200 and all(c in p for c in data.CATEGORIES)
+    assert "charge" not in p and "definitions" not in p.lower()

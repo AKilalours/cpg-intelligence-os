@@ -87,6 +87,7 @@ setup-lora: $(PY)  ## Install the LoRA training stack into .venv (torch, transfo
 	$(PY) -m pip install --quiet "torch>=2.4" "transformers>=4.45" "peft>=0.13" "accelerate>=0.34"
 
 codes-lora: $(PY)  ## Addition 12: fine-tune Qwen2.5-0.5B with LoRA on this Mac ($0), then score it once
+	@command -v ollama >/dev/null && ollama stop $${CPGOS_OLLAMA_MODEL:-qwen2.5vl:7b} 2>/dev/null; true   # free its memory first
 	$(PY) scripts/codes_lora.py && $(PY) scripts/codes.py score-lora
 
 codes-report: $(PY)  ## Addition 12: every reader's score side by side
