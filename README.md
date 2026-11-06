@@ -140,6 +140,21 @@ Designed on California; scored once on Texas and Wisconsin (report 28, investiga
 | Claims left undecided | 13 named document requests (12 of those claims were valid) | 10 "needs evidence" |
 | Cost | 1 real over-claim asked about instead of disputed (a slower dispute, not a lost one) | |
 
+**Eight more fresh worlds** (report 37, `make agent-seeds`): the same frozen agent and engine on 8
+worlds neither had seen, 2,946 claims, compared claim by claim.
+
+| 8 fresh worlds, 2,946 claims | Agent | Engine alone |
+|---|---|---|
+| Valid claims disputed | **1 of 807** (0.12%, 95% CI 0.02 to 0.7%) | 24 of 833 (2.9%, 1.9 to 4.25%) |
+| Invalid claims approved | 1 of 1,890 | 1 of 1,869 (the same claim) |
+| Paired on the same claims | wrong where the engine was right: 1 | wrong where the agent was right: **24** |
+| Exact McNemar test | **p = 0.000002** | |
+| Cost | 5 real invalid claims asked about instead of disputed | |
+
+All 24 engine false disputes became document requests, none an acceptance. The one claim both
+approved and the agent's one false dispute are explained in decision 92; neither was tuned on, since
+these worlds are now spent.
+
 **Dispute and request letters** are drafted by a local model (qwen2.5-VL 7B through Ollama, no per-call
 cost) and used only if two deterministic checks pass: every number and date must trace to the case,
 and what the letter says about the dispute deadline must be true on the ledger date. Otherwise the
@@ -167,8 +182,10 @@ late fee, "SWELL ALLOWANCE" for spoils). Generated text, not real remittances.
 | LoRA fine-tune of Qwen2.5-0.5B | 99.8% | 45.9% | not run: does not ship |
 | **Hybrid: Naive Bayes when confident, else the 7B model** | **100%** | 72.9% | **85.2%** (82.6 to 87.5) |
 
-The hybrid is the reader to use: perfect on familiar wording with no model call, and at least as good as
-the 7B model on new wording (the intervals overlap, so not a proven gain there). Its threshold was chosen
+The hybrid is the reader to use: perfect on familiar wording with no model call, and significantly
+better than the 7B model on new wording. The intervals overlap, but paired on the same 800 phrasings
+the hybrid was right where the 7B model was wrong 21 times and the reverse happened once (exact
+McNemar p = 0.00001, `make codes-paired`). Its threshold was chosen
 on unseen set 1; unseen set 2 was committed before any reader was scored on it. Set 2 is easier for
 every reader (more of its words also appear in training), so compare readers within a column. The LoRA
 fine-tune memorised the training phrasings (loss near zero by step 100 of 750) and is worse on unseen

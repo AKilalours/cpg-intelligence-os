@@ -733,3 +733,22 @@ them on the same claims with an exact McNemar test. M5 is loaded once into a
 base database and each world is a copy, dropped after scoring. make
 codes-paired does the same for the reason readers on unseen set 2: no new
 score, only the frozen readers' replayed answers compared pairwise.
+
+## 92. What the eight fresh worlds showed, including the misses
+Report 37: on 2,946 claims across 8 unseen worlds the engine disputed 24 of 833
+valid claims and the agent 1 of 807; paired, 24 against 1 (exact McNemar
+p = 0.000002). All 24 were damaged-record disputes (20 no agreement found, 4
+over-claim past a mis-keyed end date) that the agent turned into requests. On
+unseen set 2 the hybrid reader beat the 7B model 21 to 1 on the same phrasings
+(p = 0.00001), so decision 90's "at least as good" is upgraded to "better".
+The misses, stated rather than tuned away (these worlds are spent):
+- The agent's one false dispute (R-0001249, world 107, CA): the engine could not
+  decide (store missing); the agent inferred a store, and the inference was
+  wrong, so it disputed a valid claim. Store inference is the agent's weakest
+  step; the next version should ask, not dispute, when the store was inferred.
+- The one false approval (R-0000330, world 107, TX) was approved by both: an
+  over-claim whose evidence looked fully supported. Nothing a supplier sees
+  separates it; it is a limit of the evidence, not of either reader.
+- The cost: 5 invalid claims (4 over-claims, 1 no agreement) were asked about
+  instead of disputed, all where the agreement was missing from the record.
+  A slower dispute, not a lost one, while the window is open.
