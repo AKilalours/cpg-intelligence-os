@@ -95,3 +95,26 @@ def test_the_hybrid_uses_naive_bayes_when_sure_and_the_model_otherwise():
     seen = next(e for e in ex if e.split == "validation")
     assert h.predict(seen.text) == seen.category and not asked             # confident: no model call
     assert h.predict("CATALINA") == "coupon" and asked == ["CATALINA"]      # unsure: the model decides
+
+
+def test_paired_comparison_reports_who_was_right_alone(conn, capsys, tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    cli = _cli()
+    monkeypatch.setattr(cli, "OUT", tmp_path)
+
+    class Always:                                  # a "model" that always answers coupon
+        name, model = "fake", "always-coupon"
+
+        def complete(self, req):
+            return SimpleNamespace(text="coupon")
+    monkeypatch.setattr(cli, "_local", lambda: Always())
+    assert cli.cmd_paired(conn) == 1 and "No hybrid score" in capsys.readouterr().out
+    from psycopg.types.json import Jsonb
+    conn.execute("INSERT INTO eval.report (kind, code_version, body) VALUES ('codes', 'x', %s)",
+                 (Jsonb({"reader": "hybrid NB + fake", "threshold": 0.484}),))
+    assert cli.cmd_paired(conn) == 0
+    out = json.loads((tmp_path / "codes_paired.json").read_text())
+    assert len(out) == 3 and all(0 <= x["p_value"] <= 1 for x in out)
+    nb_vs_model = next(x for x in out if x["a"] == "Naive Bayes")
+    assert nb_vs_model["right_only_a"] > nb_vs_model["right_only_b"]          # Naive Bayes beats "always coupon"

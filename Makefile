@@ -9,7 +9,7 @@ ROUND ?= 2
 SPLIT ?= validation
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report letters-local codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report agent-seeds letters-local codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-paired codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -93,8 +93,14 @@ codes-lora: $(PY)  ## Addition 12: fine-tune Qwen2.5-0.5B with LoRA on this Mac 
 codes-hybrid: $(PY)  ## Addition 12: Naive Bayes when confident, else the local model; scored on the second unseen set
 	$(PY) scripts/codes.py hybrid
 
+codes-paired: $(PY)  ## Addition 12: readers compared on the same unseen phrasings, exact paired test (replayed, $0)
+	$(PY) scripts/codes.py paired
+
 codes-report: $(PY)  ## Addition 12: every reader's score side by side
 	$(PY) scripts/codes.py report
+
+agent-seeds: $(PY)  ## The frozen agent vs the engine on fresh worlds (SEEDS=8), claim by claim, exact paired test ($0)
+	SEEDS=$(SEEDS) KEEP=$(KEEP) $(PY) scripts/agent_seeds.py
 
 reconcile: $(PY)  ## Cash application + deduction validation, written by the engine role
 	$(PY) scripts/finance.py reconcile

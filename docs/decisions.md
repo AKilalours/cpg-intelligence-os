@@ -723,3 +723,13 @@ proven gain. The threshold (a per-n-gram margin of 0.484) was chosen on set 1,
 where the model was asked on 525 of 800. Per-example predictions are not yet
 stored in reports, so a paired test was not possible; future reports should
 store them.
+
+## 91. Settle the thin results with more fresh worlds and paired tests
+The agent's headline (0 false disputes against the engine's 2) rested on one
+world. make agent-seeds runs the frozen agent 1.1 and the engine on several new
+worlds (world seeds from 101, evidence seeds from 2001; none is the main
+world's), records every claim with both actions and the truth, and compares
+them on the same claims with an exact McNemar test. M5 is loaded once into a
+base database and each world is a copy, dropped after scoring. make
+codes-paired does the same for the reason readers on unseen set 2: no new
+score, only the frozen readers' replayed answers compared pairwise.

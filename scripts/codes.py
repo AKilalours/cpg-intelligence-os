@@ -102,6 +102,40 @@ def cmd_hybrid(conn) -> int:
                 {"threshold": t, "chosen_on": "heldout (development)", "dev_right": right, "dev_model_calls": calls})
 
 
+def cmd_paired(conn) -> int:
+    """Not a new score: the frozen readers' answers on unseen set 2 (replayed, $0), compared pairwise on the
+    same phrasings with an exact McNemar test, which totals alone cannot give."""
+    from cpgos.agent.seeds import mcnemar_exact
+    p = _local()
+    if p is None:
+        return 1
+    ex = data.generate()
+    nb = baselines.CharNaiveBayes([e for e in ex if e.split == "train"])
+    rows = conn.execute("SELECT body->>'threshold' FROM eval.report WHERE kind = 'codes' AND body->>'reader' LIKE 'hybrid%' "
+                        "ORDER BY report_id DESC LIMIT 1").fetchone()
+    if rows is None:
+        print("No hybrid score yet: make codes-hybrid")
+        return 1
+    ask = llm.prompted(p)
+    readers = {"Naive Bayes": nb.predict, f"prompted {p.model}": ask,
+               "hybrid": baselines.Hybrid(nb, ask, float(rows[0])).predict}
+    test = [e for e in ex if e.split == "heldout2"]
+    right = {name: [f(e.text) == e.category for e in test] for name, f in readers.items()}
+    names = list(readers)
+    out = []
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            a_, b_ = right[names[i]], right[names[j]]
+            only_a = sum(x and not y for x, y in zip(a_, b_))
+            only_b = sum(y and not x for x, y in zip(a_, b_))
+            out.append({"a": names[i], "b": names[j], "right_only_a": only_a, "right_only_b": only_b,
+                        "p_value": round(mcnemar_exact(only_a, only_b), 6)})
+            print(f"{names[i]:>22} vs {names[j]:<22} right only for the first {only_a:4d}, only for the second {only_b:4d}"
+                  f"   exact McNemar p = {out[-1]['p_value']}")
+    (OUT / "codes_paired.json").write_text(json.dumps(out, indent=1))
+    return 0
+
+
 def cmd_score_lora(conn) -> int:
     f = OUT / "codes_lora_predictions.json"
     if not f.exists():
@@ -128,12 +162,13 @@ def cmd_report(conn) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["baselines", "prompted", "hybrid", "score-lora", "report"])
+    ap.add_argument("command", choices=["baselines", "prompted", "hybrid", "paired", "score-lora", "report"])
     a = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
-        return {"baselines": cmd_baselines, "prompted": cmd_prompted, "hybrid": cmd_hybrid, "score-lora": cmd_score_lora,
+        return {"baselines": cmd_baselines, "prompted": cmd_prompted, "hybrid": cmd_hybrid, "paired": cmd_paired,
+                "score-lora": cmd_score_lora,
                 "report": cmd_report}[a.command](conn)
 
 
