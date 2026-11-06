@@ -21,7 +21,8 @@ function state(l: StpLane): { word: string; tone: string } {
 function Lane({ l }: { l: StpLane }) {
   const st = state(l);
   const earning = l.mode === "enforce" && !l.is_open && l.reversals === 0 && l.errors === 0;
-  const fill = earning ? Math.min(1, l.reviews / l.reviews_needed) : Math.min(1, l.upper_bound / l.max_error_rate);
+  // Off: no evidence is being gathered, so the bar is neutral, not an alarm (the bound is 100% with no reviews).
+  const fill = l.mode === "off" ? 1 : earning ? Math.min(1, l.reviews / l.reviews_needed) : Math.min(1, l.upper_bound / l.max_error_rate);
   return (
     <div className="rounded-2xl border border-rule bg-sheet p-5">
       <div className="flex items-start justify-between gap-3">
@@ -30,7 +31,7 @@ function Lane({ l }: { l: StpLane }) {
       </div>
       <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-paper" role="img"
            aria-label={earning ? `${l.reviews} of ${l.reviews_needed} clean reviews` : `error bound ${pct(l.upper_bound)} of a ${pct(l.max_error_rate)} budget`}>
-        <div className={`h-full rounded-full ${earning ? "bg-[#B8D63A]" : fill >= 1 ? "bg-[#B3402F]" : "bg-forest"}`}
+        <div className={`h-full rounded-full ${l.mode === "off" ? "bg-rule" : earning ? "bg-[#B8D63A]" : fill >= 1 ? "bg-[#B3402F]" : "bg-forest"}`}
              style={{ width: `${Math.max(2, fill * 100)}%`, transition: "width 600ms ease" }} />
       </div>
       <div className="mt-2 text-sm text-muted">
