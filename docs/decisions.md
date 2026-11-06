@@ -752,3 +752,23 @@ The misses, stated rather than tuned away (these worlds are spent):
 - The cost: 5 invalid claims (4 over-claims, 1 no agreement) were asked about
   instead of disputed, all where the agreement was missing from the record.
   A slower dispute, not a lost one, while the window is open.
+
+## 93. Automatic posting is earned per lane, and the database enforces it
+Until now a cash match at confidence 0.90 or more was posted with no person,
+on the strength of offline scores. A confidence is the engine's opinion of
+itself; the error budget asks for evidence instead. Each kind of automatic
+match (exact reference, explained short-pay, one-keystroke typo) is a lane,
+and a lane may post on its own only when people's reviews of its suggestions,
+for this engine version, put the one-sided 95% Clopper-Pearson upper bound on
+its error rate within its budget (1%: 299 clean reviews). An open lane still
+sends a hidden 5% sample to people, so the rate keeps being measured; a closed
+lane sends everything, and each review is more evidence. A wrong automatic
+posting that a person reverses stops the lane until the policy owner reopens
+it, which is audited. A new engine version starts with no evidence.
+The gate lives in Postgres (migration 0021): stp_route decides, a trigger
+refuses any engine posting it did not allow, the engine cannot read the
+sampling salt or change the policy, and the policy is off until enforced, so
+nothing changes for existing data by default. Not covered yet: deductions are
+never acted on automatically (people decide every dispute), so there is no
+deduction lane; the budget counts lines, not dollars; the simulation's reviewer
+is the answer key, a perfect person.

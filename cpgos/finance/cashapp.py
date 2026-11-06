@@ -200,20 +200,33 @@ def match_all(conn: psycopg.Connection, strategy: str = "full", partner_id: int 
 
 
 def apply(conn: psycopg.Connection, matches: list[Match]) -> dict:
-    """Write decisions as the engine role: auto -> approved, review -> proposed."""
-    counts = {"auto": 0, "review": 0, "unmatched": 0}
+    """Write decisions as the engine role. A suggestion the engine would post goes through the error
+    budget (migration 0021): it is posted only if its lane has earned autonomy and it was not drawn for
+    an audit; otherwise it waits for a person, and that person's decision is evidence for the lane.
+    'auto' counts postings; 'audit' counts would-be postings sent to a person by the gate."""
+    from cpgos.finance.stp import lane_of
+    counts = {"auto": 0, "audit": 0, "review": 0, "unmatched": 0}
     with conn.transaction():
         conn.execute("SET LOCAL ROLE cpgos_engine")
         for m in matches:
-            counts[m.decision] += 1
             if m.invoice_id is None:
+                counts["unmatched"] += 1
                 continue
+            lane = lane_of(m.confidence) if m.decision == "auto" else None
+            status = "proposed"
+            if lane is not None:
+                route = conn.execute("SELECT stp_route(%s, %s, %s)",
+                                     (lane, ENGINE_VERSION, m.remittance_line_id)).fetchone()[0]
+                status = "approved" if route == "auto" else "proposed"
+                counts["auto" if route == "auto" else "audit"] += 1
+            else:
+                counts[m.decision] += 1
             conn.execute(
                 """INSERT INTO cash_application (remittance_line_id, invoice_id, applied_amount, method, confidence,
-                                                 match_explanation, status)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                                                 match_explanation, status, lane, engine_version)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (m.remittance_line_id, m.invoice_id, m.amount, m.method, round(m.confidence, 4),
-                 Jsonb({**m.explanation, "engine": ENGINE_VERSION}), "approved" if m.decision == "auto" else "proposed"),
+                 Jsonb({**m.explanation, "engine": ENGINE_VERSION}), status, lane, ENGINE_VERSION),
             )
         conn.execute(
             """UPDATE invoice i SET status = CASE WHEN x.applied >= i.total_amount THEN 'paid' ELSE 'partially_paid' END

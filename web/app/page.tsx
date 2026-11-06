@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { count, when } from "@/lib/format";
-import type { EvaluationReport, MoneyFlow as Flow, Overview, ReviewQueueItem } from "@/lib/types";
+import type { EvaluationReport, MoneyFlow as Flow, Overview, ReviewQueueItem, StpStatus } from "@/lib/types";
+import { Autonomy } from "./Autonomy";
 import { MoneyFlow } from "./MoneyFlow";
 import { CountUp } from "@/components/CountUp";
 import { Cmd, Notice, Status } from "@/components/ui";
@@ -11,13 +12,15 @@ export const dynamic = "force-dynamic";
 type Rate = { k: number; n: number; rate: number | null };
 
 export default async function TodayPage() {
-  const [ov, queue, inv, rec, ded, flow] = await Promise.all([
+  const [ov, queue, inv, rec, ded, flow, gate, sim] = await Promise.all([
     api<Overview>("/api/overview"),
     api<ReviewQueueItem[]>("/api/documents/queue?limit=500"),
     api<EvaluationReport | null>("/api/evaluation/latest?kind=routing_holdout"),
     api<EvaluationReport | null>("/api/evaluation/latest?kind=cord_receipts_test"),
     api<EvaluationReport | null>("/api/evaluation/latest?kind=phase2a"),
     api<Flow>("/api/overview/flow"),
+    api<StpStatus>("/api/stp"),
+    api<EvaluationReport | null>("/api/evaluation/latest?kind=stp"),
   ]);
   if (!ov.ok) return <Notice kind="error" title="Can't load today's numbers">{ov.error}</Notice>;
   const e = ov.data.exposure;
@@ -52,6 +55,14 @@ export default async function TodayPage() {
         <section className="mt-10" aria-label="Where the money went">
           <h2 className="mb-4 text-3xl">Where the retailers&apos; money went</h2>
           <MoneyFlow flow={flow.data} />
+        </section>
+      ) : null}
+
+      {gate.ok && gate.data.lanes.length ? (
+        <section className="mt-12" aria-label="Earned autonomy">
+          <h2 className="mb-4 text-3xl">Posting on its own, only where it has earned it</h2>
+          <Autonomy lanes={gate.data.lanes}
+                    faults={sim.ok && sim.data ? (Object.values((sim.data.body as { worlds?: Record<string, { silent_fault?: Record<string, never> }> }).worlds ?? {})[0]?.silent_fault ?? null) : null} />
         </section>
       ) : null}
 

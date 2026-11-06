@@ -527,3 +527,22 @@ def case_decision(case_id: int, body: DecisionIn, conn: psycopg.Connection = Dep
         return agent_cases.decide(conn, case_id, body.action, body.reviewer, body.note)
     except agent_cases.CaseError as e:
         raise HTTPException(400, str(e)) from None
+
+
+from cpgos.finance import stp as stp_mod  # noqa: E402
+from cpgos.finance.cashapp import ENGINE_VERSION as CASH_ENGINE  # noqa: E402
+
+
+@app.get("/api/stp")
+def stp_status(conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    """Addition 11: each posting lane's earned autonomy for the running engine version, read from the
+    database's own gate (stp_lane_status), so the screen shows exactly what the gate will decide."""
+    lanes = []
+    for l in stp_mod.overview(conn, CASH_ENGINE):
+        lanes.append({"lane": l["lane"], "description": l["description"], "mode": l["mode"],
+                      "max_error_rate": float(l["max_error_rate"]), "confidence": float(l["confidence"]),
+                      "audit_rate": float(l["audit_rate"]), "window_size": l["window_size"],
+                      "reviews": l["reviews"], "errors": l["errors"], "upper_bound": float(l["upper_bound"]),
+                      "reversals": l["reversals"], "is_open": l["is_open"], "reviews_needed": l["reviews_needed"],
+                      "routed": l["routed"], "updated_by": l["updated_by"], "updated_at": str(l["updated_at"])})
+    return {"engine_version": CASH_ENGINE, "lanes": lanes}

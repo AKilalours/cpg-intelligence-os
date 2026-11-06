@@ -273,3 +273,12 @@ export interface CaseDetail extends CaseRow {
   letter: { version: string; source: string; text: string; unsupported: string[]; model?: string;
             model_rejected?: { unsupported_numbers: string[]; window_problems?: string[] }; window_problems?: string[] };
 }
+
+export interface StpLane {
+  lane: string; description: string; mode: "off" | "enforce"; max_error_rate: number; confidence: number;
+  audit_rate: number; window_size: number; reviews: number; errors: number; upper_bound: number;
+  reversals: number; is_open: boolean; reviews_needed: number; routed: Record<string, number>;
+  updated_by: string; updated_at: string;
+}
+export interface StpStatus { engine_version: string; lanes: StpLane[] }
+export interface StpPoint { day: string; wrong_posted: number }

@@ -9,7 +9,7 @@ ROUND ?= 2
 SPLIT ?= validation
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report agent-seeds letters-local codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-paired codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report agent-seeds letters-local stp-simulate stp-status codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-paired codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -76,6 +76,12 @@ agent-report: $(PY)  ## Print the latest stored agent report again (no scoring)
 
 letters-local: $(PY)  ## Local model ($0) drafts dispute and request letters; only drafts whose every number traces are used (LIMIT=n)
 	LIMIT=$(LIMIT) $(PY) scripts/finance.py letters-local
+
+stp-simulate: $(PY)  ## Addition 11: replay the world's cash lines with the error budget (healthy, silent fault, bad release)
+	$(PY) scripts/stp.py simulate
+
+stp-status: $(PY)  ## Addition 11: each posting lane's reviews, errors, upper bound, and whether it may post
+	$(PY) scripts/stp.py status
 
 codes-baselines: $(PY)  ## Addition 12: keyword rules and n-gram Naive Bayes on seen and unseen reason phrasings
 	$(PY) scripts/codes.py baselines

@@ -35,12 +35,13 @@ def decide_cash(conn: psycopg.Connection, remittance_line_id: int, action: str, 
     who = _who(reviewer)
     with conn.transaction():
         conn.execute("SET LOCAL ROLE cpgos_reviewer")
-        row = _q(conn, """SELECT cash_application_id, status, invoice_id, applied_amount, confidence FROM cash_application
+        row = _q(conn, """SELECT cash_application_id, status, invoice_id, applied_amount, confidence, lane, routed
+                          FROM cash_application
                           WHERE remittance_line_id = %s ORDER BY cash_application_id DESC LIMIT 1""",
                  (remittance_line_id,)).fetchone()
         if row is None:
             raise DecisionError(f"no suggested match for cash line {remittance_line_id}")
-        cid, status, invoice_id, amount, confidence = row
+        cid, status, invoice_id, amount, confidence, lane, routed = row
         if status != "proposed":
             raise DecisionError(f"this match was already {status}")
         new = "approved" if action == "approve" else "rejected"
@@ -55,8 +56,40 @@ def decide_cash(conn: psycopg.Connection, remittance_line_id: int, action: str, 
            (who, f"cash_{action}", Jsonb({"cash_application_id": cid, "remittance_line_id": remittance_line_id,
                                            "invoice_id": invoice_id, "amount": str(amount),
                                            "engine_confidence": None if confidence is None else str(confidence),
-                                           "note": note})))
-    return {"cash_application_id": cid, "remittance_line_id": remittance_line_id, "status": new}
+                                           "lane": lane, "routed": routed, "note": note})))
+    return {"cash_application_id": cid, "remittance_line_id": remittance_line_id, "status": new,
+            "counts_as_evidence": routed == "audit"}
+
+
+def reverse_cash(conn: psycopg.Connection, remittance_line_id: int, reviewer: str, note: str) -> dict:
+    """A posted match turned out wrong (the customer says so, or collections finds it). Undo the
+    posting, reopen the invoice, and, if the engine posted it on its own, stop that lane: a wrong
+    automatic posting that got through is exactly what the error budget exists to prevent."""
+    who = _who(reviewer)
+    if not note or not note.strip():
+        raise DecisionError("say why the posting is wrong: a reversal is evidence against the engine")
+    with conn.transaction():
+        conn.execute("SET LOCAL ROLE cpgos_reviewer")
+        row = _q(conn, """SELECT cash_application_id, status, invoice_id, applied_amount, lane, routed, engine_version
+                          FROM cash_application WHERE remittance_line_id = %s
+                          ORDER BY cash_application_id DESC LIMIT 1""", (remittance_line_id,)).fetchone()
+        if row is None:
+            raise DecisionError(f"no match for cash line {remittance_line_id}")
+        cid, status, invoice_id, amount, lane, routed, version = row
+        if status != "approved":
+            raise DecisionError(f"only a posted match can be reversed; this one is {status}")
+        _q(conn, "UPDATE cash_application SET status = 'reversed', reversed_at = clock_timestamp() "
+                 "WHERE cash_application_id = %s", (cid,))
+        _q(conn, """UPDATE invoice i SET status = CASE WHEN x.applied >= i.total_amount THEN 'paid'
+                                                    WHEN x.applied > 0 THEN 'partially_paid' ELSE 'open' END
+                    FROM (SELECT coalesce(sum(applied_amount), 0) AS applied FROM cash_application
+                          WHERE invoice_id = %s AND status = 'approved') x
+                    WHERE i.invoice_id = %s""", (invoice_id, invoice_id))
+        _q(conn, "INSERT INTO audit_event (actor_type, actor_id, action, payload) VALUES ('human', %s, 'cash_reverse', %s)",
+           (who, Jsonb({"cash_application_id": cid, "remittance_line_id": remittance_line_id, "invoice_id": invoice_id,
+                        "amount": str(amount), "lane": lane, "routed": routed, "engine_version": version,
+                        "note": note.strip()})))
+    return {"cash_application_id": cid, "status": "reversed", "stops_lane": lane if routed == "auto" else None}
 
 
 def decide_deduction(conn: psycopg.Connection, deduction_id: int, action: str, reviewer: str,
