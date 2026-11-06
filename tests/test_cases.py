@@ -69,10 +69,11 @@ def test_a_request_is_marked_sent_and_the_claim_stays_open(investigated):
 
 def test_bad_input_changes_nothing(investigated):
     c = _first(investigated, "dispute")
+    events = investigated.execute("SELECT count(*) FROM audit_event").fetchone()[0]
     for args in (("delete", "akila"), ("approve", " "), ("request_sent", "akila")):
         with pytest.raises(cases.CaseError):
             cases.decide(investigated, c["case_id"], *args)
-    assert investigated.execute("SELECT count(*) FROM audit_event WHERE actor_type = 'human'").fetchone()[0] == 0
+    assert investigated.execute("SELECT count(*) FROM audit_event").fetchone()[0] == events
 
 
 def test_api_round_trip(db_url, investigated, monkeypatch):

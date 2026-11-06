@@ -25,9 +25,11 @@ def doc(conn):
 
 
 def test_approve_is_attributed_and_audited_but_not_remembered(conn, doc):
+    before = conn.execute("SELECT coalesce(max(audit_event_id), 0) FROM audit_event").fetchone()[0]
     r = review.submit(conn, doc, "total", "approve", "akila")
     assert r["reviewed_value"] == "734.33" and r["remembered"] is False
-    a = conn.execute("SELECT actor_type, actor_id, action, payload->>'field' FROM audit_event").fetchall()
+    a = conn.execute("SELECT actor_type, actor_id, action, payload->>'field' FROM audit_event "
+                     "WHERE audit_event_id > %s", (before,)).fetchall()
     assert a == [("human", "akila", "field_approve", "total")]
     assert conn.execute("SELECT count(*) FROM mapping_memory").fetchone()[0] == 0
 
@@ -45,13 +47,16 @@ def test_correcting_to_not_on_the_document_is_allowed(conn, doc):
 
 
 def test_bad_input_writes_nothing(conn, doc):
+    # Compare with what was there before: a real database's audit log is never empty (migrations
+    # that change a policy record themselves, decision 95).
+    events = conn.execute("SELECT count(*) FROM audit_event").fetchone()[0]
     for kwargs in ({"action": "delete"}, {"action": "correct", "value": "not money"}, {"action": "approve", "reviewer": " "}):
         with pytest.raises(review.ReviewError):
             review.submit(conn, doc, "total", kwargs.get("action"), kwargs.get("reviewer", "akila"), kwargs.get("value"))
     with pytest.raises(review.ReviewError):
         review.submit(conn, doc, "no_such_field", "approve", "akila")
     assert conn.execute("SELECT count(*) FROM field_review").fetchone()[0] == 0
-    assert conn.execute("SELECT count(*) FROM audit_event").fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM audit_event").fetchone()[0] == events
 
 
 def test_reviews_and_memory_are_append_only(conn, doc):

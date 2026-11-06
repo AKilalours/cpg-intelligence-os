@@ -802,3 +802,12 @@ with no person on healthy history, against 89.5% unchecked; the short-pay and
 typo lanes never earn autonomy at this volume; a 5% fault is fully contained
 in 133 of 200 rolls. The bad-release scenario reports 0 closures because the
 new version never opened, which is the intended outcome, not a missed one.
+
+## 96. Tests compare the audit log before and after, never against empty
+Migration 0022 changes the policy, and the policy trigger rightly logs it, so a
+fresh database's audit log is no longer empty. Five tests asserted "bad input
+writes nothing" as "the audit log has 0 rows" and failed. The assumption was
+wrong, not the log: a real database always has history. They now count what
+the action adds. A migration's policy change is also recorded as a system act
+naming the migration (it is a reviewed code change, not a person at a
+console), with the login kept in the payload.

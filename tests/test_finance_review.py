@@ -62,13 +62,14 @@ def test_deduction_decisions_record_agreement_with_the_engine(world):
 
 
 def test_bad_input_writes_nothing(world):
+    events = world.execute("SELECT count(*) FROM audit_event").fetchone()[0]
     d = _open_deduction(world, "invalid")[0]
     for args in ((d, "delete", "akila"), (d, "dispute", "  "), (10**9, "dispute", "akila")):
         with pytest.raises(fr.DecisionError):
             fr.decide_deduction(world, *args)
     with pytest.raises(fr.DecisionError):
         fr.decide_cash(world, 10**9, "approve", "akila")
-    assert world.execute("SELECT count(*) FROM audit_event WHERE actor_type = 'human'").fetchone()[0] == 0
+    assert world.execute("SELECT count(*) FROM audit_event").fetchone()[0] == events
 
 
 def test_engine_role_cannot_take_human_decisions(world):
