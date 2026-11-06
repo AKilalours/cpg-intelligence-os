@@ -9,7 +9,7 @@ ROUND ?= 2
 SPLIT ?= validation
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report letters-local codes-baselines codes-prompted setup-lora codes-lora codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report letters-local codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -89,6 +89,9 @@ setup-lora: $(PY)  ## Install the LoRA training stack into .venv (torch, transfo
 codes-lora: $(PY)  ## Addition 12: fine-tune Qwen2.5-0.5B with LoRA on this Mac ($0), then score it once
 	@command -v ollama >/dev/null && ollama stop $${CPGOS_OLLAMA_MODEL:-qwen2.5vl:7b} 2>/dev/null; true   # free its memory first
 	$(PY) scripts/codes_lora.py && $(PY) scripts/codes.py score-lora
+
+codes-hybrid: $(PY)  ## Addition 12: Naive Bayes when confident, else the local model; scored on the second unseen set
+	$(PY) scripts/codes.py hybrid
 
 codes-report: $(PY)  ## Addition 12: every reader's score side by side
 	$(PY) scripts/codes.py report

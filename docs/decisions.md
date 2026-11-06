@@ -697,3 +697,18 @@ model was still loaded in the same memory and every example carried all ten
 definitions (about 200 tokens). lora-1.1, before any LoRA score: Ollama is
 unloaded first, a short prompt with category names only, batch 8, progress
 and time left on screen, and a stop with a plain message if steps stay slow.
+
+## 89. The LoRA fine-tune does not ship, and the next design is scored on a fresh set
+LoRA on Qwen2.5-0.5B: 99.8% on seen phrasings, 45.9% on unseen (95% CI 42.4
+to 49.3%), below Naive Bayes (50.5%) and far below the prompted 7B model
+(70.9%). Training loss was near zero by step 100: it memorised surface forms,
+and a 0.5B model does not carry the domain knowledge the task needs. Having
+read the first unseen set, designing on it would grade a design on its own
+exam, so it becomes the development set and a second unseen set (30 new
+phrase families, reasons-1.1.0) is committed before any reader is scored on
+it; a test proves the first three splits are unchanged and the new families
+are disjoint. The leak test, extended to the new set, caught five words from
+the category definitions and one category name in the first draft of it; those
+phrasings were reworded before anything was scored. Candidate next: a hybrid,
+Naive Bayes when its per-n-gram margin is high (seen phrasings never score
+below 0.6), else the 7B model.

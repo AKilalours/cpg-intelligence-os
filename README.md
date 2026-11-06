@@ -164,7 +164,13 @@ late fee, "SWELL ALLOWANCE" for spoils). Generated text, not real remittances.
 | Keyword rules | 84.8% | 26.5% | 0.34 |
 | Character n-gram Naive Bayes | **100%** | 50.5% | 0.50 |
 | Local model qwen2.5-VL 7B, definitions only | 90.5% | **70.9%** | 0.70 |
-| LoRA fine-tune of Qwen2.5-0.5B | pending | pending | |
+| LoRA fine-tune of Qwen2.5-0.5B | 99.8% | 45.9% | 0.44 |
+
+The fine-tune does not ship: it is worse on unseen wording than plain Naive Bayes. Its training loss
+reached almost zero by step 100 of 750; it memorised the training phrasings, and a 0.5B model lacks the
+domain knowledge (that "swell" means damaged goods) that the 7B model brings. Next: Naive Bayes when it
+is confident, the 7B model otherwise, with its threshold chosen on the first unseen set (now a
+development set) and scored once on a second unseen set written before any reader saw it.
 
 Both engine false disputes came from damaged records: a promotion missing from the calendar, and a
 promotion end date keyed a week early. In both, the shelf price showed the promotion was running,

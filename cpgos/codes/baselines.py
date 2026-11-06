@@ -54,10 +54,33 @@ class CharNaiveBayes:
         t = f" {re.sub(r'[^a-z& ]', ' ', text.lower())} "
         return [t[i:i + k] for k in range(self.n[0], self.n[1] + 1) for i in range(len(t) - k + 1)]
 
-    def predict(self, text: str) -> str:
+    def _scores(self, text: str) -> dict[str, float]:
         g = self._grams(text)
         v = len(self.vocab)
-        def score(c):
-            cnt, tot = self.counts[c], self.total[c]
-            return self.logprior[c] + sum(math.log((cnt[x] + self.alpha) / (tot + self.alpha * v)) for x in g)
-        return max(CATEGORIES, key=score)
+        return {c: self.logprior[c] + sum(math.log((self.counts[c][x] + self.alpha) / (self.total[c] + self.alpha * v))
+                                          for x in g) for c in CATEGORIES}
+
+    def predict(self, text: str) -> str:
+        s = self._scores(text)
+        return max(s, key=s.get)
+
+    def margin(self, text: str) -> float:
+        """How much more likely the best category is than the runner-up, per character n-gram (log scale).
+        Naive Bayes probabilities are overconfident on long texts, so the margin is divided by the n-gram count."""
+        s = sorted(self._scores(text).values(), reverse=True)
+        return (s[0] - s[1]) / max(1, len(self._grams(text)))
+
+
+class Hybrid:
+    """Naive Bayes when it is confident (seen phrasings: right and nearly free), the language model otherwise
+    (the only reader that handles unseen wording). The threshold is chosen on the development set."""
+
+    def __init__(self, nb: CharNaiveBayes, llm_predict, threshold: float):
+        self.nb, self.llm, self.threshold, self.llm_calls = nb, llm_predict, threshold, 0
+        self.name = f"hybrid: Naive Bayes, else the language model below margin {threshold}"
+
+    def predict(self, text: str) -> str | None:
+        if self.nb.margin(text) >= self.threshold:
+            return self.nb.predict(text)
+        self.llm_calls += 1
+        return self.llm(text)

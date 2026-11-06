@@ -53,7 +53,7 @@ def test_heldout_is_scored_once_per_reader_version(conn, capsys):
     cli = _cli()
     assert cli.cmd_baselines(conn) == 0
     out = capsys.readouterr().out
-    assert "keyword rules" in out and "unseen phrasings" in out
+    assert "keyword rules" in out and "unseen set 2" in out
     assert cli.cmd_baselines(conn) == 1 and "already scored" in capsys.readouterr().out
     assert cli.cmd_report(conn) == 0 and "Naive Bayes" in capsys.readouterr().out
 
@@ -69,10 +69,29 @@ def test_lora_predictions_are_scored_from_the_file_and_must_match_the_data(conn,
     f.write_text(json.dumps({"base_model": "fake", "adapter_version": "t@1", "data": "reasons-0.0.0", "predictions": preds}))
     assert cli.cmd_score_lora(conn) == 1 and "retrain" in capsys.readouterr().out
     f.write_text(json.dumps({"base_model": "fake", "adapter_version": "t@1", "data": data.DATA_VERSION, "predictions": preds}))
-    assert cli.cmd_score_lora(conn) == 0 and "unseen phrasings 800/800" in capsys.readouterr().out
+    assert cli.cmd_score_lora(conn) == 0 and "unseen set 2 800/800" in capsys.readouterr().out
 
 
 def test_the_fine_tuning_prompt_is_short_and_leaks_nothing():
     p = llm.short_prompt("OTIF FINE WK34")
     assert len(p) < 200 and all(c in p for c in data.CATEGORIES)
     assert "charge" not in p and "definitions" not in p.lower()
+
+
+def test_the_second_unseen_set_is_new_and_leaves_the_first_three_splits_unchanged():
+    a = data.generate(heldout2=0)
+    b = data.generate()
+    assert a == [e for e in b if e.split != "heldout2"]                     # 1.0's splits exactly
+    seen = {e.family for e in b if e.split != "heldout2"}
+    two = {e.family for e in b if e.split == "heldout2"}
+    assert len(two) == 30 and not (seen & two)
+
+
+def test_the_hybrid_uses_naive_bayes_when_sure_and_the_model_otherwise():
+    ex = data.generate()
+    nb = baselines.CharNaiveBayes([e for e in ex if e.split == "train"])
+    asked = []
+    h = baselines.Hybrid(nb, lambda t: asked.append(t) or "coupon", threshold=0.5)      # seen phrasings score >= 0.6
+    seen = next(e for e in ex if e.split == "validation")
+    assert h.predict(seen.text) == seen.category and not asked             # confident: no model call
+    assert h.predict("CATALINA") == "coupon" and asked == ["CATALINA"]      # unsure: the model decides

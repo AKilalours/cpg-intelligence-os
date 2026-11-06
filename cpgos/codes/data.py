@@ -20,7 +20,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-DATA_VERSION = "reasons-1.0.0"
+DATA_VERSION = "reasons-1.1.0"   # 1.1: a second held-out set, written before any reader was scored on it
 
 # category -> (train families, held-out families). A family is one way of saying it.
 FAMILIES: dict[str, tuple[list[str], list[str]]] = {
@@ -47,6 +47,21 @@ FAMILIES: dict[str, tuple[list[str], list[str]]] = {
 }
 CATEGORIES = sorted(FAMILIES)
 
+# A second set of unseen phrasings, written on 2026-11-05 after the first held-out set had been read (and so
+# had become a development set) and before any reader was scored on this one. New designs are scored here, once.
+HELDOUT2: dict[str, list[str]] = {
+    "shortage": ["UNDER SHIPPED", "SHORT ON BOL", "SHORT PICK"],
+    "late_fee": ["MISSED DELIVERY APPOINTMENT", "LATE TRUCK FEE", "OTD PENALTY"],
+    "scan_back": ["PROMOTIONAL ALLOWANCE", "BILLBACK PROMO", "PRICE ROLLBACK FUNDING"],
+    "spoils": ["DEFECTIVE ALLOWANCE", "MARKDOWN FOR DAMAGE", "STALE DATED"],
+    "pricing": ["COST DISCREPANCY", "PRICE MISMATCH", "OVERBILLED"],
+    "coupon": ["CATALINA", "COUPON REIMBURSEMENT", "MFG OFFER REDEEMED"],
+    "advertising": ["CO-OP ADVERTISING", "RADIO SPOT", "IN-STORE MEDIA"],
+    "return": ["DEFECTIVE RETURN", "OVERSTOCK RETURN", "RETURN AUTHORIZATION"],
+    "display": ["ENDCAP PLACEMENT", "FLOOR STAND", "WING PANEL"],
+    "slotting": ["LISTING FEE", "SHELF SPACE FEE", "ITEM SETUP FEE"],
+}
+
 ABBREV = {   # how remittance systems shorten words
     "ALLOWANCE": ["ALLOW", "ALW", "ALLOWNC"], "DELIVERY": ["DLVRY", "DELIV", "DEL"], "SHORTAGE": ["SHRTG", "SHORTG"],
     "RECEIVED": ["RCVD", "REC'D", "RECV"], "RECEIVING": ["RCVG", "RECV"], "PRODUCT": ["PROD"], "DIFFERENCE": ["DIFF"],
@@ -61,7 +76,7 @@ class Example:
     text: str
     category: str
     family: str
-    split: str          # train | validation (seen families, new instances) | heldout (families never seen)
+    split: str          # train | validation (seen families) | heldout (unseen; now a development set) | heldout2
 
 
 def _noisy(rng: random.Random, phrase: str) -> str:
@@ -94,9 +109,11 @@ def _noisy(rng: random.Random, phrase: str) -> str:
     return t
 
 
-def generate(seed: int = 12, train: int = 3000, validation: int = 400, heldout: int = 800) -> list[Example]:
+def generate(seed: int = 12, train: int = 3000, validation: int = 400, heldout: int = 800,
+             heldout2: int = 800) -> list[Example]:
     """Fixed by the seed. Train and validation share families (validation: new instances); held-out uses only
-    the families training never sees. Categories are balanced within each split."""
+    families training never sees; heldout2 uses a second unseen set. Categories are balanced within each split.
+    heldout2 is drawn last from its own generator, so the first three splits are exactly those of 1.0."""
     rng = random.Random(seed)
     out: list[Example] = []
     for split, n in (("train", train), ("validation", validation), ("heldout", heldout)):
@@ -105,4 +122,9 @@ def generate(seed: int = 12, train: int = 3000, validation: int = 400, heldout: 
             seen, unseen = FAMILIES[cat]
             fam = rng.choice(unseen if split == "heldout" else seen)
             out.append(Example(_noisy(rng, fam), cat, fam, split))
+    rng2 = random.Random(seed * 1000 + 2)
+    for i in range(heldout2):
+        cat = CATEGORIES[i % len(CATEGORIES)]
+        fam = rng2.choice(HELDOUT2[cat])
+        out.append(Example(_noisy(rng2, fam), cat, fam, "heldout2"))
     return out

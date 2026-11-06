@@ -47,11 +47,13 @@ def parse(answer: str) -> str | None:
 
 
 def heldout_phrases_in_prompt() -> list[str]:
-    """Held-out wording that leaked into the prompt (must be empty)."""
+    """Held-out wording (either unseen set) that leaked into the prompt (must be empty)."""
+    from cpgos.codes.data import HELDOUT2
     text = (SYSTEM + prompt("x")).upper()
-    words = {w for c in CATEGORIES for fam in FAMILIES[c][1] for w in re.findall(r"[A-Z&]{3,}", fam)}
+    words = {w for c in CATEGORIES for fam in FAMILIES[c][1] + HELDOUT2[c] for w in re.findall(r"[A-Z&]{3,}", fam)}
     seen = {w for c in CATEGORIES for fam in FAMILIES[c][0] for w in re.findall(r"[A-Z&]{3,}", fam)}
-    return sorted(w for w in words - seen if re.search(rf"\b{re.escape(w)}\b", text))
+    common = {"FOR", "PER", "THAN", "THE", "AND", "OUT", "NEW", "ITEM"}    # ordinary words, not hints
+    return sorted(w for w in words - seen - common if re.search(rf"\b{re.escape(w)}\b", text))
 
 
 def prompted(provider):

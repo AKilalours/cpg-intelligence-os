@@ -4,6 +4,8 @@
     make codes-baselines      keyword rules and character n-gram Naive Bayes (seconds, $0)
     make codes-prompted       the local model with category definitions only (Ollama, $0, ~15 min)
     make codes-lora           fine-tune a small open model with LoRA on this Mac, then score it ($0)
+    make codes-hybrid         Naive Bayes when confident, else the local model; threshold chosen on the
+                              development set (the first unseen set), scored on the second unseen set
     make codes-report         every stored score side by side
 """
 
@@ -26,7 +28,8 @@ def _save(conn, name: str, version: str, body: dict) -> int | None:
     """Store a score once per (reader, version): the held-out set is spent when it is read."""
     from psycopg.types.json import Jsonb
     done = conn.execute("SELECT report_id FROM eval.report WHERE kind = 'codes' AND body->>'reader' = %s "
-                        "AND body->>'reader_version' = %s", (name, version)).fetchone()
+                        "AND body->>'reader_version' = %s AND body->>'data' = %s",
+                        (name, version, body["data"])).fetchone()
     if done:
         print(f"{name} {version} was already scored (report {done[0]}); a change needs a new version.")
         return None
@@ -34,17 +37,19 @@ def _save(conn, name: str, version: str, body: dict) -> int | None:
                         (code_version(), Jsonb(json.loads(json.dumps(body, default=str))))).fetchone()[0]
 
 
-def _run(conn, name: str, version: str, predict) -> int:
+def _run(conn, name: str, version: str, predict, extra: dict | None = None) -> int:
     ex = data.generate()
-    body = {"reader": name, "reader_version": version, "data": data.DATA_VERSION,
+    body = {"reader": name, "reader_version": version, "data": data.DATA_VERSION, **(extra or {}),
             "validation": evaluate.score(predict, [e for e in ex if e.split == "validation"]),
-            "heldout": evaluate.score(predict, [e for e in ex if e.split == "heldout"])}
+            "heldout": evaluate.score(predict, [e for e in ex if e.split == "heldout"]),
+            "heldout2": evaluate.score(predict, [e for e in ex if e.split == "heldout2"])}
     rid = _save(conn, name, version, body)
     if rid is None:
         return 1
-    v, h = body["validation"], body["heldout"]
-    print(f"report {rid}: {name}  seen phrasings {v['accuracy']['k']}/{v['n']}  unseen phrasings {h['accuracy']['k']}/{h['n']}"
-          f" (macro-F1 {h['macro_f1']})  hardest: {', '.join(x['family'] for x in h['hardest_phrasings'][:3])}")
+    v, h, h2 = body["validation"], body["heldout"], body["heldout2"]
+    print(f"report {rid}: {name}  seen {v['accuracy']['k']}/{v['n']}  unseen set 1 {h['accuracy']['k']}/{h['n']}"
+          f"  unseen set 2 {h2['accuracy']['k']}/{h2['n']} (macro-F1 {h2['macro_f1']})"
+          f"  hardest: {', '.join(x['family'] for x in h2['hardest_phrasings'][:3])}")
     return 0
 
 
@@ -57,14 +62,44 @@ def cmd_baselines(conn) -> int:
 
 
 def cmd_prompted(conn) -> int:
+    p = _local()
+    return 1 if p is None else _run(conn, f"prompted {p.model}", llm.PROMPT_VERSION, llm.prompted(p))
+
+
+def _local():
     from cpgos.llm import LLMError, provider
     p = provider("ollama")
     try:
         p.digest()
     except LLMError as e:
         print(f"Ollama is not reachable ({e}). Start it with: ollama serve")
+        return None
+    return p
+
+
+def cmd_hybrid(conn) -> int:
+    """Pick the Naive Bayes confidence threshold on the development set (the first unseen set, already read),
+    then score the hybrid once, mainly on the second unseen set, which nothing was designed on."""
+    p = _local()
+    if p is None:
         return 1
-    return _run(conn, f"prompted {p.model}", llm.PROMPT_VERSION, llm.prompted(p))
+    ex = data.generate()
+    nb = baselines.CharNaiveBayes([e for e in ex if e.split == "train"])
+    ask = llm.prompted(p)
+    dev = [e for e in ex if e.split == "heldout"]
+    llm_dev = {e.text: ask(e.text) for e in dev}           # recorded from make codes-prompted: replays for $0
+    margins = sorted({round(nb.margin(e.text), 3) for e in ex if e.split in ("heldout", "validation")})
+    best = None
+    for t in [0.0] + margins:
+        right = sum((nb.predict(e.text) if nb.margin(e.text) >= t else llm_dev[e.text]) == e.category for e in dev)
+        calls = sum(nb.margin(e.text) < t for e in dev)
+        if best is None or right > best[1] or (right == best[1] and calls < best[2]):
+            best = (t, right, calls)
+    t, right, calls = best
+    print(f"threshold {t} chosen on the development set: {right}/{len(dev)} right, model asked on {calls}")
+    h = baselines.Hybrid(nb, ask, t)
+    return _run(conn, "hybrid NB + " + p.model, f"hybrid-1.0.0@{t}", h.predict,
+                {"threshold": t, "chosen_on": "heldout (development)", "dev_right": right, "dev_model_calls": calls})
 
 
 def cmd_score_lora(conn) -> int:
@@ -82,23 +117,23 @@ def cmd_score_lora(conn) -> int:
 
 def cmd_report(conn) -> int:
     rows = conn.execute("SELECT report_id, body FROM eval.report WHERE kind = 'codes' ORDER BY report_id").fetchall()
-    print(f"{'reader':52} {'seen':>9} {'unseen':>9} {'unseen 95% CI':>16} {'macro-F1':>9}")
+    print(f"{'reader':50} {'seen':>7} {'unseen 1':>9} {'unseen 2':>9} {'unseen 2, 95% CI':>17}")
     for rid, b in rows:
         v, h = b["validation"]["accuracy"], b["heldout"]["accuracy"]
-        ci = h["ci95"] or [0, 0]
-        print(f"{(b['reader'] + ' ' + b['reader_version'])[:52]:52} {v['rate']:>9.1%} {h['rate']:>9.1%}"
-              f" {ci[0]:>7.1%}-{ci[1]:<7.1%} {b['heldout']['macro_f1']:>9.3f}")
+        h2 = (b.get("heldout2") or {}).get("accuracy")
+        two = f"{h2['rate']:>9.1%} {h2['ci95'][0]:>8.1%}-{h2['ci95'][1]:<8.1%}" if h2 else f"{'not run':>9} {'':17}"
+        print(f"{(b['reader'] + ' ' + b['reader_version'])[:50]:50} {v['rate']:>7.1%} {h['rate']:>9.1%} {two}")
     return 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["baselines", "prompted", "score-lora", "report"])
+    ap.add_argument("command", choices=["baselines", "prompted", "hybrid", "score-lora", "report"])
     a = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
-        return {"baselines": cmd_baselines, "prompted": cmd_prompted, "score-lora": cmd_score_lora,
+        return {"baselines": cmd_baselines, "prompted": cmd_prompted, "hybrid": cmd_hybrid, "score-lora": cmd_score_lora,
                 "report": cmd_report}[a.command](conn)
 
 
