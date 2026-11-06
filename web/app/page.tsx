@@ -2,7 +2,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { count, when } from "@/lib/format";
 import type { EvaluationReport, MoneyFlow as Flow, Overview, ReviewQueueItem, StpStatus } from "@/lib/types";
-import { Autonomy } from "./Autonomy";
+import { Autonomy, type Fresh } from "./Autonomy";
 import { MoneyFlow } from "./MoneyFlow";
 import { CountUp } from "@/components/CountUp";
 import { Cmd, Notice, Status } from "@/components/ui";
@@ -20,7 +20,7 @@ export default async function TodayPage() {
     api<EvaluationReport | null>("/api/evaluation/latest?kind=phase2a"),
     api<Flow>("/api/overview/flow"),
     api<StpStatus>("/api/stp"),
-    api<EvaluationReport | null>("/api/evaluation/latest?kind=stp"),
+    api<EvaluationReport | null>("/api/evaluation/latest?kind=stp_fresh"),
   ]);
   if (!ov.ok) return <Notice kind="error" title="Can't load today's numbers">{ov.error}</Notice>;
   const e = ov.data.exposure;
@@ -62,7 +62,7 @@ export default async function TodayPage() {
         <section className="mt-12" aria-label="Earned autonomy">
           <h2 className="mb-4 text-3xl">Posting on its own, only where it has earned it</h2>
           <Autonomy lanes={gate.data.lanes}
-                    faults={sim.ok && sim.data ? (Object.values((sim.data.body as { worlds?: Record<string, { silent_fault?: Record<string, never> }> }).worlds ?? {})[0]?.silent_fault ?? null) : null} />
+                    fresh={sim.ok && sim.data ? (sim.data.body as unknown as Fresh) : null} />
         </section>
       ) : null}
 

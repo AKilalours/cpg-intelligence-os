@@ -196,6 +196,37 @@ promotion end date keyed a week early. In both, the shelf price showed the promo
 so the agent asked for the agreement instead of disputing. A price drop can stop a dispute; it can
 never approve a claim. See [docs/phase3_agent.md](docs/phase3_agent.md).
 
+## Phase 4 so far: automatic posting only where it is earned (measured)
+
+Addition 11. Like a new hire in accounts receivable: every match is checked at first, they post on their
+own once enough checks come back clean, a manager keeps spot-checking, and mistakes put them back on full
+checks. Each kind of automatic match is a lane. A lane posts with no person only when people's reviews of
+its suggestions, for this engine version, put the 95% upper bound on its error rate under 1% (299 clean
+reviews). Open lanes still send 1 in 5 to a person; a wrong posting a person reverses stops the lane; a new
+engine version starts from zero. **Postgres enforces it** (migration 0021): the engine cannot post around
+the gate, see which lines will be checked, or change the policy, and every policy change is audited.
+
+The spot-check rate was chosen on the main world by a rule written before any result (decision 94), then
+scored once on 8 worlds built for it (report 40). Each scenario is replayed 200 times with its own sample
+and fault, because one replay is one roll of the dice. The reviewer is modelled as perfect.
+
+| 8 unseen worlds, 7,019 lines the engine would post | Wrong postings, no gate | With the gate, typical (bad roll) |
+|---|---|---|
+| Healthy history | 0 | **0** (0) |
+| A silent fault: 5% of the busiest lane turns wrong | 126 | **30** (49) |
+| A silent fault: 20% turns wrong | 503 | **38** (56) |
+| A bad release: new version, 10% wrong | 252 | **0** (0) |
+
+The cost is real. With no gate, 89.5% of dollars post with no person on the main world (and nothing checks that). With the gate,
+44.7% do on healthy history across the unseen worlds (49.4% on the main world), because each lane must first earn its 299 clean reviews: over a two-year
+world, most of the human work is that earning, not the spot checks (on the main world, raising the spot
+check from 1% to 20% added about 100 reviews out of 868 lines). Two of the three lanes (explained short-pays,
+one-keystroke typos) never see 299 lines in a world this size, so they stay fully checked; the evidence says
+nothing about them yet, and the gate acts accordingly. A quiet 5% fault is still caught slowly at this
+volume (all faulty lanes closed in 133 of 200 rolls, a median 71 lines after it starts): detection speed is
+set by how many lines get checked, so at a real client's hundreds of lines a day the same fault closes the
+lane in days. The budget counts lines, not dollars.
+
 ## Phase 2b so far: document intelligence (measured)
 
 On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):

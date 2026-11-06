@@ -100,7 +100,7 @@ class Item:
 class Budget:
     max_error_rate: float = 0.01
     confidence: float = 0.95
-    audit_rate: float = 0.05
+    audit_rate: float = 0.20      # decision 95
     window: int = 1000
     review_delay_days: int = 2       # a person decides an audited line this many days later
 

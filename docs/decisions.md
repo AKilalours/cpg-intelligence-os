@@ -788,3 +788,17 @@ before any multi-roll result was seen: the smallest of 1%, 5%, 10%, 20% whose
 90th-percentile wrong postings under a 5% fault are at most half of what no
 gate lets through (median); if none qualifies, 20%. That rate is scored once
 on 8 fresh worlds (seeds 201 to 208) built for this and never looked at.
+
+## 95. A 20% spot check, confirmed on unseen worlds
+On the main world (report 39, 200 rolls per scenario) the rule picked 20%:
+under a 5% silent fault its 90th-percentile wrong postings (10) were the only
+ones at most half of what no gate lets through (median 16); 10% gave 16, 5%
+gave 18, 1% gave 22. Scored once on 8 fresh worlds (report 40, seeds 201 to
+208, 7,019 lines): healthy 0 wrong; 5% fault 30 median (49 at the 90th
+percentile) against 126 with no gate, so the rule's own test (49 <= 63) held
+on unseen data; 20% fault 38 (56) against 503; a bad release 0 against 252.
+Migration 0022 sets the policy to 20%. Stated costs: 44.7% of dollars posted
+with no person on healthy history, against 89.5% unchecked; the short-pay and
+typo lanes never earn autonomy at this volume; a 5% fault is fully contained
+in 133 of 200 rolls. The bad-release scenario reports 0 closures because the
+new version never opened, which is the intended outcome, not a missed one.

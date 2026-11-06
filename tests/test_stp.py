@@ -94,9 +94,12 @@ def test_engine_cannot_change_the_policy_or_see_the_sample(world):
 def test_policy_changes_are_attributed(world):
     _enforce(world)
     who = world.execute("SELECT session_user").fetchone()[0]
-    rows = world.execute("SELECT actor_id, payload->'after'->>'mode', payload->'after' ? 'salt' FROM audit_event "
-                         "WHERE action = 'stp_policy_change'").fetchall()
-    assert len(rows) == 3 and all(r == (who, "enforce", False) for r in rows)
+    rows = world.execute("SELECT actor_id, payload->'after'->>'mode', payload->'after'->>'audit_rate', "
+                         "payload->'after' ? 'salt' FROM audit_event WHERE action = 'stp_policy_change' "
+                         "ORDER BY audit_event_id").fetchall()
+    # Migration 0022 set the chosen audit rate (decision 95): recorded like any other change.
+    assert [r[2] for r in rows[:3]] == ["0.200"] * 3 and all(r[1] == "off" for r in rows[:3])
+    assert rows[3:] == [(who, "enforce", "0.050", False)] * 3
 
 
 # --------------------------------------------------------------- earning and losing autonomy

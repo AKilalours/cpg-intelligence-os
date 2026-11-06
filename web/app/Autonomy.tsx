@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { StpLane, StpPoint } from "@/lib/types";
+import type { StpLane } from "@/lib/types";
 
 const NAME: Record<string, string> = {
   exact_reference: "Exact reference",
@@ -44,62 +44,64 @@ function Lane({ l }: { l: StpLane }) {
   );
 }
 
-type Fault = { lane: string; from: string; gate: { wrong_posted: number; wrong_caught_in_review: number; sent_to_a_person: number };
-  no_gate: { wrong_posted: number }; timeline_gate: StpPoint[]; timeline_no_gate: StpPoint[] };
+type Mc = { wrong_posted_with_gate: { median: number; p90: number }; wrong_posted_no_gate: { median: number };
+  sent_to_a_person: { median: number } };
+export type Fresh = { lines: number; runs: number; audit_rate: number; seeds: number[]; results: Record<string, Mc> };
 
-function FaultChart({ faults }: { faults: Record<string, Fault> }) {
-  const keys = Object.keys(faults).sort((a, b) => Number(a) - Number(b));
-  const [k, setK] = useState(keys[keys.length - 1]);
-  const f = faults[k];
-  if (!f) return null;
-  const W = 640, H = 200, P = 28;
-  const n = f.timeline_no_gate.length;
-  const max = Math.max(1, ...f.timeline_no_gate.map((p) => p.wrong_posted));
-  const x = (i: number) => P + (i / Math.max(1, n - 1)) * (W - 2 * P);
-  const y = (v: number) => H - P - (v / max) * (H - 2 * P);
-  const path = (pts: StpPoint[]) => pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.wrong_posted).toFixed(1)}`).join(" ");
-  const start = Math.max(0, f.timeline_no_gate.findIndex((p) => p.day >= f.from));
+const SCEN: [string, string][] = [
+  ["healthy", "Healthy"], ["fault_5pct", "5% quietly wrong"], ["fault_20pct", "20% quietly wrong"],
+  ["bad_release_10pct", "Bad release"],
+];
+
+function FreshProof({ fresh }: { fresh: Fresh }) {
+  const [k, setK] = useState("fault_5pct");
+  const r = fresh.results[k];
+  if (!r) return null;
+  const max = Math.max(1, r.wrong_posted_no_gate.median);
+  const bar = (v: number) => `${Math.max(v > 0 ? 1.5 : 0, (v / max) * 100)}%`;
   return (
     <div className="rounded-2xl border border-rule bg-sheet p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-lg font-bold">A silent fault, replayed on this world</div>
-        <div className="flex gap-1" role="group" aria-label="Share of suggestions that turn wrong">
-          {keys.map((key) => (
+        <div className="text-lg font-bold">{fresh.seeds.length} unseen worlds, {fresh.runs} rolls each</div>
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Scenario">
+          {SCEN.map(([key, label]) => (
             <button key={key} onClick={() => setK(key)} aria-pressed={k === key}
                     className={`rounded-full px-3 py-1 text-sm ${k === key ? "bg-ink text-paper" : "bg-paper hover:bg-rule"}`}>
-              {pct(Number(key), 0)} wrong
+              {label}
             </button>
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full" role="img"
-           aria-label={`Wrong postings: ${f.no_gate.wrong_posted} without the gate, ${f.gate.wrong_posted} with it`}>
-        <line x1={x(start)} x2={x(start)} y1={P - 8} y2={H - P} stroke="#9A9A9A" strokeDasharray="3 4" />
-        <text x={x(start) + 6} y={P} fontSize="12" fill="#6C6C6C">fault starts</text>
-        <line x1={P} x2={W - P} y1={H - P} y2={H - P} stroke="#E4E1D8" />
-        <path d={path(f.timeline_no_gate)} fill="none" stroke="#B3402F" strokeWidth="2.5" />
-        <path d={path(f.timeline_gate)} fill="none" stroke="#28543E" strokeWidth="2.5" />
-        <text x={W - P} y={y(f.no_gate.wrong_posted) - 6} textAnchor="end" fontSize="13" fill="#B3402F" fontWeight="700">
-          {f.no_gate.wrong_posted} wrong postings, no gate
-        </text>
-        <text x={W - P} y={Math.min(H - P - 6, y(f.gate.wrong_posted) - 6)} textAnchor="end" fontSize="13" fill="#28543E" fontWeight="700">
-          {f.gate.wrong_posted} with the gate
-        </text>
-      </svg>
-      <div className="text-sm text-muted">
-        {f.gate.wrong_caught_in_review} caught by the people the gate sent them to. Reviewer modelled as perfect.
+      <div className="mt-5 space-y-3" aria-live="polite">
+        <Row label="Wrong postings, no gate" v={r.wrong_posted_no_gate.median} w={bar(r.wrong_posted_no_gate.median)} color="bg-[#B3402F]" />
+        <Row label="With the gate (typical)" v={r.wrong_posted_with_gate.median} w={bar(r.wrong_posted_with_gate.median)} color="bg-forest" />
+        <Row label="With the gate (bad roll)" v={r.wrong_posted_with_gate.p90} w={bar(r.wrong_posted_with_gate.p90)} color="bg-[#609D7B]" />
+      </div>
+      <div className="mt-4 text-sm text-muted">
+        {Math.round(r.sent_to_a_person.median).toLocaleString()} of {fresh.lines.toLocaleString()} lines went to a person.
+        1 in {Math.round(1 / fresh.audit_rate)} spot-checked once a lane opens. Reviewer modelled as perfect.
       </div>
     </div>
   );
 }
 
-export function Autonomy({ lanes, faults }: { lanes: StpLane[]; faults: Record<string, Fault> | null }) {
+function Row({ label, v, w, color }: { label: string; v: number; w: string; color: string }) {
+  return (
+    <div className="grid grid-cols-[11rem_1fr_3rem] items-center gap-3 text-sm">
+      <span>{label}</span>
+      <div className="h-3 rounded-full bg-paper"><div className={`h-full rounded-full ${color}`} style={{ width: w, transition: "width 500ms ease" }} /></div>
+      <span className="text-right font-bold tabular-nums">{Math.round(v)}</span>
+    </div>
+  );
+}
+
+export function Autonomy({ lanes, fresh }: { lanes: StpLane[]; fresh: Fresh | null }) {
   return (
     <>
       <div className="grid gap-3 md:grid-cols-3">
         {lanes.map((l) => <Lane key={l.lane} l={l} />)}
       </div>
-      {faults && Object.keys(faults).length ? <div className="mt-3"><FaultChart faults={faults} /></div> : null}
+      {fresh?.results ? <div className="mt-3"><FreshProof fresh={fresh} /></div> : null}
     </>
   );
 }
