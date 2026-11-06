@@ -242,3 +242,62 @@ def test_api_shows_what_the_gate_will_decide(world, db_url, monkeypatch):
     ex = lanes["exact_reference"]
     assert ex["mode"] == "enforce" and ex["is_open"] is True and ex["errors"] == 0
     assert ex["reviews_needed"] == stp.reviews_needed(0.40) and isinstance(ex["upper_bound"], float)
+
+
+def _reference_simulate(items, budget, salt):
+    """The first, plainly written simulator (stp-sim-1.0.0): rescans every review each day."""
+    lanes, state, posted = {}, {}, []
+    for day in sorted({i.day for i in items}):
+        for key, ev in lanes.items():
+            seen = [c for d, c in ev if d <= day][-budget.window:]
+            n, k = len(seen), sum(1 for c in seen if not c)
+            state[key] = n > 0 and stp.upper_bound(k, n, budget.confidence) <= budget.max_error_rate
+        for it in sorted((i for i in items if i.day == day), key=lambda i: i.line):
+            key = (it.lane, it.version)
+            ev = lanes.setdefault(key, [])
+            if state.get(key, False) and stp._u(salt, it.lane, it.line) >= budget.audit_rate:
+                posted.append(it.line)
+            else:
+                ev.append((it.day + timedelta(days=budget.review_delay_days), it.correct))
+    return posted
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_fast_simulator_matches_the_plain_one(seed):
+    import random
+    rng = random.Random(seed)
+    items = [stp.Item(i, date(2024, 1, 1) + timedelta(days=i // rng.choice([1, 2, 4])),
+                      rng.choice(list(stp.LANES.values())), rng.random() > 0.004, Decimal(10)) for i in range(900)]
+    items = stp.inject_fault(items, "exact_reference", date(2024, 6, 1), 0.2, seed=seed,
+                             version="v2" if seed % 2 else None)
+    b = stp.Budget(max_error_rate=0.05, audit_rate=0.1, window=150)
+    r = stp.simulate(items, b, salt=f"s{seed}")
+    posted_fast = r["posted_by_engine"]
+    ref = _reference_simulate(items, b, f"s{seed}")
+    assert posted_fast == len(ref)
+    assert r["wrong_posted"] == sum(1 for i in items if i.line in set(ref) and not i.correct)
+
+
+def test_monte_carlo_and_the_rule_for_choosing_the_audit_rate():
+    items = _history(1200)
+    mc = stp.monte_carlo([items], stp.Budget(audit_rate=0.2), runs=20, fault_rate=0.2)
+    assert mc["runs"] == 20 and mc["wrong_posted_no_gate"]["median"] > mc["wrong_posted_with_gate"]["p90"]
+    assert mc["lines_to_close"]["median"] > 0
+    fake = {str(r): {"fault_5pct": {"wrong_posted_with_gate": {"p90": p90}, "wrong_posted_no_gate": {"median": 10}}}
+            for r, p90 in zip(stp.AUDIT_RATES, (9, 6, 5, 1))}
+    assert stp.choose_audit_rate(fake) == 0.10                     # first rate at or under half of 10
+    worst = {k: {"fault_5pct": {"wrong_posted_with_gate": {"p90": 9}, "wrong_posted_no_gate": {"median": 10}}} for k in fake}
+    assert stp.choose_audit_rate(worst) == stp.AUDIT_RATES[-1]
+
+
+def test_frontier_command_records_the_rule_and_the_choice(world, monkeypatch, capsys):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import stp as script
+    monkeypatch.setattr(script, "RUNS", 3)
+    assert script.cmd_frontier(world) == 0
+    body = world.execute("SELECT body FROM eval.report WHERE kind = 'stp_frontier'").fetchone()[0]
+    assert body["chosen_audit_rate"] in stp.AUDIT_RATES and body["rule"].startswith("the smallest audit rate")
+    assert set(body["frontier"]) == {str(r) for r in stp.AUDIT_RATES}
+    assert "chosen audit rate" in capsys.readouterr().out

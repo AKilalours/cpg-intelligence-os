@@ -21,7 +21,7 @@ from decimal import Decimal
 import psycopg
 from psycopg.rows import dict_row, tuple_row
 
-SIM_VERSION = "stp-sim-1.0.0"
+SIM_VERSION = "stp-sim-1.1.0"   # 1.1: many rolls per scenario, audit-rate frontier, fresh worlds
 
 # Only matches the engine would post automatically (confidence >= 0.90 with the full strategy) have a
 # lane; everything below goes to a person regardless.
@@ -110,41 +110,54 @@ def _u(salt: str, lane: str, line: int) -> float:
     return int(h, 16) / 4294967296.0
 
 
-@dataclass
-class _Lane:
-    evidence: list = field(default_factory=list)     # (decided_day, correct)
-
-
 def simulate(items: list[Item], budget: Budget = Budget(), salt: str = "sim") -> dict:
     """Replay a history day by day with the gate. Reviews arrive review_delay_days after the line, and
-    only then count. The reviewer is the answer key (a perfect person): an assumption, stated."""
-    lanes: dict[tuple[str, str], _Lane] = {}
-    posted, audited = [], []
+    only then count. The reviewer is the answer key (a perfect person): an assumption, stated.
+
+    Evidence per lane is appended in day order and decided days never go backwards, so the reviews
+    available on a day are a prefix of the list; a prefix sum of errors gives each day's window in
+    constant time (the simulation runs hundreds of times per scenario)."""
+    by_day: dict[date, list[Item]] = {}
+    for i in items:
+        by_day.setdefault(i.day, []).append(i)
+    ev_day: dict[tuple[str, str], list[date]] = {}
+    ev_err: dict[tuple[str, str], list[int]] = {}       # prefix sums: errors among the first j reviews
+    state_open: dict[tuple[str, str], bool] = {}
     opened: dict[str, str] = {}
     closed_after_open: dict[str, str] = {}
-    state_open: dict[tuple[str, str], bool] = {}
-    timeline = []
+    posted, audited, timeline = [], [], []
     wrong_so_far = 0
-    for day in sorted({i.day for i in items}):
-        for key, ln in lanes.items():
-            seen = [c for d, c in ln.evidence if d <= day][-budget.window:]
-            n, k = len(seen), sum(1 for c in seen if not c)
+    for day in sorted(by_day):
+        for key, days in ev_day.items():
+            lo, hi = 0, len(days)
+            while lo < hi:                                  # reviews decided on or before today
+                mid = (lo + hi) // 2
+                if days[mid] <= day:
+                    lo = mid + 1
+                else:
+                    hi = mid
+            avail = lo
+            first = max(0, avail - budget.window)
+            n = avail - first
+            k = ev_err[key][avail] - ev_err[key][first]
             is_open = n > 0 and upper_bound(k, n, budget.confidence) <= budget.max_error_rate
-            was = state_open.get(key, False)
-            if is_open and not was:
-                opened.setdefault(f"{key[0]}@{key[1]}", str(day))
-            if was and not is_open:
-                closed_after_open.setdefault(f"{key[0]}@{key[1]}", str(day))
+            name = f"{key[0]}@{key[1]}"
+            if is_open and not state_open.get(key, False):
+                opened.setdefault(name, str(day))
+            if state_open.get(key, False) and not is_open:
+                closed_after_open.setdefault(name, str(day))
             state_open[key] = is_open
-        for it in sorted((i for i in items if i.day == day), key=lambda i: i.line):
+        for it in sorted(by_day[day], key=lambda i: i.line):
             key = (it.lane, it.version)
-            ln = lanes.setdefault(key, _Lane())
+            if key not in ev_day:
+                ev_day[key], ev_err[key] = [], [0]
             if state_open.get(key, False) and _u(salt, it.lane, it.line) >= budget.audit_rate:
                 posted.append(it)
                 wrong_so_far += not it.correct
             else:
                 audited.append(it)
-                ln.evidence.append((it.day + timedelta(days=budget.review_delay_days), it.correct))
+                ev_day[key].append(it.day + timedelta(days=budget.review_delay_days))
+                ev_err[key].append(ev_err[key][-1] + (not it.correct))
         timeline.append({"day": str(day), "wrong_posted": wrong_so_far})
     total = sum((i.amount for i in items), Decimal(0))
     per_lane = {}
@@ -166,6 +179,91 @@ def simulate(items: list[Item], budget: Budget = Budget(), salt: str = "sim") ->
         "per_lane": per_lane,
         "timeline": timeline,
     }
+
+
+def _q(xs: list[float], q: float) -> float:
+    xs = sorted(xs)
+    return xs[min(len(xs) - 1, int(q * len(xs)))] if xs else 0.0
+
+
+def fault_start(items: list[Item], at: float = 0.6) -> date:
+    days = sorted({i.day for i in items})
+    return days[int(len(days) * at)]
+
+
+def busiest_lane(items: list[Item]) -> str:
+    return max(LANES.values(), key=lambda l: sum(1 for i in items if i.lane == l))
+
+
+def monte_carlo(worlds: list[list[Item]], budget: Budget, runs: int = 200, fault_rate: float | None = None,
+                lane: str | None = None, at: float = 0.6, version: str | None = None) -> dict:
+    """The same scenario `runs` times, each with its own audit sample and fault draw, summed over the
+    worlds given. One replay is one roll of the dice (the main and side worlds disagreed on a 5% fault
+    for exactly this reason), so results are the median and 90th percentile across rolls.
+
+    With fault_rate, from `at` of the way through each world a share of `lane`'s right suggestions turn
+    wrong (with `version`, as a new release). lines_to_close counts the faulty lane's lines from the
+    fault's start to the day it closed: lines, not days, because volume sets detection speed."""
+    gated, ungated, people, to_close, dollars = [], [], [], [], []
+    closed_runs = 0
+    for r in range(runs):
+        gw = uw = pp = 0
+        dl, closed_all = [], True
+        for w, items in enumerate(worlds):
+            ln = lane or busiest_lane(items)
+            start = fault_start(items, at)
+            f = inject_fault(items, ln, start, fault_rate, seed=1000 * w + r, version=version) if fault_rate else items
+            g = simulate(f, budget, salt=f"roll{r}w{w}")
+            gw += g["wrong_posted"]
+            uw += sum(1 for i in f if not i.correct)
+            pp += g["sent_to_a_person"]
+            dl.append(g["dollars_posted_share"] or 0.0)
+            if fault_rate:
+                closed = g["closed_after_opening"].get(f"{ln}@{version or items[0].version}")
+                if closed:
+                    to_close.append(sum(1 for i in f if i.lane == ln and start <= i.day < date.fromisoformat(closed)))
+                else:
+                    closed_all = False
+        gated.append(gw)
+        ungated.append(uw)
+        people.append(pp)
+        dollars.append(sum(dl) / len(dl))
+        closed_runs += closed_all
+    out = {"runs": runs, "worlds": len(worlds),
+           "wrong_posted_with_gate": {"median": _q(gated, 0.5), "p90": _q(gated, 0.9)},
+           "wrong_posted_no_gate": {"median": _q(ungated, 0.5), "p90": _q(ungated, 0.9)},
+           "sent_to_a_person": {"median": _q(people, 0.5)},
+           "dollars_posted_share": {"median": round(_q(dollars, 0.5), 4)}}
+    if fault_rate:
+        out["runs_where_every_faulty_lane_closed"] = closed_runs
+        out["lines_to_close"] = {"median": _q(to_close, 0.5), "p90": _q(to_close, 0.9)} if to_close else None
+    return out
+
+
+def frontier(worlds: list[list[Item]], runs: int = 200, max_error_rate: float = 0.01) -> dict[str, dict]:
+    """Wrong postings against people's work at each audit rate: healthy, a 5% and a 20% silent fault."""
+    out = {}
+    for rate in AUDIT_RATES:
+        b = Budget(max_error_rate=max_error_rate, audit_rate=rate)
+        out[str(rate)] = {"healthy": monte_carlo(worlds, b, runs),
+                          "fault_5pct": monte_carlo(worlds, b, runs, fault_rate=0.05),
+                          "fault_20pct": monte_carlo(worlds, b, runs, fault_rate=0.20),
+                          "bad_release_10pct": monte_carlo(worlds, b, runs, fault_rate=0.10, version="next")}
+    return out
+
+
+AUDIT_RATES = (0.01, 0.05, 0.10, 0.20)
+
+
+def choose_audit_rate(frontier: dict[str, dict]) -> float:
+    """Written before any multi-roll result was seen (decision 94): the smallest audit rate whose
+    90th-percentile wrong postings under a 5% silent fault are at most half of what posting with no
+    gate lets through (median). If none qualifies, the largest rate considered."""
+    for rate in AUDIT_RATES:
+        r = frontier[str(rate)]["fault_5pct"]
+        if r["wrong_posted_with_gate"]["p90"] <= r["wrong_posted_no_gate"]["median"] / 2:
+            return rate
+    return AUDIT_RATES[-1]
 
 
 def no_gate(items: list[Item]) -> dict:

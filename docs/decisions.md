@@ -772,3 +772,19 @@ nothing changes for existing data by default. Not covered yet: deductions are
 never acted on automatically (people decide every dispute), so there is no
 deduction lane; the budget counts lines, not dollars; the simulation's reviewer
 is the answer key, a perfect person.
+
+## 94. One replay is one roll of the dice; choose the audit rate by a rule set in advance
+Report 38 replayed each scenario once. A 5% silent fault got entirely through
+in the main world (16 wrong postings with the gate, 16 without; the lane
+never closed) and was fully stopped in the side world (0 against 14). The
+difference is luck: at about 1.2 lines a day and a 5% audit, a 5% fault puts a
+wrong line in front of a person once in roughly 400 lines. Detection speed is
+set by how many lines are audited, not by the statistics (one audited error
+already closes a lane with 300 clean reviews). So stp-sim 1.1 repeats every
+scenario 200 times with its own audit sample and fault draw, reports the
+median and 90th percentile, and counts lines to closure rather than days.
+The audit rate is then chosen on the main world only, by this rule, written
+before any multi-roll result was seen: the smallest of 1%, 5%, 10%, 20% whose
+90th-percentile wrong postings under a 5% fault are at most half of what no
+gate lets through (median); if none qualifies, 20%. That rate is scored once
+on 8 fresh worlds (seeds 201 to 208) built for this and never looked at.
