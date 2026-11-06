@@ -159,18 +159,20 @@ covers shortages, late fees, and price differences alike. Generated from industr
 abbreviations and keying errors; scored on phrase families no reader saw in training ("OTIF FINE" for a
 late fee, "SWELL ALLOWANCE" for spoils). Generated text, not real remittances.
 
-| Reader | Seen phrasings (400) | Unseen phrasings (800) | Unseen macro-F1 |
+| Reader | Seen phrasings | Unseen set 1 (development) | **Unseen set 2** (written before any score, scored once) |
 |---|---|---|---|
-| Keyword rules | 84.8% | 26.5% | 0.34 |
-| Character n-gram Naive Bayes | **100%** | 50.5% | 0.50 |
-| Local model qwen2.5-VL 7B, definitions only | 90.5% | **70.9%** | 0.70 |
-| LoRA fine-tune of Qwen2.5-0.5B | 99.8% | 45.9% | 0.44 |
+| Keyword rules | 84.8% | 26.5% | 27.6% (95% CI 24.6 to 30.8) |
+| Character n-gram Naive Bayes | **100%** | 50.5% | 62.6% (59.2 to 65.9) |
+| Local model qwen2.5-VL 7B, definitions only | 90.5% | 70.9% | 82.8% (80.0 to 85.2) |
+| LoRA fine-tune of Qwen2.5-0.5B | 99.8% | 45.9% | not run: does not ship |
+| **Hybrid: Naive Bayes when confident, else the 7B model** | **100%** | 72.9% | **85.2%** (82.6 to 87.5) |
 
-The fine-tune does not ship: it is worse on unseen wording than plain Naive Bayes. Its training loss
-reached almost zero by step 100 of 750; it memorised the training phrasings, and a 0.5B model lacks the
-domain knowledge (that "swell" means damaged goods) that the 7B model brings. Next: Naive Bayes when it
-is confident, the 7B model otherwise, with its threshold chosen on the first unseen set (now a
-development set) and scored once on a second unseen set written before any reader saw it.
+The hybrid is the reader to use: perfect on familiar wording with no model call, and at least as good as
+the 7B model on new wording (the intervals overlap, so not a proven gain there). Its threshold was chosen
+on unseen set 1; unseen set 2 was committed before any reader was scored on it. Set 2 is easier for
+every reader (more of its words also appear in training), so compare readers within a column. The LoRA
+fine-tune memorised the training phrasings (loss near zero by step 100 of 750) and is worse on unseen
+wording than Naive Bayes; a 0.5B model lacks the domain knowledge the 7B model brings.
 
 Both engine false disputes came from damaged records: a promotion missing from the calendar, and a
 promotion end date keyed a week early. In both, the shelf price showed the promotion was running,

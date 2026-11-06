@@ -712,3 +712,14 @@ the category definitions and one category name in the first draft of it; those
 phrasings were reworded before anything was scored. Candidate next: a hybrid,
 Naive Bayes when its per-n-gram margin is high (seen phrasings never score
 below 0.6), else the 7B model.
+
+## 90. The hybrid reader is the one to use
+Scored once on unseen set 2 (800 phrasings nothing was designed on): keyword
+rules 27.6%, Naive Bayes 62.6%, the 7B model 82.8%, the hybrid 85.2% (95% CI
+82.6 to 87.5%), and 100% on seen phrasings against the 7B model's 90.5%. On
+unseen wording the hybrid's interval overlaps the 7B model's, so the claim is
+"at least as good, and perfect on familiar wording with no model call", not a
+proven gain. The threshold (a per-n-gram margin of 0.484) was chosen on set 1,
+where the model was asked on 525 of 800. Per-example predictions are not yet
+stored in reports, so a paired test was not possible; future reports should
+store them.
