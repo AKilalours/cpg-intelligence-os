@@ -22,7 +22,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-DRIFT_VERSION = "drift-1.0.0"
+DRIFT_VERSION = "drift-1.1.0"   # 1.1: a moving baseline (the 26 weeks before the window), decision 99
 
 
 # ------------------------------------------------------------------ statistics
@@ -122,12 +122,17 @@ def feats(e: Event) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class Policy:
-    """Fixed before any result was seen (decision 97)."""
+    """alpha, min_psi, window, min_window fixed before any result (decision 97). The baseline changed in
+    1.1 (decision 99): 1.0 compared with the first 40% of history and alarmed in one healthy week in four
+    on unseen worlds whose short-pay share grows over time. 1.1 compares with the 26 weeks before the window."""
     alpha: float = 1e-4          # per feature per weekly check
     min_psi: float = 0.10        # the usual "moderate shift" line
     window: int = 60             # most recent events compared
     min_window: int = 30         # no verdict on fewer
-    baseline_share: float = 0.4  # the first 40% of the history is the baseline
+    baseline: str = "moving"     # "moving": the baseline_weeks before the window; "fixed": the first baseline_share
+    baseline_weeks: int = 26
+    baseline_share: float = 0.4  # fixed baseline only; also where checks start, for both kinds
+    min_baseline: int = 60       # no verdict against a thinner baseline
 
 
 def shape(ref: str | None) -> str:
@@ -196,29 +201,41 @@ class Alarm:
 
 def watch(stream: str, events: list[Event], policy: Policy = Policy(), window: int | None = None,
           step_days: int = 7) -> tuple[list[Alarm], date | None]:
-    """Weekly checks after the baseline period. Returns every alarm and the baseline's last day.
-    window overrides policy.window (price streams have many rows per week)."""
+    """Weekly checks after the first baseline_share of history. Returns every alarm and the day checks
+    start from. window overrides policy.window (price streams have many rows per week).
+
+    Counts are kept per day, so a moving baseline is a sum of at most 26 weeks of small counters."""
     if not events:
         return [], None
     events = sorted(events, key=lambda e: e.day)
     days = sorted({e.day for e in events})
     base_end = days[int(len(days) * policy.baseline_share)]
-    base = [e for e in events if e.day <= base_end]
-    names = [k for k, _ in base[0].features] if base else []
-    base_counts = {f: Counter(feats(e)[f] for e in base) for f in names}
+    names = [k for k, _ in events[0].features]
+    per_day: dict[date, dict[str, Counter]] = {}
+    for e in events:
+        d = per_day.setdefault(e.day, {f: Counter() for f in names})
+        for f, v in e.features:
+            d[f][v] += 1
+    fixed = {f: sum((per_day[d][f] for d in days if d <= base_end), Counter()) for f in names}
     w = window or policy.window
     alarms = []
-    day = base_end + timedelta(days=step_days)
     later = [e for e in events if e.day > base_end]
-    i = 0
+    day, i = base_end + timedelta(days=step_days), 0
     while day <= days[-1] + timedelta(days=step_days - 1):
         while i < len(later) and later[i].day <= day:
             i += 1
         recent = later[max(0, i - w):i]
         if len(recent) >= policy.min_window:
-            for f in names:
-                c = compare(f, base_counts[f], [feats(e)[f] for e in recent], policy.alpha, policy.min_psi)
-                if c.alarm:
-                    alarms.append(Alarm(stream, day, c))
+            if policy.baseline == "fixed":
+                base = fixed
+            else:
+                lo, hi = recent[0].day - timedelta(weeks=policy.baseline_weeks), recent[0].day
+                ds = [d for d in days if lo <= d < hi]
+                base = {f: sum((per_day[d][f] for d in ds), Counter()) for f in names}
+            if sum(base[names[0]].values()) >= policy.min_baseline:
+                for f in names:
+                    c = compare(f, base[f], [feats(e)[f] for e in recent], policy.alpha, policy.min_psi)
+                    if c.alarm:
+                        alarms.append(Alarm(stream, day, c))
         day += timedelta(days=step_days)
     return alarms, base_end

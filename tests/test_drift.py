@@ -107,3 +107,46 @@ def test_design_command_runs_and_saves(dworld, monkeypatch, capsys):
     body = dworld.execute("SELECT body FROM eval.report WHERE kind = 'drift_design'").fetchone()[0]
     assert set(body["detection"]) == set(__import__("cpgos.monitor.scenarios", fromlist=["x"]).SCENARIOS)
     assert set(body["false_alarms"]) == {"cash", "deductions", "prices"}
+
+
+def _trend(n=3000, start=date(2014, 1, 1)):
+    """A healthy stream whose 'netted' share grows slowly from 3% to 15% over the history: what world
+    generator 1.2 does as its deduction program ramps up (decision 99)."""
+    rng = random.Random(9)
+    return [drift.Event(start + timedelta(days=i // 4),
+                        (("netted", "yes" if rng.random() < 0.03 + 0.12 * i / n else "no"),)) for i in range(n)]
+
+
+def test_regression_a_slow_healthy_trend_alarmed_against_a_fixed_baseline():
+    # drift-1.0.0 compared every window with the first 40% of history and alarmed in one healthy week in
+    # four on unseen worlds (report 42). The moving baseline must stay quiet on the same kind of stream.
+    ev = _trend()
+    fixed, _ = drift.watch("cash", ev, drift.Policy(baseline="fixed"))
+    moving, _ = drift.watch("cash", ev, drift.Policy())
+    assert fixed and moving == []
+
+
+def test_a_sudden_change_still_alarms_against_a_moving_baseline():
+    ev = _trend()
+    cut = ev[int(len(ev) * 0.75)].day
+    ev = [e if e.day < cut else drift.Event(e.day, (("netted", "yes" if random.Random(e.day.toordinal() * 7 + i).random() < 0.5 else "no"),))
+          for i, e in enumerate(ev)]
+    alarms, _ = drift.watch("cash", ev, drift.Policy())
+    assert alarms and cut <= alarms[0].day <= cut + timedelta(days=21)
+
+
+def test_fresh_refuses_when_the_design_world_used_another_generator(dworld, capsys):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import drift as script
+    script._save(dworld, "drift_design", {"generator": "1.1.0"})
+    assert script.cmd_fresh(dworld) == 1
+    assert "refusing" in capsys.readouterr().out
+    assert dworld.execute("SELECT count(*) FROM eval.report WHERE kind = 'drift_fresh'").fetchone()[0] == 0
+
+
+def test_the_world_records_its_generator(dworld):
+    from cpgos.finance.world import GENERATOR_VERSION
+    from cpgos.monitor import scenarios as sc
+    assert sc.load(dworld).generator == GENERATOR_VERSION

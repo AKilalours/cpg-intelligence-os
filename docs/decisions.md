@@ -853,3 +853,27 @@ Found while testing: a world whose invoice numbers already look like PO
 numbers ("letters then digits") hides a PO-number switch from the reference
 shape; the engine's outcome (most lines stop matching) caught it instead,
 which is why the monitor watches outcomes as well as inputs.
+
+## 99. drift-1.0.0 failed on unseen worlds; design and test worlds must come from the same generator
+Report 42 (8 fresh worlds, seeds 301 to 308): detection held (79 or 80 of 80
+rolls for every change; 0 false alarms in 457 claim weeks; 5 in 1,312 price
+weeks), but the cash stream alarmed in 114 of 477 healthy weeks, about one in
+four. That would hold the gate almost permanently and teach people to ignore
+it, so 1.0 does not ship. Cause: the monitor was designed on the main world,
+built by generator 1.1 (no deductions taken at payment), and tested on fresh
+worlds built by the current generator 1.2, where the share of lines netted
+with a deduction grows over the history (3.4% in the baseline, 15% when the
+first false alarm fired). Comparing with a fixed early baseline turns that
+slow, legitimate growth into an alarm. The same mismatch existed in the
+agent and error-budget fresh runs (designed on 1.1, scored on 1.2); their
+results stand but are now labelled with it.
+Fixes. (1) drift-1.1.0 compares each window with the 26 weeks before it, so
+slow legitimate change stops alarming while sudden change still does; the
+cost, stated: a fault that creeps in over months is harder to see, and the
+spot checks remain for it. A regression test shows the fixed baseline alarms
+on a slowly growing healthy share and the moving one does not, and a sudden
+jump still alarms within three weeks. (2) Every world records its generator;
+the fresh-world command refuses unless the latest design for the same
+monitor version used the same generator, and the design now runs on the side
+world (generator 1.2). (3) Seeds 301 to 308 are spent; 1.1 is scored once on
+seeds 401 to 408. alpha, PSI, and window sizes are unchanged from decision 97.

@@ -86,8 +86,8 @@ stp-frontier: $(PY)  ## Addition 11: 200 rolls per scenario at audit rates 1/5/1
 stp-fresh: $(PY)  ## Addition 11: the picked audit rate, scored once on 8 fresh worlds (seeds 201-208)
 	$(PY) scripts/stp.py fresh
 
-drift-design: $(PY)  ## Phase 4: drift monitors on the main world: false alarms and how fast 5 realistic changes are seen
-	$(PY) scripts/drift.py design
+drift-design: $(PY)  ## Phase 4: drift monitors: false alarms and how fast 5 changes are seen (WORLD=side: the generator-1.2 side world)
+	WORLD=$(WORLD) $(PY) scripts/drift.py design
 
 drift-watch: $(PY)  ## Phase 4: run the drift monitors on live data and raise alarms (a cash alarm holds automatic posting)
 	$(PY) scripts/drift.py watch

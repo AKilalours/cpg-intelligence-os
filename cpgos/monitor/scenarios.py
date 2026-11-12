@@ -35,6 +35,26 @@ class World:
     invoices: list
     deductions: list      # (day, reason text, code)
     prices: list          # (week, sku, store, price)
+    generator: str | None = None   # the world generator that built it: design and test worlds must match
+
+
+def generator_of(conn: psycopg.Connection) -> str | None:
+    import re
+    row = conn.execute("""SELECT file_name FROM dataset_version WHERE dataset_key = 'finance_world'
+                          ORDER BY dataset_version_id DESC LIMIT 1""").fetchone()
+    m = re.search(r"generator (\S+?),", row[0]) if row else None
+    return m.group(1) if m else None
+
+
+def netted_share_by_quarter(w: "World") -> list[dict]:
+    """Share of cash lines netted with a deduction, per quarter: the diagnostic for decision 99."""
+    q: dict[str, list[int]] = {}
+    for _rl, d, _n, _r, _p, _g, dd, _c in w.lines:
+        k = f"{d.year}Q{(d.month - 1) // 3 + 1}"
+        q.setdefault(k, [0, 0])
+        q[k][0] += 1
+        q[k][1] += bool(dd)
+    return [{"quarter": k, "lines": n, "netted_share": round(x / n, 3)} for k, (n, x) in sorted(q.items())]
 
 
 def load(conn: psycopg.Connection) -> World:
@@ -44,7 +64,7 @@ def load(conn: psycopg.Connection) -> World:
     prices = conn.execute("""SELECT s.obs_date, s.sku_id, s.store_id, s.shelf_price FROM sales_observation s
                              WHERE s.granularity = 'week' AND s.sku_id IN (SELECT DISTINCT sku_id FROM invoice_line)
                                AND s.store_id IN (SELECT DISTINCT store_id FROM invoice)""").fetchall()
-    return World(list(lines), list(invoices), list(ded), list(prices))
+    return World(list(lines), list(invoices), list(ded), list(prices), generator_of(conn))
 
 
 _READER: CharNaiveBayes | None = None
@@ -73,7 +93,7 @@ def streams(w: World, only: str | None = None) -> dict[str, list[drift.Event]]:
 def po_numbers(w: World, start: date, share: float, rng: random.Random) -> World:
     lines = [(rl, d, net, f"PO{rng.randrange(10**6, 10**7)}" if d >= start and rng.random() < share else ref, p, g, dd, c)
              for rl, d, net, ref, p, g, dd, c in w.lines]
-    return World(lines, w.invoices, w.deductions, w.prices)
+    return World(lines, w.invoices, w.deductions, w.prices, w.generator)
 
 
 def short_pay_wave(w: World, start: date, share: float, rng: random.Random) -> World:
@@ -84,7 +104,7 @@ def short_pay_wave(w: World, start: date, share: float, rng: random.Random) -> W
             out.append((rl, d, Decimal(g) - cut, ref, p, g, cut, "SH"))
         else:
             out.append((rl, d, net, ref, p, g, dd, c))
-    return World(out, w.invoices, w.deductions, w.prices)
+    return World(out, w.invoices, w.deductions, w.prices, w.generator)
 
 
 def partial_payments(w: World, start: date, share: float, rng: random.Random) -> World:
@@ -95,7 +115,7 @@ def partial_payments(w: World, start: date, share: float, rng: random.Random) ->
             out.append((rl, d, part, ref, p, part, dd, c))
         else:
             out.append((rl, d, net, ref, p, g, dd, c))
-    return World(out, w.invoices, w.deductions, w.prices)
+    return World(out, w.invoices, w.deductions, w.prices, w.generator)
 
 
 def new_reason_words(w: World, start: date, share: float, rng: random.Random, families: dict[str, list[str]]) -> World:
@@ -106,7 +126,7 @@ def new_reason_words(w: World, start: date, share: float, rng: random.Random, fa
         if d >= start and cat and rng.random() < share:
             text = codes_data._noisy(rng, rng.choice(families[cat]))
         out.append((d, text, code))
-    return World(w.lines, w.invoices, out, w.prices)
+    return World(w.lines, w.invoices, out, w.prices, w.generator)
 
 
 def price_war(w: World, start: date, share: float, rng: random.Random) -> World:
@@ -114,7 +134,7 @@ def price_war(w: World, start: date, share: float, rng: random.Random) -> World:
     hit = {s for s in skus if rng.random() < share}
     prices = [(wk, s, st, (Decimal(p) * Decimal("0.8")).quantize(Decimal("0.01")) if p is not None and wk >= start and s in hit else p)
               for wk, s, st, p in w.prices]
-    return World(w.lines, w.invoices, w.deductions, prices)
+    return World(w.lines, w.invoices, w.deductions, prices, w.generator)
 
 
 SET1 = {cat: fams[1] for cat, fams in codes_data.FAMILIES.items()}   # development wordings

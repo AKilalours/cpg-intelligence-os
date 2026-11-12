@@ -1,6 +1,7 @@
 """Phase 4 drift monitors: false alarms on healthy history, and how fast realistic changes are seen.
 
     python scripts/drift.py design   # main world: false alarms, detection of 5 injected changes (rerunnable)
+    WORLD=side python scripts/drift.py design   # the same on the side world (generator 1.2, like fresh worlds)
     python scripts/drift.py watch    # run the monitors on the live data; raise alarms (a cash alarm holds the gate)
     python scripts/drift.py fresh    # once per version: 8 fresh worlds (seeds 301-308), unseen reason wordings
 
@@ -29,7 +30,8 @@ from cpgos.db import connect, migrate  # noqa: E402
 from cpgos.monitor import drift, scenarios as sc  # noqa: E402
 
 ROLLS = int(os.environ.get("ROLLS") or 40)
-FRESH_SEEDS = tuple(range(301, 309))
+# Seeds 301-308 were spent on drift-1.0.0 (report 42). Each version gets worlds nobody has looked at.
+FRESH_SEEDS = {"drift-1.0.0": tuple(range(301, 309)), "drift-1.1.0": tuple(range(401, 409))}[drift.DRIFT_VERSION]
 
 
 def _save(conn, kind: str, body: dict) -> int:
@@ -70,12 +72,29 @@ def run(worlds: list[sc.World], families: dict, policy: drift.Policy, rolls: int
 
 
 def cmd_design(conn) -> int:
+    """Design on a world built by the same generator the fresh worlds will use (decision 99)."""
+    from cpgos.finance.world import GENERATOR_VERSION
     t = time.time()
+    side = None
+    if os.environ.get("WORLD") == "side":
+        from sidecar_world import sibling
+        side = psycopg.connect(sibling(config.get("CPGOS_DATABASE_URL"))[0], autocommit=True)
+        migrate(side)
+    try:
+        w = sc.load(side or conn)
+    finally:
+        if side:
+            side.close()
     policy = drift.Policy()
-    fa, det = run([sc.load(conn)], sc.SET1, policy, ROLLS)
+    fa, det = run([w], sc.SET1, policy, ROLLS)
+    quarters = sc.netted_share_by_quarter(w)
     rid = _save(conn, "drift_design", {"policy": policy.__dict__, "rolls": ROLLS, "false_alarms": fa, "detection": det,
+                                       "world": "side" if os.environ.get("WORLD") == "side" else "main",
+                                       "generator": w.generator, "netted_share_by_quarter": quarters,
                                        "reason_wordings": "development set (unseen set 1)"})
-    print(f"main world, {drift.DRIFT_VERSION}, policy {policy.__dict__}, {ROLLS} rolls per change")
+    print(f"{'side' if os.environ.get('WORLD') == 'side' else 'main'} world (generator {w.generator}; fresh worlds "
+          f"use {GENERATOR_VERSION}), {drift.DRIFT_VERSION}, {ROLLS} rolls per change")
+    print("   short-pay share by quarter: " + ", ".join(f"{q['quarter']} {q['netted_share']:.0%}" for q in quarters))
     _print(fa, det)
     print(f"report {rid} (kind 'drift_design')  {time.time() - t:.0f}s")
     return 0
@@ -91,6 +110,13 @@ def cmd_fresh(conn) -> int:
     if done:
         print(f"already scored for {drift.DRIFT_VERSION} (report {done[0]}); fresh worlds are scored once per version")
         return 0
+    from cpgos.finance.world import GENERATOR_VERSION
+    design = conn.execute("""SELECT report_id, body->>'generator' FROM eval.report WHERE kind = 'drift_design'
+                             AND code_version = %s ORDER BY report_id DESC LIMIT 1""", (drift.DRIFT_VERSION,)).fetchone()
+    if not design or design[1] != GENERATOR_VERSION:
+        print(f"refusing: fresh worlds use generator {GENERATOR_VERSION}, but the latest {drift.DRIFT_VERSION} design "
+              f"was on {design[1] if design else 'nothing'}. Design on a matching world first: WORLD=side make drift-design")
+        return 1
     url = config.get("CPGOS_DATABASE_URL")
     main_db = urlsplit(url).path.lstrip("/")
     base, admin = f"{main_db}_m5base", _url(url, "postgres")
@@ -120,6 +146,7 @@ def cmd_fresh(conn) -> int:
     policy = drift.Policy()
     fa, det = run(worlds, sc.SET2, policy, max(5, ROLLS // 4))
     rid = _save(conn, "drift_fresh", {"policy": policy.__dict__, "seeds": list(FRESH_SEEDS), "false_alarms": fa,
+                                      "generator": GENERATOR_VERSION, "design_report": design[0],
                                       "detection": det, "reason_wordings": "unseen set 2"})
     print(f"\n{len(worlds)} fresh worlds, {drift.DRIFT_VERSION}, unseen reason wordings (set 2)")
     _print(fa, det)

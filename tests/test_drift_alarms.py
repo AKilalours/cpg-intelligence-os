@@ -88,7 +88,7 @@ def test_the_live_watch_raises_a_cash_alarm_when_the_payer_switches_to_po_number
     late = lines[int(len(lines) * 0.7):]
     world.execute("UPDATE remittance_line SET raw_invoice_ref = 'PO' || (1000000 + remittance_line_id)::text "
                   "WHERE remittance_line_id = ANY(%s)", (late,))
-    small = drift.Policy(window=20, min_window=10)
+    small = drift.Policy(window=20, min_window=10, min_baseline=20)
     assert alarms.watch(world, small)
     opened = alarms.open_alarms(world)
     # This world's invoice numbers already look like "letters then digits", the same shape as a PO
