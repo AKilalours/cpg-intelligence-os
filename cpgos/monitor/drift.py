@@ -177,6 +177,11 @@ CANDIDATES = {   # drift-1.3.0, written before any 1.3 result (decision 101)
 }
 
 
+# What runs live: chosen on 8 development worlds by the rule written beforehand (report 46) and scored
+# once on 8 unseen worlds (report 47). Decision 102.
+SHIPPED = CANDIDATES["fixed_claims30"]
+
+
 def episodes(alarms: list["Alarm"], step_days: int = 7) -> int:
     """Alarms as production sees them: consecutive weekly alarms on the same feature are one alarm,
     because an open alarm stays open until a person clears it."""

@@ -936,3 +936,19 @@ Candidates for 1.3, written before any 1.3 result: baseline fixed or moving,
 claims window 60 or 30, alpha 1e-4 (1e-5 lost too much detection in 1.2).
 The selection rule is unchanged from decision 100. Also fixed: "events to
 alarm" was reported from the first world only; it now pools every world.
+
+## 102. drift-1.3.0 ships; the baseline restarts when a person clears an alarm
+Report 46 (development): the rule picked fixed baseline, 30-claim window (no
+false alarms on cash or claims in about 9 world-years each, 1 on prices in 25;
+every change caught in at least 95% of rolls). Report 47, scored once on
+unseen worlds 601 to 608: 0 cash and 0 claim false alarms, 2 on prices in 25
+world-years; PO numbers 80/80 (median 14 days), short-pay wave 80/80 (21),
+partial payments 77/80 (35), unseen reason wordings 76/80 (48), price war
+80/80 (first weekly check). Two results sit at the bar (96%, 95%). The price
+false alarms come from the same final M5 weeks in every world.
+Two gaps found before shipping: the live watcher still used the default
+setting, not the chosen one (it now runs drift.SHIPPED); and with a fixed
+baseline, an alarm a person cleared would return at the next check, since the
+baseline still held the old format. The baseline for a stream now restarts
+after its most recently cleared alarm. A regression test fails without that
+and passes with it.

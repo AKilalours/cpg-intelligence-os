@@ -19,9 +19,22 @@ class AlarmError(ValueError):
     pass
 
 
-def current_checks(conn: psycopg.Connection, policy: drift.Policy = drift.Policy()) -> list[drift.Alarm]:
-    """Failing checks at the most recent weekly check of each stream (not the whole history)."""
+def rebaseline_points(conn: psycopg.Connection) -> dict[str, object]:
+    """For each stream, the data date of its most recently cleared alarm. A person clearing an alarm says
+    the change is understood, so the new normal starts there: the baseline is rebuilt from data after it.
+    Without this, a fixed baseline still holds the old format and the same alarm returns next week."""
+    rows = conn.execute("""SELECT stream, max(checked_through) FROM drift_alarm WHERE cleared_at IS NOT NULL
+                           GROUP BY stream""").fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def current_checks(conn: psycopg.Connection, policy: drift.Policy = drift.SHIPPED) -> list[drift.Alarm]:
+    """Failing checks at the most recent weekly check of each stream (not the whole history), with each
+    stream's baseline starting after its last cleared alarm."""
     st = scenarios.streams(scenarios.load(conn))
+    for name, since in rebaseline_points(conn).items():
+        if name in st:
+            st[name] = [e for e in st[name] if e.day > since]
     out = []
     for name, (alarms, _) in scenarios.watch_all(st, policy).items():
         if alarms and st[name]:
@@ -51,7 +64,7 @@ def raise_alarms(conn: psycopg.Connection, found: list[drift.Alarm]) -> list[int
     return ids
 
 
-def watch(conn: psycopg.Connection, policy: drift.Policy = drift.Policy()) -> list[int]:
+def watch(conn: psycopg.Connection, policy: drift.Policy = drift.SHIPPED) -> list[int]:
     return raise_alarms(conn, current_checks(conn, policy))
 
 

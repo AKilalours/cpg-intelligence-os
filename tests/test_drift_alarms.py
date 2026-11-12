@@ -115,3 +115,29 @@ def test_api_lists_and_clears_alarms(world, db_url, monkeypatch):
     assert c.post(f"/api/drift/{aid}/clear", json={"reviewer": "akila", "note": " "}).status_code == 400
     assert c.post(f"/api/drift/{aid}/clear", json={"reviewer": "akila", "note": "checked"}).json()["cleared_by"] == "akila"
     assert c.get("/api/drift").json()["holds_cash"] is False
+
+
+def test_live_watch_runs_the_shipped_setting():
+    import inspect
+    assert inspect.signature(alarms.watch).parameters["policy"].default is drift.SHIPPED
+    assert drift.SHIPPED.baseline == "fixed" and drift.SHIPPED.window_claims == 30
+
+
+def test_a_cleared_alarm_does_not_come_back_for_the_change_a_person_accepted(world):
+    # A fixed baseline remembers the old format; once a person clears the alarm ("payer switched to PO
+    # numbers, checked"), the baseline must restart after it, or the same alarm returns at the next check.
+    lines = [r[0] for r in world.execute(
+        """SELECT r.remittance_line_id FROM remittance_line r JOIN payment p USING (payment_id)
+           WHERE r.gross_amount IS NOT NULL ORDER BY p.payment_date, r.remittance_line_id""")]
+    world.execute("UPDATE remittance_line SET raw_invoice_ref = 'PO' || (1000000 + remittance_line_id)::text "
+                  "WHERE remittance_line_id = ANY(%s)", (lines[int(len(lines) * 0.5):],))
+    small = drift.Policy(baseline="fixed", window=20, min_window=10, min_baseline=20)
+    raised = alarms.watch(world, small)
+    assert raised
+    first_day = min(r[0] for r in world.execute("SELECT p.payment_date FROM remittance_line r JOIN payment p "
+                                                "USING (payment_id) WHERE r.raw_invoice_ref LIKE 'PO%%'"))
+    # Clear as of the start of the change: everything after it is the new normal.
+    world.execute("UPDATE drift_alarm SET checked_through = %s", (first_day,))
+    for aid in raised:
+        alarms.clear(world, aid, "akila", "payer switched to PO numbers on purpose; checked")
+    assert alarms.watch(world, small) == []

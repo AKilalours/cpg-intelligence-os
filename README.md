@@ -227,6 +227,40 @@ volume (all faulty lanes closed in 133 of 200 rolls, a median 71 lines after it 
 set by how many lines get checked, so at a real client's hundreds of lines a day the same fault closes the
 lane in days. The budget counts lines, not dollars.
 
+### Drift monitors: a smoke alarm on the inputs
+
+Spot checks find a silent fault only after dozens of lines. Many faults show in the inputs first: a payer
+quoting PO numbers instead of invoice numbers, a wave of short-pays, reasons worded in ways the reader has
+never seen, a price war. Weekly, five signals that should hold steady whatever the business does
+(reference format, how lines match, short-pays, whether the reason reader is sure, shelf-price drops) are
+compared with the baseline, each value with an exact two-sample test. An open cash alarm sends every
+would-be automatic posting to a person until someone clears it, with their name and what they checked;
+the baseline then restarts after the change they accepted. The monitor role cannot clear alarms, post cash
+or change policy.
+
+Chosen on 8 development worlds by a rule written in advance (report 46), then scored once on 8 unseen worlds
+(report 47). Each change was injected into the raw inputs and the real engine rerun on them, 80 rolls each.
+
+| 8 unseen worlds | Result |
+|---|---|
+| False alarms on healthy history | **0** cash and **0** claims in about 9 world-years each; 2 on prices in 25 |
+| Payer switches a quarter of lines to PO numbers | 80 of 80 caught, median 14 days (28 lines) |
+| A wave of short-pays | 80 of 80, 21 days |
+| Partial payments on 30% of lines | 77 of 80, 35 days |
+| Half the reasons in wordings never seen | 76 of 80, 48 days |
+| A price war on 30% of items | 80 of 80, at the first weekly check |
+
+It passes its bar (95% caught within 120 days, at most one false alarm per stream per world-year) with two
+changes at the edge (96% and 95%). It took four designs, and the first three are in the record: 1.0 alarmed in
+one healthy cash week in four on unseen worlds; 1.1 rested on a wrong diagnosis and was no better; 1.2 fixed
+the statistics (each value now tested exactly, the baseline treated as a sample) but missed the detection bar
+on development worlds, so the scoring command refused to run. What changed in 1.3, all on development worlds:
+signals that move with sales growth and promotion seasons (payment size, reason mix) moved to anomaly
+detection, and the reference format kept its prefix, because invoice and PO numbers had looked identical. The
+price false alarms come from the same real M5 weeks in every world, so they are not independent, and the cash
+and claim streams are generated and steadier than a real customer's: production will see more. See decisions
+97 to 102.
+
 ## Phase 2b so far: document intelligence (measured)
 
 On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):
