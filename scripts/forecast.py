@@ -138,14 +138,78 @@ def cmd_score() -> int:
     return 0
 
 
+PUBLISHED = ROOT / "data" / "processed" / "forecast" / "published.npz"
+
+
+def cmd_publish() -> int:
+    """What the app shows: per series, a year of history, the test weeks with every method against what
+    sold, and the next 8 weeks with an 80% range. The range is fitted on development origins only, then its
+    coverage measured on the test weeks (a second, different use of them, decided before it was computed)."""
+    from cpgos.forecast import gbm, intervals, metrics, models
+    t = time.time()
+    full = data.load()
+    o, T = full.test_start, full.units.shape[1]
+    dev = full.upto(o)
+    origins = [o - data.HORIZON * k for k in range(data.DEV_ORIGINS, 0, -1)]
+    pairs = []
+    for d in origins:
+        fc = np.load(CACHE / f"lgbm_{gbm.VERSION}_{dev.weeks[d]}.npy")
+        tr = dev.units[:, :d]
+        pairs.append((dev.units[:, d:d + data.HORIZON], fc, metrics.scale(tr), metrics.demand_class(tr)))
+    table = intervals.fit(pairs)
+    hist = full.upto(o)
+    test_fc = {name: f(hist.units, data.HORIZON) for name, f in models.LOCAL.items()}
+    test_fc["lgbm"] = gbm.lgbm(hist, o)
+    train = full.units[:, :o]
+    sc, cls = metrics.scale(train), metrics.demand_class(train)
+    lo, hi = intervals.apply(test_fc["lgbm"], sc, cls, table)
+    actual = full.units[:, o:]
+    cov = intervals.coverage(actual, lo, hi)
+    cov_cls = {c: intervals.coverage(actual[cls == c], lo[cls == c], hi[cls == c]) for c in metrics.CLASSES}
+    rm = {k: metrics.rmsse(actual, f, sc) for k, f in test_fc.items()}
+    # The future: trained on everything, forecasting the 8 weeks after the data ends. The calendar is known
+    # for those weeks; the planned price is not in M5 beyond the data, so it is left empty there.
+    from datetime import timedelta
+    future_weeks = [full.weeks[-1] + timedelta(weeks=k) for k in range(1, data.HORIZON + 1)]
+    # Calendar for the future weeks from M5's calendar file where it reaches (to 19 June 2016), else zero.
+    ev_all, snap_all = data.calendar(full.weeks + future_weeks, full.store)
+    ext = data.Weekly(full.units, full.price, full.weeks, full.item, full.store, full.dept, full.cat,
+                      np.concatenate([full.price, np.full((len(full.item), data.HORIZON), np.nan)], axis=1),
+                      ev_all, snap_all)
+    fut = gbm.lgbm(ext, T)
+    sc_all, cls_all = metrics.scale(full.units), metrics.demand_class(full.units)
+    flo, fhi = intervals.apply(fut, sc_all, cls_all, table)
+    H0 = o - 52
+    f32 = lambda a: np.asarray(a, dtype=np.float32)
+    PUBLISHED.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        PUBLISHED, version=np.array(VERSION), gbm=np.array(gbm.VERSION), item=full.item, store=full.store,
+        dept=full.dept, cls=cls, weeks=np.array([d.isoformat() for d in full.weeks[H0:]]),
+        future_weeks=np.array([d.isoformat() for d in future_weeks]),
+        history=f32(full.units[:, H0:o]), actual=f32(actual), price=f32(full.price[:, H0:]),
+        methods=np.array(list(test_fc)), test_fc=f32(np.stack([test_fc[k] for k in test_fc], axis=1)),
+        test_rmsse=f32(np.stack([rm[k] for k in test_fc], axis=1)), test_lo=f32(lo), test_hi=f32(hi),
+        future=f32(fut), future_lo=f32(flo), future_hi=f32(fhi),
+        dollars=f32(np.nansum(full.units[:, o - 52:o] * full.price[:, o - 52:o], axis=1)))
+    summary = {"version": VERSION, "interval": "80% (10th to 90th percentile of development errors)",
+               "test_coverage": round(cov, 4), "test_coverage_by_class": {k: round(v, 4) for k, v in cov_cls.items()},
+               "future_weeks": [str(future_weeks[0]), str(future_weeks[-1])]}
+    (ROOT / "reports" / f"{VERSION}_intervals.json").write_text(json.dumps(summary, indent=1))
+    print(json.dumps(summary, indent=1))
+    print(f"published {PUBLISHED.relative_to(ROOT)} ({PUBLISHED.stat().st_size / 1e6:.1f} MB)  {time.time() - t:.0f}s")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["design", "gbm-origin", "score"])
+    ap.add_argument("command", choices=["design", "gbm-origin", "score", "publish"])
     ap.add_argument("--no-gbm", action="store_true")
     ap.add_argument("--origin", type=int, default=0)
     a = ap.parse_args()
     if a.command == "score":
         return cmd_score()
+    if a.command == "publish":
+        return cmd_publish()
     return cmd_gbm_origin(a.origin) if a.command == "gbm-origin" else cmd_design(a.no_gbm)
 
 

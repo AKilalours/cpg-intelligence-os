@@ -4,6 +4,8 @@ import { count, quantity } from "@/lib/format";
 import type { SalesSeries, SeriesKey } from "@/lib/types";
 import { Notice, PageHeader, Section } from "@/components/ui";
 import { SeriesExplorer } from "./SeriesExplorer";
+import { ForecastExplorer } from "./ForecastExplorer";
+import type { ForecastBrief, ForecastSeries, ForecastSummary } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +23,26 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
     ? await api<SalesSeries>(`/api/sales/series?sku_code=${encodeURIComponent(pick.sku)}&store=${encodeURIComponent(pick.store)}`)
     : null;
 
+  const fsum = await api<ForecastSummary>("/api/forecast/summary");
+  const flist = fsum.ok ? await api<ForecastBrief[]>("/api/forecast/find?limit=12") : null;
+  const first = flist && flist.ok && flist.data[0]
+    ? await api<ForecastSeries>(`/api/forecast/series?item=${encodeURIComponent(flist.data[0].item)}&store=${encodeURIComponent(flist.data[0].store)}`)
+    : null;
+
   return (
     <>
       <PageHeader
         title="Planning"
         purpose="Real Walmart sales (M5), by store and item."
       />
+      {fsum.ok ? (
+        <section className="mb-12" aria-label="Demand forecasts">
+          <h2 className="mb-4 text-3xl">Demand, 8 weeks ahead</h2>
+          <ForecastExplorer summary={fsum.data} initialList={flist && flist.ok ? flist.data : []} initial={first && first.ok ? first.data : null} />
+        </section>
+      ) : (
+        <Notice kind="empty" title="No forecasts published yet">Run make forecast-publish, then refresh.</Notice>
+      )}
       {!keys.ok ? (
         <Notice kind="error" title="Sales data unavailable">{keys.error}</Notice>
       ) : keys.data.length === 0 ? (

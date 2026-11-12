@@ -576,3 +576,94 @@ def drift_clear(alarm_id: int, body: ClearIn, conn: psycopg.Connection = Depends
         return drift_alarms.clear(conn, alarm_id, body.reviewer, body.note)
     except drift_alarms.AlarmError as e:
         raise HTTPException(400, str(e)) from None
+
+
+# ---------- Phase 5: forecasts (precomputed by `make forecast-publish`; read-only here) ----------
+
+import json  # noqa: E402
+import numpy as _np  # noqa: E402
+from functools import lru_cache as _lru  # noqa: E402
+
+_PUBLISHED = Path(__file__).resolve().parents[2] / "data" / "processed" / "forecast" / "published.npz"
+_REPORTS = Path(__file__).resolve().parents[2] / "reports"
+
+
+@_lru(maxsize=2)
+def _forecasts(mtime: float):
+    z = _np.load(_PUBLISHED, allow_pickle=False)
+    d = {k: z[k] for k in z.files}
+    d["index"] = {(str(i), str(s)): n for n, (i, s) in enumerate(zip(d["item"], d["store"]))}
+    m = list(d["methods"])
+    d["lg"], d["ses"] = m.index("lgbm"), m.index("ses")
+    return d
+
+
+def _fc():
+    if not _PUBLISHED.exists():
+        raise HTTPException(404, "no published forecasts yet: run make forecast-publish")
+    return _forecasts(_PUBLISHED.stat().st_mtime)
+
+
+def _num(a):
+    return [None if not _np.isfinite(x) else round(float(x), 3) for x in a]
+
+
+def _brief(d, n):
+    r = d["test_rmsse"][n]
+    return {"item": str(d["item"][n]), "store": str(d["store"][n]), "dept": str(d["dept"][n]), "class": str(d["cls"][n]),
+            "dollars": round(float(d["dollars"][n]), 2),
+            "lgbm_rmsse": None if not _np.isfinite(r[d["lg"]]) else round(float(r[d["lg"]]), 3),
+            "ses_rmsse": None if not _np.isfinite(r[d["ses"]]) else round(float(r[d["ses"]]), 3)}
+
+
+@app.get("/api/forecast/summary")
+def forecast_summary() -> dict:
+    d = _fc()
+    rep = lambda name: json.loads((_REPORTS / name).read_text()) if (_REPORTS / name).exists() else None
+    test = rep(f"{str(d['version'])}_test.json")
+    cls, counts = d["cls"], {}
+    for c in ("smooth", "erratic", "intermittent", "lumpy", "no_sales"):
+        counts[c] = int((cls == c).sum())
+    return {"version": str(d["version"]), "gbm": str(d["gbm"]), "series": int(len(d["item"])), "classes": counts,
+            "stores": sorted({str(s) for s in d["store"]}), "test": test, "intervals": rep(f"{str(d['version'])}_intervals.json"),
+            "test_weeks": [str(d["weeks"][52]), str(d["weeks"][-1])], "future_weeks": [str(x) for x in d["future_weeks"][[0, -1]]]}
+
+
+@app.get("/api/forecast/find")
+def forecast_find(q: str = Query("", max_length=40), store: str = Query("", max_length=8),
+                  cls: str = Query("", max_length=16), sort: str = Query("dollars", pattern="^(dollars|win|loss)$"),
+                  limit: int = Query(20, ge=1, le=100)) -> list[dict]:
+    """Search series by item code, store and demand class. sort=win: where LightGBM beat smoothing most on
+    the test weeks; sort=loss: where it lost most (shown on purpose, not hidden)."""
+    d = _fc()
+    m = _np.ones(len(d["item"]), dtype=bool)
+    if q:
+        m &= _np.char.find(_np.char.upper(d["item"].astype(str)), q.upper()) >= 0
+    if store:
+        m &= d["store"] == store
+    if cls:
+        m &= d["cls"] == cls
+    idx = _np.where(m)[0]
+    if sort == "dollars":
+        key = -d["dollars"][idx]
+    else:
+        idx = idx[d["dollars"][idx] > 0]                      # series that sold something in the last year
+        gain = _np.nan_to_num(d["test_rmsse"][idx, d["ses"]] - d["test_rmsse"][idx, d["lg"]])
+        key = -gain if sort == "win" else gain
+    return [_brief(d, int(n)) for n in idx[_np.argsort(key, kind="stable")[:limit]]]
+
+
+@app.get("/api/forecast/series")
+def forecast_series(item: str = Query(..., max_length=40), store: str = Query(..., max_length=8)) -> dict:
+    d = _fc()
+    n = d["index"].get((item, store))
+    if n is None:
+        raise HTTPException(404, f"no series {item} at {store}")
+    methods = [str(x) for x in d["methods"]]
+    return {**_brief(d, n), "weeks": [str(x) for x in d["weeks"]], "future_weeks": [str(x) for x in d["future_weeks"]],
+            "history": _num(d["history"][n]), "actual": _num(d["actual"][n]), "price": _num(d["price"][n]),
+            "test": {k: _num(d["test_fc"][n, j]) for j, k in enumerate(methods)},
+            "test_rmsse": {k: (None if not _np.isfinite(d["test_rmsse"][n, j]) else round(float(d["test_rmsse"][n, j]), 3))
+                           for j, k in enumerate(methods)},
+            "test_lo": _num(d["test_lo"][n]), "test_hi": _num(d["test_hi"][n]),
+            "future": _num(d["future"][n]), "future_lo": _num(d["future_lo"][n]), "future_hi": _num(d["future_hi"][n])}

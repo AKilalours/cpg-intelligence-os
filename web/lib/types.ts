@@ -293,3 +293,18 @@ export interface DriftStatus {
     false_alarms: Record<string, { weeks_checked: number; weeks_with_an_alarm: number }> | null;
     detection: Record<string, { stream: string; rolls: number; detected: number; days_to_alarm: { median: number | null } }> };
 }
+
+export interface ForecastBrief { item: string; store: string; dept: string; class: string; dollars: number;
+  lgbm_rmsse: number | null; ses_rmsse: number | null }
+export interface ForecastSeries extends ForecastBrief {
+  weeks: string[]; future_weeks: string[]; history: (number | null)[]; actual: (number | null)[]; price: (number | null)[];
+  test: Record<string, (number | null)[]>; test_rmsse: Record<string, number | null>;
+  test_lo: (number | null)[]; test_hi: (number | null)[]; future: (number | null)[]; future_lo: (number | null)[]; future_hi: (number | null)[];
+}
+export interface ForecastSummary {
+  version: string; gbm: string; series: number; classes: Record<string, number>; stores: string[];
+  test_weeks: string[]; future_weeks: string[];
+  test: null | { paired: Record<string, { difference: number; ci95: number[]; relative: number }>;
+    scores: Record<string, { wrmsse: number }> };
+  intervals: null | { test_coverage: number; test_coverage_by_class: Record<string, number> };
+}

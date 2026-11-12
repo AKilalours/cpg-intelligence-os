@@ -1,0 +1,15 @@
+{
+ "version": "forecast-1.0.0",
+ "interval": "80% (10th to 90th percentile of development errors)",
+ "test_coverage": 0.7949,
+ "test_coverage_by_class": {
+  "smooth": 0.803,
+  "erratic": 0.7833,
+  "intermittent": 0.7875,
+  "lumpy": 0.7833
+ },
+ "future_weeks": [
+  "2016-05-23",
+  "2016-07-11"
+ ]
+}

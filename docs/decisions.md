@@ -994,3 +994,16 @@ as smoothing). By class LightGBM is best on smooth, erratic and intermittent
 series; the combination is slightly better on lumpy ones (0.795 against
 0.800). The ordering on the test matches development, so the frozen choice
 held. Sequence in git: design and rule committed (6832075), then scored.
+
+## 105. Forecasts in the product, with an honest range
+make forecast-publish writes what the app shows (data/processed, not in git):
+per series a year of history, the test weeks with every method against what
+sold, and the next 8 weeks. The 80% range is the 10th to 90th percentile of
+development-origin errors, standardised by each series' own scale, per demand
+class and weeks ahead; it was fixed before its coverage on the test weeks was
+computed. Coverage on the test: 79.5% (smooth 80.3, erratic 78.3,
+intermittent 78.8, lumpy 78.3). The Planning page lets anyone search the
+30,490 series, filter by store and class, see where LightGBM won and where it
+lost, hover any week, and draw any method against the actuals. Future weeks use
+the M5 calendar where it reaches (19 June 2016); the price plan there is
+unknown and left empty, which the page says.
