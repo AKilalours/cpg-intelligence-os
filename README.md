@@ -261,6 +261,31 @@ price false alarms come from the same real M5 weeks in every world, so they are 
 and claim streams are generated and steadier than a real customer's: production will see more. See decisions
 97 to 102.
 
+## Phase 5 so far: demand forecasting (measured, real data)
+
+Real M5 sales as 30,490 item-store weekly series (52% smooth, 34% intermittent, 8% lumpy, 6% erratic),
+forecast 8 weeks ahead. Rolling-origin backtests on 4 development origins, with the test weeks cut off in
+code; the last 8 weeks (28 March to 22 May 2016) scored once, after the model and the rule for choosing it
+were committed. Metric: M5's RMSSE, weighted by each series' dollar sales.
+
+| Last 8 weeks, 30,490 series (scored once) | WRMSSE (lower is better) | Bias |
+|---|---|---|
+| Seasonal naive (same week last year) | 1.363 | -13.5% |
+| Naive (last week) | 1.031 | -4.8% |
+| Croston / SBA / TSB (intermittent-demand methods) | 0.917 / 0.920 / 0.898 | |
+| Exponential smoothing, rate chosen per series | 0.894 | -3.5% |
+| **Global LightGBM** (Tweedie; planned price, calendar, growth) | **0.855** | -3.5% |
+
+LightGBM is 4.4% better than exponential smoothing (paired 95% bootstrap interval 3.6% to 5.2%), 4.7% better
+than TSB, and 37% better than seasonal naive, and best in three of four demand classes (a combination edges it
+on lumpy items). What the development origins taught, before the test: per-series best-fit selection
+overfits (chosen on 24 weeks per series it lost to using one method everywhere, 0.968 against 0.918); the
+gain over smoothing came from what a brand knows in advance (its planned price and the calendar), not from
+the model alone; and the more elaborate selection strategies were not proven better than one global model,
+so the simpler one ships. One function builds features for training and forecasting, and tests prove no
+future sales reach a feature. Stated: M5's weekly sell price stands in for a brand's promotion plan; no
+Prophet or ARIMA; a small under-forecast remains. See decision 103 and reports/forecast-1.0.0_test.json.
+
 ## Phase 2b so far: document intelligence (measured)
 
 On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):

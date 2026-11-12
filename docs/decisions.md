@@ -984,3 +984,13 @@ brand's promotion calendar (it is set before the week, but a real calendar
 can change); no Prophet or ARIMA (the posting's examples), since smoothing,
 Croston, SBA and TSB cover the classical family for intermittent demand and
 ARIMA per series on 30,490 series was not worth the cost at this stage.
+
+## 104. Forecasting test result (scored once)
+Test weeks 28 March to 22 May 2016, 30,490 series: shipped LightGBM WRMSSE
+0.855 against exponential smoothing 0.894 (paired difference -0.039, 95%
+interval -0.046 to -0.032), TSB 0.898, the combination 0.860 (LightGBM better,
+interval -0.0095 to -0.0005, barely), seasonal naive 1.363. Bias -3.5% (same
+as smoothing). By class LightGBM is best on smooth, erratic and intermittent
+series; the combination is slightly better on lumpy ones (0.795 against
+0.800). The ordering on the test matches development, so the frozen choice
+held. Sequence in git: design and rule committed (6832075), then scored.
