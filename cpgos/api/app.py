@@ -546,3 +546,33 @@ def stp_status(conn: psycopg.Connection = Depends(get_conn)) -> dict:
                       "reversals": l["reversals"], "is_open": l["is_open"], "reviews_needed": l["reviews_needed"],
                       "routed": l["routed"], "updated_by": l["updated_by"], "updated_at": str(l["updated_at"])})
     return {"engine_version": CASH_ENGINE, "lanes": lanes}
+
+
+from cpgos.monitor import alarms as drift_alarms  # noqa: E402
+
+
+class ClearIn(BaseModel):
+    reviewer: str
+    note: str
+
+
+@app.get("/api/drift")
+def drift_status(conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    """Open drift alarms (a cash alarm holds the gate) and the latest stored monitor evaluation."""
+    open_ = [{**a, "checked_through": str(a["checked_through"]), "raised_at": str(a["raised_at"])}
+             for a in drift_alarms.open_alarms(conn)]
+    rep = conn.execute("""SELECT report_id, kind, body FROM eval.report WHERE kind IN ('drift_fresh', 'drift_design')
+                          ORDER BY (kind = 'drift_fresh') DESC, report_id DESC LIMIT 1""").fetchone()
+    return {"open": open_, "holds_cash": any(a["stream"] == "cash" for a in open_),
+            "evaluation": None if not rep else {"report_id": rep["report_id"], "kind": rep["kind"],
+                                                "false_alarms": rep["body"].get("false_alarms"),
+                                                "detection": {k: {kk: v[kk] for kk in ("stream", "rolls", "detected", "days_to_alarm")}
+                                                              for k, v in (rep["body"].get("detection") or {}).items()}}}
+
+
+@app.post("/api/drift/{alarm_id}/clear")
+def drift_clear(alarm_id: int, body: ClearIn, conn: psycopg.Connection = Depends(get_write_conn)):
+    try:
+        return drift_alarms.clear(conn, alarm_id, body.reviewer, body.note)
+    except drift_alarms.AlarmError as e:
+        raise HTTPException(400, str(e)) from None

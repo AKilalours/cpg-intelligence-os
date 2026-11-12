@@ -1,6 +1,7 @@
 """Phase 4 drift monitors: false alarms on healthy history, and how fast realistic changes are seen.
 
     python scripts/drift.py design   # main world: false alarms, detection of 5 injected changes (rerunnable)
+    python scripts/drift.py watch    # run the monitors on the live data; raise alarms (a cash alarm holds the gate)
     python scripts/drift.py fresh    # once per version: 8 fresh worlds (seeds 301-308), unseen reason wordings
 
 The policy (alpha 1e-4 per feature per weekly check, PSI 0.10, a 60-event window, the first 40% of
@@ -126,14 +127,27 @@ def cmd_fresh(conn) -> int:
     return 0
 
 
+def cmd_watch(conn) -> int:
+    from cpgos.monitor import alarms
+    new = alarms.watch(conn)
+    opened = alarms.open_alarms(conn)
+    print(f"{len(new)} new alarm(s); {len(opened)} open")
+    for a in opened:
+        print(f"   #{a['drift_alarm_id']} {a['stream']}/{a['feature']} through {a['checked_through']}: "
+              f"p {a['p_value']:.1e}, PSI {a['psi']:.2f}, moved {a['moved'][:2]}")
+    if any(a["stream"] == "cash" for a in opened):
+        print("   a cash alarm is open: every would-be automatic posting goes to a person until it is cleared")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["design", "fresh"])
+    ap.add_argument("command", choices=["design", "fresh", "watch"])
     args = ap.parse_args()
     with connect() as conn:
         conn.autocommit = True
         migrate(conn)
-        return {"design": cmd_design, "fresh": cmd_fresh}[args.command](conn)
+        return {"design": cmd_design, "fresh": cmd_fresh, "watch": cmd_watch}[args.command](conn)
 
 
 if __name__ == "__main__":

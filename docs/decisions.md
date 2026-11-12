@@ -833,3 +833,23 @@ Measured: weeks with a false alarm on healthy history, and days and events
 from each change to the first alarm, over many rolls. Not claimed: a drift
 monitor cannot see a fault that leaves the inputs looking normal; the spot
 checks remain for that.
+
+## 98. A cash drift alarm holds the gate; only a named person clears it
+Report 41 (main world, 40 rolls per change): 0 weeks with a false alarm in
+287 checked (59 cash, 64 claims, 164 prices; the prices are real M5 shelf
+prices), and all five changes caught in 40 of 40 rolls within 120 days. The
+short-pay wave and the price war were seen at the first weekly check; PO
+numbers on a quarter of lines after a median 51 lines (28 days); partial
+payments 41 lines (21 days); unseen reason wordings 14 claims (23 days). The
+policy written in decision 97 was kept unchanged. Caveat: the cash and claim
+streams are generated and steadier than a real customer's (no seasons, new
+stores, holidays), so production false alarms will be higher than zero.
+Migration 0023: the monitor role raises drift_alarm rows (one open alarm per
+stream and feature, each audited); it cannot clear them, post cash or change
+policy, and the engine cannot touch them. While any cash alarm is open, the
+gate sends every would-be automatic posting to a person, in enforced lanes.
+Clearing needs a name and what was checked, is audited, and happens once.
+Found while testing: a world whose invoice numbers already look like PO
+numbers ("letters then digits") hides a PO-number switch from the reference
+shape; the engine's outcome (most lines stop matching) caught it instead,
+which is why the monitor watches outcomes as well as inputs.

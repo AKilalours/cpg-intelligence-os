@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { count, when } from "@/lib/format";
-import type { EvaluationReport, MoneyFlow as Flow, Overview, ReviewQueueItem, StpStatus } from "@/lib/types";
+import type { DriftStatus, EvaluationReport, MoneyFlow as Flow, Overview, ReviewQueueItem, StpStatus } from "@/lib/types";
+import { DriftAlarms } from "./DriftAlarms";
 import { Autonomy, type Fresh } from "./Autonomy";
 import { MoneyFlow } from "./MoneyFlow";
 import { CountUp } from "@/components/CountUp";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 type Rate = { k: number; n: number; rate: number | null };
 
 export default async function TodayPage() {
-  const [ov, queue, inv, rec, ded, flow, gate, sim] = await Promise.all([
+  const [ov, queue, inv, rec, ded, flow, gate, sim, drift] = await Promise.all([
     api<Overview>("/api/overview"),
     api<ReviewQueueItem[]>("/api/documents/queue?limit=500"),
     api<EvaluationReport | null>("/api/evaluation/latest?kind=routing_holdout"),
@@ -21,6 +22,7 @@ export default async function TodayPage() {
     api<Flow>("/api/overview/flow"),
     api<StpStatus>("/api/stp"),
     api<EvaluationReport | null>("/api/evaluation/latest?kind=stp_fresh"),
+    api<DriftStatus>("/api/drift"),
   ]);
   if (!ov.ok) return <Notice kind="error" title="Can't load today's numbers">{ov.error}</Notice>;
   const e = ov.data.exposure;
@@ -61,6 +63,7 @@ export default async function TodayPage() {
       {gate.ok && gate.data.lanes.length ? (
         <section className="mt-12" aria-label="Earned autonomy">
           <h2 className="mb-4 text-3xl">Posting on its own, only where it has earned it</h2>
+          {drift.ok ? <div className="mb-3"><DriftAlarms s={drift.data} /></div> : null}
           <Autonomy lanes={gate.data.lanes}
                     fresh={sim.ok && sim.data ? (sim.data.body as unknown as Fresh) : null} />
         </section>

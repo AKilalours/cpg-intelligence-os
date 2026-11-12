@@ -282,3 +282,14 @@ export interface StpLane {
 }
 export interface StpStatus { engine_version: string; lanes: StpLane[] }
 export interface StpPoint { day: string; wrong_posted: number }
+
+export interface DriftAlarm {
+  drift_alarm_id: number; stream: "cash" | "deductions" | "prices"; feature: string; checked_through: string;
+  p_value: number; psi: number; moved: { value: string; baseline: number; now: number }[]; raised_at: string;
+}
+export interface DriftStatus {
+  open: DriftAlarm[]; holds_cash: boolean;
+  evaluation: null | { report_id: number; kind: string;
+    false_alarms: Record<string, { weeks_checked: number; weeks_with_an_alarm: number }> | null;
+    detection: Record<string, { stream: string; rolls: number; detected: number; days_to_alarm: { median: number | null } }> };
+}
