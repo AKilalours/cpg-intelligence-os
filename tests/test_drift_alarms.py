@@ -91,9 +91,9 @@ def test_the_live_watch_raises_a_cash_alarm_when_the_payer_switches_to_po_number
     small = drift.Policy(window=20, min_window=10, min_baseline=20)
     assert alarms.watch(world, small)
     opened = alarms.open_alarms(world)
-    # This world's invoice numbers already look like "letters then digits", the same shape as a PO
-    # number, so the shape alone cannot tell; the engine's outcome can (most lines stop matching).
-    assert any(a["stream"] == "cash" for a in opened)
+    # Two signals see it: the reference format (invoice prefix to PO prefix, since 1.3) and the engine's
+    # outcome (most lines stop matching).
+    assert any(a["feature"] == "reference_shape" for a in opened)
     assert any(a["feature"] == "engine_outcome" and a["moved"][0]["value"] == "unmatched" for a in opened)
     world.execute("UPDATE stp_policy SET mode = 'enforce'")
     assert world.execute("SELECT stp_route('exact_reference', %s, 1)", (cashapp.ENGINE_VERSION,)).fetchone()[0] == "audit"

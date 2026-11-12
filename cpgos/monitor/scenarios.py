@@ -155,8 +155,13 @@ def price_window(events: list[drift.Event], weeks: int = 4) -> int:
 
 
 def watch_all(st: dict[str, list[drift.Event]], policy: drift.Policy) -> dict[str, tuple]:
-    return {name: drift.watch(name, ev, policy, window=price_window(ev) if name == "prices" else None)
-            for name, ev in st.items()}
+    def win(name, ev):
+        if name == "prices":
+            return price_window(ev)
+        if name == "deductions" and policy.window_claims:
+            return policy.window_claims
+        return None
+    return {name: drift.watch(name, ev, policy, window=win(name, ev)) for name, ev in st.items()}
 
 
 def false_alarms(st: dict[str, list[drift.Event]], policy: drift.Policy) -> dict:
@@ -181,7 +186,7 @@ def detection(w: World, scenario: str, policy: drift.Policy, rolls: int, familie
     base = streams(w, stream)
     days = sorted({e.day for e in base[stream]})
     if len(days) < 10:     # a world without this kind of data (say, no shelf prices): nothing to measure
-        return {"stream": stream, "rolls": 0, "detected": 0, "no_data": True,
+        return {"stream": stream, "rolls": 0, "detected": 0, "no_data": True, "delays": [], "events": [],
                 "days_to_alarm": {"median": None, "p90": None}, "events_to_alarm": {"median": None, "p90": None},
                 "rolls_with_an_alarm_before_the_change": 0}
     delays, events_after, detected, early = [], [], 0, 0
@@ -197,7 +202,7 @@ def detection(w: World, scenario: str, policy: drift.Policy, rolls: int, familie
             delays.append((hit.day - start).days)
             events_after.append(sum(1 for e in st[stream] if start <= e.day <= hit.day))
     q = lambda xs, p: sorted(xs)[min(len(xs) - 1, int(p * len(xs)))] if xs else None
-    return {"stream": stream, "rolls": rolls, "detected": detected,
+    return {"stream": stream, "rolls": rolls, "detected": detected, "delays": delays, "events": events_after,
             "days_to_alarm": {"median": q(delays, 0.5), "p90": q(delays, 0.9)},
             "events_to_alarm": {"median": q(events_after, 0.5), "p90": q(events_after, 0.9)},
             "rolls_with_an_alarm_before_the_change": early}

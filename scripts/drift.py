@@ -34,7 +34,7 @@ from cpgos.monitor import drift, scenarios as sc  # noqa: E402
 ROLLS = int(os.environ.get("ROLLS") or 40)
 # Seeds 301-308 were spent on drift-1.0.0 (report 42). Each version gets worlds nobody has looked at.
 FRESH_SEEDS = {"drift-1.0.0": tuple(range(301, 309)), "drift-1.1.0": tuple(range(401, 409)),
-               "drift-1.2.0": tuple(range(601, 609))}[drift.DRIFT_VERSION]
+               "drift-1.3.0": tuple(range(601, 609))}[drift.DRIFT_VERSION]   # 1.2 never reached them (decision 101)
 DEV_SEEDS = tuple(range(501, 509))       # development worlds: looked at as often as needed, never scored
 
 
@@ -69,14 +69,15 @@ def run(worlds: list[sc.World], families: dict, policy: drift.Policy, rolls: int
     det: dict = {}
     for name in sc.SCENARIOS:
         parts = [sc.detection(w, name, policy, rolls, families, seed0=1000 * i) for i, w in enumerate(worlds)]
-        days = [x for p in parts for x in ([p["days_to_alarm"]["median"]] if p["days_to_alarm"]["median"] is not None else [])]
+        delays = [x for p in parts for x in p["delays"]]
+        events = [x for p in parts for x in p["events"]]
+        q = lambda xs, f: sorted(xs)[min(len(xs) - 1, int(f * len(xs)))] if xs else None
+        # Pooled over every world's rolls (1.2 reported the first world's events only: a reporting bug).
         det[name] = {"stream": parts[0]["stream"], "rolls": sum(p["rolls"] for p in parts),
                      "detected": sum(p["detected"] for p in parts),
-                     "days_to_alarm": {"median": sorted(days)[len(days) // 2] if days else None,
-                                       "p90": max((p["days_to_alarm"]["p90"] or 0) for p in parts) if days else None},
-                     "events_to_alarm": {"median": parts[0]["events_to_alarm"]["median"]},
-                     "rolls_with_an_alarm_before_the_change": sum(p["rolls_with_an_alarm_before_the_change"] for p in parts),
-                     "per_world": parts}
+                     "days_to_alarm": {"median": q(delays, 0.5), "p90": q(delays, 0.9)},
+                     "events_to_alarm": {"median": q(events, 0.5), "p90": q(events, 0.9)},
+                     "rolls_with_an_alarm_before_the_change": sum(p["rolls_with_an_alarm_before_the_change"] for p in parts)}
     return fa, det
 
 
@@ -153,7 +154,7 @@ def _build(conn, seeds, label: str, cache: Path | None = None) -> list[sc.World]
 
 
 def choose(results: dict[str, dict]) -> str | None:
-    """Written before any 1.2 result (decision 100). Eligible: every change caught in at least 95% of
+    """Written before any 1.2 result (decision 100), unchanged for 1.3. Eligible: every change caught in at least 95% of
     rolls within 120 days. Among those, the fewest false alarms per world-year on the worst stream, which
     must be at most 1; ties go to the faster median detection (sum over changes). None if nothing qualifies."""
     ok = []
@@ -179,7 +180,7 @@ def cmd_dev(conn) -> int:
         _print(fa, det)
     chosen = choose(results)
     rid = _save(conn, "drift_dev", {"seeds": list(DEV_SEEDS), "generator": GENERATOR_VERSION, "rolls_per_world": rolls,
-                                    "rule": choose.__doc__.split("(decision 100). ")[1].strip(),
+                                    "rule": choose.__doc__.split("unchanged for 1.3. ")[1].strip(),
                                     "candidates": results, "chosen": chosen})
     print(f"\nchosen by the rule written beforehand: {chosen}   (report {rid}, kind 'drift_dev')  {time.time() - t:.0f}s")
     return 0 if chosen else 2

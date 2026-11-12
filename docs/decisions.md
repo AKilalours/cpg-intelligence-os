@@ -908,3 +908,31 @@ within 120 days, then the fewest false alarms per world-year on the worst
 stream, which must be at most 1, ties to faster detection. It is scored once
 on seeds 601 to 608. This is the third design scored on fresh worlds, and
 the README reports all three.
+
+## 101. drift-1.3.0: watch only what should hold steady; keep the reference prefix
+Report 45 (8 development worlds, 4 settings of 1.2): the exact test fixed the
+noise (false alarms 0.2 to 0.8 per world-year on cash and claims, about 0.04
+on prices), but no setting met the detection bar (PO numbers on a quarter of
+lines caught in 37 to 73 of 80 rolls; partial payments 61 to 77; new reason
+wordings 35 to 75, after about 90 days). The rule returned None and the fresh
+command refused to run, as designed; worlds 601 to 608 stay unseen.
+Three findings from the development worlds, not the test set:
+1. The remaining false alarms came from ordinary business change: payment size
+   followed real M5 sales growth (more invoices near 2,000 than 1,000), and the
+   reason and code mix followed promotion seasons (scan-backs 60% to 27%). A
+   data smoke alarm should watch signals that hold steady whatever the
+   business does. Kept: reference format, the engine's outcome, short-pays,
+   whether the reason reader is sure, shelf-price drops. Moved to anomaly
+   detection (addition 9), which can model growth and seasons: payment size,
+   reason mix, codes.
+2. The reference format turned every letter run into "A", so invoice numbers
+   ("NP0001234") and PO numbers ("PO4471882") were both "A9" and the switch the
+   monitor exists for was invisible to it. The leading letters are now kept
+   ("NP9" against "PO9"); digit runs still collapse, so a keying error is not a
+   new format.
+3. Claims arrive about one every two days, so a 60-claim window spans four
+   months. Candidates now include a 30-claim window.
+Candidates for 1.3, written before any 1.3 result: baseline fixed or moving,
+claims window 60 or 30, alpha 1e-4 (1e-5 lost too much detection in 1.2).
+The selection rule is unchanged from decision 100. Also fixed: "events to
+alarm" was reported from the first world only; it now pools every world.

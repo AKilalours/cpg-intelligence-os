@@ -22,7 +22,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-DRIFT_VERSION = "drift-1.2.0"   # 1.1: moving baseline (decision 99). 1.2: two-sample test, merged sparse categories (decision 100)
+DRIFT_VERSION = "drift-1.3.0"   # 1.1 moving baseline (99); 1.2 exact two-sample tests (100); 1.3 steady signals only, prefix kept (101)
 
 
 # ------------------------------------------------------------------ statistics
@@ -166,13 +166,14 @@ class Policy:
     baseline_weeks: int = 26
     baseline_share: float = 0.4  # fixed baseline only; also where checks start, for both kinds
     min_baseline: int = 60       # no verdict against a thinner baseline
+    window_claims: int | None = None   # claims arrive about one every two days; a shorter window sees sooner
 
 
-CANDIDATES = {
-    "moving_1e-4": Policy(baseline="moving", alpha=1e-4),
-    "moving_1e-5": Policy(baseline="moving", alpha=1e-5),
-    "fixed_1e-4": Policy(baseline="fixed", alpha=1e-4),
-    "fixed_1e-5": Policy(baseline="fixed", alpha=1e-5),
+CANDIDATES = {   # drift-1.3.0, written before any 1.3 result (decision 101)
+    "fixed_claims60": Policy(baseline="fixed"),
+    "fixed_claims30": Policy(baseline="fixed", window_claims=30),
+    "moving_claims60": Policy(baseline="moving"),
+    "moving_claims30": Policy(baseline="moving", window_claims=30),
 }
 
 
@@ -190,12 +191,17 @@ def episodes(alarms: list["Alarm"], step_days: int = 7) -> int:
 
 
 def shape(ref: str | None) -> str:
-    """'INV-0012345' -> 'A-9': letters become A, digits 9, runs collapsed. Keeps the format, drops the value."""
+    """'NP0012345' -> 'NP9', 'PO 4471882' -> 'PO 9', 'inv-99' -> 'INV-9'. The leading letters are the format
+    (an invoice prefix versus a PO prefix) and are kept; later letters become A, digit runs 9. No value
+    survives. Through 1.2 the prefix also became A, so 'NP0012345' and 'PO4471882' looked identical."""
     if not ref or not ref.strip():
         return "none"
-    s = re.sub(r"[A-Za-z]+", "A", ref.strip())
-    s = re.sub(r"[0-9]+", "9", s)
-    return re.sub(r"\s+", " ", s)
+    t = ref.strip()
+    m = re.match(r"[A-Za-z]{1,4}", t)
+    head, rest = (m.group(0).upper(), t[m.end():]) if m else ("", t)
+    rest = re.sub(r"[A-Za-z]+", "A", rest)
+    rest = re.sub(r"[0-9]+", "9", rest)
+    return re.sub(r"\s+", " ", head + rest)
 
 
 def amount_bucket(x) -> str:
@@ -211,8 +217,9 @@ def cash_events(lines, matches) -> list[Event]:
     for rl, day, net, ref, _p, gross, deducted, _code in lines:
         m = by.get(rl)
         lane = (lane_of(m.confidence) or "review") if m and m.decision == "auto" else (m.decision if m else "unmatched")
+        # Signals that should hold steady whatever the business does. Payment size moved with real sales
+        # growth and raised false alarms in development (decision 101); it belongs to anomaly detection.
         out.append(Event(day, (("reference_shape", shape(ref)), ("engine_outcome", lane),
-                               ("amount_size", amount_bucket(gross)),
                                ("netted_short_pay", "yes" if float(deducted or 0) > 0 else "no"))))
     return out
 
@@ -223,9 +230,9 @@ def deduction_events(rows, reader, threshold: float) -> list[Event]:
     out = []
     for day, text, code in rows:
         sure = reader.margin(text or "") >= threshold
-        out.append(Event(day, (("reason_reader_sure", "yes" if sure else "no"),
-                               ("reason_category", reader.predict(text or "") if sure else "unsure"),
-                               ("code", code or "none"))))
+        # Only whether the reader is sure: the mix of reasons and codes follows promotion seasons and
+        # raised false alarms in development (decision 101); it belongs to anomaly detection.
+        out.append(Event(day, (("reason_reader_sure", "yes" if sure else "no"),)))
     return out
 
 

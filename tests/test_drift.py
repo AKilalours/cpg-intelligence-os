@@ -25,8 +25,16 @@ def test_psi_is_zero_for_the_same_distribution_and_grows_with_change():
 
 
 def test_reference_shape_keeps_format_not_value():
-    assert drift.shape("INV-0012345") == drift.shape("inv-99") == "A-9"
-    assert drift.shape("PO 4471882") == "A 9" and drift.shape(None) == "none" and drift.shape("  ") == "none"
+    assert drift.shape("INV-0012345") == drift.shape("inv-99") == "INV-9"
+    assert drift.shape("PO 4471882") == "PO 9" and drift.shape(None) == "none" and drift.shape("  ") == "none"
+    assert drift.shape("4471882") == "9" and drift.shape("NP00123A7") == "NP9A9"
+
+
+def test_regression_an_invoice_prefix_and_a_po_prefix_look_different():
+    # Through drift-1.2 both became "A9", so a payer switching from invoice numbers ("NP0001234") to its PO
+    # numbers ("PO4471882") was invisible to the reference format, the very change it was meant to see.
+    assert drift.shape("NP0001234") != drift.shape("PO4471882")
+    assert drift.shape("NP0001234") == drift.shape("NP000123")          # a dropped digit is not a new format
 
 
 def _events(n, start, pick, rng):
@@ -81,7 +89,7 @@ def test_scenarios_change_inputs_and_the_real_engine_reacts(dworld):
     assert len(st["cash"]) == len(w.lines)
     start = min(l[1] for l in w.lines)
     po = sc.streams(sc.po_numbers(w, start, 1.0, random.Random(0)))["cash"]
-    assert {drift.feats(e)["reference_shape"] for e in po} == {"A9"}
+    assert {drift.feats(e)["reference_shape"] for e in po} == {"PO9"}
     outcomes = Counter(drift.feats(e)["engine_outcome"] for e in po)
     assert outcomes["exact_reference"] == 0                       # no PO number names an invoice
     sp = sc.streams(sc.short_pay_wave(w, start, 1.0, random.Random(0)))["cash"]
