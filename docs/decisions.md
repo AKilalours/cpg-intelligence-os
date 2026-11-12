@@ -811,3 +811,25 @@ wrong, not the log: a real database always has history. They now count what
 the action adds. A migration's policy change is also recorded as a system act
 naming the migration (it is a reviewed code change, not a person at a
 console), with the login kept in the payload.
+
+## 97. Drift monitors: a smoke alarm on the inputs, needing no answers
+The error budget learns only from spot checks, so a silent fault takes dozens
+of lines to surface (a median 71 on fresh worlds). Many faults are not silent
+in the inputs. Three streams are watched, each through features a person can
+read: cash lines (reference shape such as "A-9", the engine's lane, amount
+size, netted or not), deduction claims (is the reason reader sure, its
+category, the code), and shelf prices (is this week a 10% drop from the
+prior 8-week high). Weekly, the latest window is compared with the baseline
+(the first 40% of history). An alarm needs a chi-square p below 1e-4 AND a
+population stability index of at least 0.10, because with thousands of price
+rows a test calls trivial shifts significant. Window 60 events (prices: four
+weeks of rows), no verdict on fewer than 30. These numbers were written down
+before the first run. Five realistic changes are injected into the raw inputs
+and the real code rerun on them (the cash engine is now callable without the
+database, match_lines, for this): PO numbers quoted instead of invoice
+numbers, a short-pay wave, partial payments, reason wordings the reader never
+saw (development set 1 to design, unseen set 2 to score), and a price war.
+Measured: weeks with a false alarm on healthy history, and days and events
+from each change to the first alarm, over many rolls. Not claimed: a drift
+monitor cannot see a fault that leaves the inputs looking normal; the spot
+checks remain for that.

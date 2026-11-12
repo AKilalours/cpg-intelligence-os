@@ -98,6 +98,14 @@ def match_all(conn: psycopg.Connection, strategy: str = "full", partner_id: int 
     if strategy not in STRATEGIES:
         raise ValueError(f"strategy must be one of {STRATEGIES}")
     lines, invoices = _load(conn, partner_id, replay)
+    return match_lines(lines, invoices, strategy, auto_threshold)
+
+
+def match_lines(lines, invoices, strategy: str = "full", auto_threshold: float = 0.90) -> list[Match]:
+    """The engine itself, on rows shaped like _load's, with no database. Lets a drift experiment change
+    the inputs (say, a payer starts quoting PO numbers) and see what the real engine then does."""
+    if strategy not in STRATEGIES:
+        raise ValueError(f"strategy must be one of {STRATEGIES}")
     by_ref: dict[tuple[int, str], int] = {}
     info: dict[int, tuple[str, int, date]] = {}
     balance: dict[int, Decimal] = {}

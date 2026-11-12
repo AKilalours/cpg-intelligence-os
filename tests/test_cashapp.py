@@ -88,3 +88,11 @@ def test_apply_runs_as_engine_and_marks_invoices(conn, world):
     # Re-running never re-decides a line that already has a decision.
     decided = {r[0] for r in conn.execute("SELECT remittance_line_id FROM cash_application")}
     assert all(m.remittance_line_id not in decided for m in cashapp.match_all(conn, "full"))
+
+
+def test_match_lines_is_the_engine_without_the_database(conn, world):
+    lines, invoices = cashapp._load(conn, None, True)
+    a = cashapp.match_all(conn, "full", replay=True)
+    b = cashapp.match_lines(lines, invoices, "full")
+    assert [(m.remittance_line_id, m.invoice_id, m.confidence, m.decision) for m in a] == \
+           [(m.remittance_line_id, m.invoice_id, m.confidence, m.decision) for m in b]
