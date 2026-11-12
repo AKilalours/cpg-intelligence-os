@@ -9,7 +9,7 @@ ROUND ?= 2
 SPLIT ?= validation
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report agent-seeds letters-local stp-simulate stp-frontier stp-fresh stp-status drift-design drift-dev drift-watch drift-fresh codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-paired codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report agent-seeds letters-local stp-simulate stp-frontier stp-fresh stp-status forecast-design forecast-score drift-design drift-dev drift-watch drift-fresh codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-paired codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -85,6 +85,12 @@ stp-frontier: $(PY)  ## Addition 11: 200 rolls per scenario at audit rates 1/5/1
 
 stp-fresh: $(PY)  ## Addition 11: the picked audit rate, scored once on 8 fresh worlds (seeds 201-208)
 	$(PY) scripts/stp.py fresh
+
+forecast-design: $(PY)  ## Phase 5: demand forecasting backtests on 4 development origins (real M5, 30,490 series)
+	$(PY) scripts/forecast.py design
+
+forecast-score: $(PY)  ## Phase 5: the frozen forecaster scored once on the last 8 weeks (writes reports/)
+	$(PY) scripts/forecast.py score
 
 drift-design: $(PY)  ## Phase 4: drift monitors: false alarms and how fast 5 changes are seen (WORLD=side: the generator-1.2 side world)
 	WORLD=$(WORLD) $(PY) scripts/drift.py design

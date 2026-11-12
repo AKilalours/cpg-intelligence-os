@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+forecast = ["lightgbm>=4.5"]   # Phase 5 forecasting (on macOS LightGBM needs OpenMP: brew install libomp)
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

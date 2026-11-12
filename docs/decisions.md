@@ -952,3 +952,35 @@ baseline, an alarm a person cleared would return at the next check, since the
 baseline still held the old format. The baseline for a stream now restarts
 after its most recently cleared alarm. A regression test fails without that
 and passes with it.
+
+## 103. Demand forecasting: frozen before the test weeks were touched
+Real M5 sales aggregated to 30,490 item-store weekly series (full Monday to
+Sunday weeks; a week an item was not stocked is missing, not zero). Horizon
+8 weeks. The last 8 weeks are the test, scored once; 4 earlier origins, 8
+weeks apart, are development. The design code receives the data with the
+test weeks cut off (Weekly.upto). Methods: naive, seasonal naive, moving
+averages, exponential smoothing with a per-series rate, Croston, SBA, TSB, a
+global LightGBM (Tweedie loss, one feature function for training and
+serving: tests prove future sales never reach a feature and training rows
+equal serving rows), and a combination. Metric: M5's RMSSE, dollar-weighted
+(WRMSSE), with MASE, bias and Syntetos-Boylan classes.
+Findings on development data, in order:
+1. Per-series best-fit, chosen on 3 origins and judged on the 4th, lost to
+   one method for every series (0.968 against 0.918): with 24 weeks to
+   choose on, per-series selection fits noise (plain naive "won" 16%).
+2. LightGBM on past sales and prices beat exponential smoothing by about 2%.
+   Adding what a brand knows in advance (its planned shelf price and the
+   calendar: event days, SNAP days) and year-over-year growth made it 3 to 6%
+   better than smoothing at every development origin, each paired 95%
+   bootstrap interval excluding zero. Growth features also cut the
+   under-forecast (at origin 4 from -7.6% to -5.8%); some remains.
+3. Strategies judged on origin 4: best-with-margin 0.8831, LightGBM 0.8848,
+   best-by-class 0.8848 (LightGBM for 99.95% of series), combination 0.8865.
+   The rule, written before looking at the test: ship the lowest unless its
+   paired interval against the single global model includes zero, then ship
+   the simpler model. It did (-0.8% to +0.2%), so plain LightGBM ships.
+Stated: the planned price is M5's weekly sell price, used as a stand-in for a
+brand's promotion calendar (it is set before the week, but a real calendar
+can change); no Prophet or ARIMA (the posting's examples), since smoothing,
+Croston, SBA and TSB cover the classical family for intermittent demand and
+ARIMA per series on 30,490 series was not worth the cost at this stage.
