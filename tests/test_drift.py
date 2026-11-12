@@ -47,7 +47,7 @@ def test_a_new_format_alarms_quickly_and_says_what_moved():
     ev += [drift.Event(start + timedelta(days=i // 2), (("f", "NEW" if rng.random() < 0.5 else "a"),)) for i in range(200)]
     alarms, _ = drift.watch("s", ev)
     assert alarms and alarms[0].day <= start + timedelta(days=21)
-    assert alarms[0].check.moved[0]["value"] == "other"                 # the unseen value is named as the change
+    assert alarms[0].check.moved[0]["value"] == "NEW"                   # the new value itself is named as the change
 
 
 def test_tiny_but_significant_shifts_do_not_alarm_without_practical_size():
@@ -140,7 +140,7 @@ def test_fresh_refuses_when_the_design_world_used_another_generator(dworld, caps
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
     import drift as script
-    script._save(dworld, "drift_design", {"generator": "1.1.0"})
+    script._save(dworld, "drift_dev", {"generator": "1.1.0", "chosen": "moving_1e-4"})
     assert script.cmd_fresh(dworld) == 1
     assert "refusing" in capsys.readouterr().out
     assert dworld.execute("SELECT count(*) FROM eval.report WHERE kind = 'drift_fresh'").fetchone()[0] == 0
@@ -150,3 +150,53 @@ def test_the_world_records_its_generator(dworld):
     from cpgos.finance.world import GENERATOR_VERSION
     from cpgos.monitor import scenarios as sc
     assert sc.load(dworld).generator == GENERATOR_VERSION
+
+
+def test_regression_five_lines_in_a_rare_category_are_not_an_alarm():
+    # The first false alarm on unseen worlds (report 44): a reference shape at 1.4% of a 26-week baseline
+    # was 5 of the latest 60 lines. drift-1.0/1.1 called it near-certain (baseline shares taken as exact,
+    # chi-square with expected counts under 1). As two samples, exactly, it is ordinary noise.
+    c = drift.compare("reference_shape", Counter({"A9": 355, "other": 5}), ["A9"] * 55 + ["other"] * 5, 1e-4, 0.1)
+    assert c.p_value > 1e-3 and not c.alarm
+
+
+def test_exact_test_matches_a_hand_computed_case():
+    # 2 of 2 pooled occurrences in a window of 1 out of 2 total: P = C(2,2)C(0,-1)... use a small table:
+    # baseline 3, window 3, value seen twice, both in the window: P(X=2) = C(2,2)C(4,1)/C(6,3) = 4/20.
+    assert drift.hypergeom_two_sided(2, 3, 3, 2) == pytest.approx(min(1.0, 2 * 4 / 20))
+
+
+def test_episodes_count_a_run_of_weekly_alarms_once():
+    mk = lambda d, f="x": drift.Alarm("s", d, drift.Check(f, 60, 0, 1, True))
+    d0 = date(2024, 1, 5)
+    alarms = [mk(d0), mk(d0 + timedelta(7)), mk(d0 + timedelta(14)), mk(d0 + timedelta(70)), mk(d0, "y")]
+    assert drift.episodes(alarms) == 3
+
+
+def _cand(detected, rolls, episodes, years, median=20):
+    return {"detection": {"c": {"rolls": rolls, "detected": detected, "days_to_alarm": {"median": median}}},
+            "false_alarms": {"cash": {"episodes": episodes, "years_checked": years}}}
+
+
+def test_the_rule_written_beforehand_picks_quiet_and_sensitive_settings():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import drift as script
+    assert script.choose({"loud": _cand(80, 80, 30, 10), "deaf": _cand(70, 80, 0, 10),
+                          "good": _cand(79, 80, 4, 10), "better": _cand(80, 80, 2, 10)}) == "better"
+    assert script.choose({"tie_slow": _cand(80, 80, 2, 10, 40), "tie_fast": _cand(80, 80, 2, 10, 10)}) == "tie_fast"
+    assert script.choose({"loud": _cand(80, 80, 30, 10)}) is None
+
+
+@pytest.mark.parametrize("x,m,n,k", [(40, 900, 300, 120), (60, 2000, 400, 200), (25, 500, 200, 50),
+                                    (2, 900, 300, 120), (5, 355, 60, 10), (0, 30, 30, 4)])
+def test_fast_exact_tail_agrees_with_the_plain_sum(x, m, n, k):
+    import math
+    base = drift._lchoose(m + n, n)
+    pr = lambda i: math.exp(drift._lchoose(k, i) + drift._lchoose(m + n - k, n - i) - base)
+    mean = k * n / (m + n)
+    tail = sum(pr(i) for i in (range(x, min(k, n) + 1) if x >= mean else range(0, x + 1)))
+    exact = min(1.0, 2 * tail)
+    approx = drift.hypergeom_two_sided(x, m, n, k)
+    assert approx == pytest.approx(exact, rel=1e-9)

@@ -22,7 +22,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-DRIFT_VERSION = "drift-1.1.0"   # 1.1: a moving baseline (the 26 weeks before the window), decision 99
+DRIFT_VERSION = "drift-1.2.0"   # 1.1: moving baseline (decision 99). 1.2: two-sample test, merged sparse categories (decision 100)
 
 
 # ------------------------------------------------------------------ statistics
@@ -81,31 +81,63 @@ class Check:
     moved: list[dict] = field(default_factory=list)   # the categories that moved most, for a person to read
 
 
-def compare(feature: str, base_counts: Counter, window: list[str], alpha: float, min_psi: float,
-            min_share: float = 0.02) -> Check:
-    """Window against baseline. Categories under min_share of the baseline (and anything the baseline
-    never saw) are pooled as 'other', so a brand-new reference shape counts against 'other'."""
-    total = sum(base_counts.values())
-    keep = {k for k, v in base_counts.items() if v / total >= min_share}
-    def fold(c: Counter) -> Counter:
-        out = Counter()
-        for k, v in c.items():
-            out[k if k in keep else "other"] += v
-        return out
-    b, w = fold(base_counts), fold(Counter(window))
-    cats = sorted(set(b) | set(w) | {"other"})
-    n = len(window)
-    # Baseline shares with half a count added to every category, so a category the baseline never had
-    # has a small but nonzero expectation instead of an undefined one.
-    bt = total + 0.5 * len(cats)
-    bp = {k: (b.get(k, 0) + 0.5) / bt for k in cats}
-    wp = {k: w.get(k, 0) / n for k in cats} if n else {}
-    stat = sum((w.get(k, 0) - n * bp[k]) ** 2 / (n * bp[k]) for k in cats) if n else 0.0
-    p = chi2_sf(stat, len(cats) - 1)
-    s = psi(bp, wp) if n else 0.0
-    moved = sorted(({"value": k, "baseline": round(bp[k], 4), "now": round(wp.get(k, 0.0), 4)} for k in cats),
-                   key=lambda m: -abs(m["now"] - m["baseline"]))[:3]
-    return Check(feature, n, p, s, bool(n) and p < alpha and s >= min_psi, moved)
+def _lchoose(n: int, k: int) -> float:
+    return math.lgamma(n + 1) - math.lgamma(k + 1) - math.lgamma(n - k + 1)
+
+
+def hypergeom_two_sided(x: int, m: int, n: int, k: int) -> float:
+    """Exact two-sample test for one value: of k pooled occurrences, x fell in the window of n (baseline
+    of m). Two-sided as twice the smaller tail. Valid for any counts, including a value seen 3 times.
+
+    Exact at every size: a chi-square shortcut for large counts was tried and was ten times too small in
+    the far tail (where alarms live), the same kind of error that caused 1.0's false alarms. The tail is
+    summed outward from x by the ratio of neighbouring terms and stops once terms are negligible."""
+    lo, hi = max(0, k - m), min(k, n)
+    if hi <= lo:
+        return 1.0
+    x = min(max(x, lo), hi)
+    term = math.exp(_lchoose(k, x) + _lchoose(m + n - k, n - x) - _lchoose(m + n, n))
+    tail = term
+    if x >= k * n / (m + n):
+        i, t = x, term
+        while i < hi:
+            t *= (k - i) * (n - i) / ((i + 1) * (m - k + i + 1))
+            i += 1
+            tail += t
+            if t < tail * 1e-16:
+                break
+    else:
+        i, t = x, term
+        while i > lo:
+            t *= i * (m - k + i) / ((k - i + 1) * (n - i + 1))
+            i -= 1
+            tail += t
+            if t < tail * 1e-16:
+                break
+    return min(1.0, 2 * tail)
+
+
+def compare(feature: str, base_counts: Counter, window: list[str], alpha: float, min_psi: float) -> Check:
+    """Is any one value now much more, or much less, common than in the baseline?
+
+    Each value gets an exact two-sample test (hypergeometric: the baseline is a sample too), and the
+    smallest p is multiplied by the number of values tested (Bonferroni), so a feature with many values
+    is not more alarm-prone. drift-1.0 and 1.1 instead used a chi-square against baseline shares taken
+    as exact; with a 1.4% value and a 60-line window it called 5 lines a near-certain change (decision 100).
+    An alarm also needs a population stability index of at least min_psi over all values."""
+    b, w = Counter(base_counts), Counter(window)
+    m, n = sum(b.values()), len(window)
+    if not m or not n:
+        return Check(feature, n, 1.0, 0.0, False, [])
+    cats = sorted(set(b) | set(w))
+    ps = {c: hypergeom_two_sided(w[c], m, n, b[c] + w[c]) for c in cats}
+    p = min(1.0, min(ps.values()) * len(cats))
+    bp = {c: (b[c] + 0.5) / (m + 0.5 * len(cats)) for c in cats}
+    wp = {c: (w[c] + 0.5) / (n + 0.5 * len(cats)) for c in cats}
+    s_ = psi(bp, wp) if len(cats) > 1 else 0.0
+    raw = sorted(cats, key=lambda k: (ps[k], -abs(w[k] / n - b[k] / m)))[:3]
+    moved = [{"value": k, "baseline": round(b[k] / m, 4), "now": round(w[k] / n, 4)} for k in raw]
+    return Check(feature, n, p, s_, p < alpha and s_ >= min_psi, moved)
 
 
 # ------------------------------------------------------------------ streams
@@ -130,9 +162,31 @@ class Policy:
     window: int = 60             # most recent events compared
     min_window: int = 30         # no verdict on fewer
     baseline: str = "moving"     # "moving": the baseline_weeks before the window; "fixed": the first baseline_share
+    #                              (1.2 chooses between them, and alpha, on development worlds: decision 100)
     baseline_weeks: int = 26
     baseline_share: float = 0.4  # fixed baseline only; also where checks start, for both kinds
     min_baseline: int = 60       # no verdict against a thinner baseline
+
+
+CANDIDATES = {
+    "moving_1e-4": Policy(baseline="moving", alpha=1e-4),
+    "moving_1e-5": Policy(baseline="moving", alpha=1e-5),
+    "fixed_1e-4": Policy(baseline="fixed", alpha=1e-4),
+    "fixed_1e-5": Policy(baseline="fixed", alpha=1e-5),
+}
+
+
+def episodes(alarms: list["Alarm"], step_days: int = 7) -> int:
+    """Alarms as production sees them: consecutive weekly alarms on the same feature are one alarm,
+    because an open alarm stays open until a person clears it."""
+    by: dict[str, list[date]] = {}
+    for a in alarms:
+        by.setdefault(a.check.feature, []).append(a.day)
+    n = 0
+    for ds in by.values():
+        ds = sorted(set(ds))
+        n += 1 + sum((ds[i] - ds[i - 1]).days > step_days for i in range(1, len(ds)))
+    return n if alarms else 0
 
 
 def shape(ref: str | None) -> str:

@@ -160,13 +160,14 @@ def watch_all(st: dict[str, list[drift.Event]], policy: drift.Policy) -> dict[st
 
 
 def false_alarms(st: dict[str, list[drift.Event]], policy: drift.Policy) -> dict:
-    """Alarms on an unchanged history, per stream: every one is false."""
+    """Alarms on an unchanged history, per stream: every one is false. Episodes count a run of weekly
+    alarms on one feature once, as production would (an open alarm stays open until cleared)."""
     out = {}
     for name, (alarms, base_end) in watch_all(st, policy).items():
         ev = st[name]
         days = (ev[-1].day - base_end).days if ev and base_end else 0
-        weeks_alarming = len({a.day for a in alarms})
-        out[name] = {"weeks_checked": days // 7, "weeks_with_an_alarm": weeks_alarming,
+        out[name] = {"weeks_checked": days // 7, "weeks_with_an_alarm": len({a.day for a in alarms}),
+                     "episodes": drift.episodes(alarms), "years_checked": round(days / 365.25, 2),
                      "first": None if not alarms else {"day": str(alarms[0].day), "feature": alarms[0].check.feature,
                                                        "moved": alarms[0].check.moved}}
     return out

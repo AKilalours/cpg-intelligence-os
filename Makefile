@@ -9,7 +9,7 @@ ROUND ?= 2
 SPLIT ?= validation
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report agent-seeds letters-local stp-simulate stp-frontier stp-fresh stp-status drift-design drift-watch drift-fresh codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-paired codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report agent-seeds letters-local stp-simulate stp-frontier stp-fresh stp-status drift-design drift-dev drift-watch drift-fresh codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-paired codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -88,6 +88,9 @@ stp-fresh: $(PY)  ## Addition 11: the picked audit rate, scored once on 8 fresh 
 
 drift-design: $(PY)  ## Phase 4: drift monitors: false alarms and how fast 5 changes are seen (WORLD=side: the generator-1.2 side world)
 	WORLD=$(WORLD) $(PY) scripts/drift.py design
+
+drift-dev: $(PY)  ## Phase 4: 8 development worlds (cached in local_runs/): 4 candidate monitor settings, one picked by a fixed rule
+	$(PY) scripts/drift.py dev
 
 drift-watch: $(PY)  ## Phase 4: run the drift monitors on live data and raise alarms (a cash alarm holds automatic posting)
 	$(PY) scripts/drift.py watch

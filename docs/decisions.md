@@ -877,3 +877,34 @@ the fresh-world command refuses unless the latest design for the same
 monitor version used the same generator, and the design now runs on the side
 world (generator 1.2). (3) Seeds 301 to 308 are spent; 1.1 is scored once on
 seeds 401 to 408. alpha, PSI, and window sizes are unchanged from decision 97.
+
+## 100. Decision 99's diagnosis was wrong; the real cause was the test, and design needs many worlds
+Report 43 printed the side world's short-pay share by quarter: 0, 2, 8, 4, 2, 3,
+4, 2, 1%. It does not grow. The "15%" behind decision 99 was one 60-line window,
+not a trend, so the moving baseline fixed nothing that was broken: on fresh
+worlds 401 to 408 (report 44) cash false-alarm weeks fell to 32 of 474 but
+claims rose from 0 to 38 of 462. drift-1.1.0 does not ship either.
+The cause, found in the first false alarm of report 44 (a reference shape at
+1.4% of the baseline was 5 of the latest 60 lines): the test was wrong in two
+ways. It compared the window with baseline shares as if they were exact,
+though the baseline is a sample (with 26 weeks of claims, about 90 events),
+and it used the chi-square approximation with expected counts under 1, where
+it is far too confident. That case now gets p = 0.012, not an alarm.
+drift-1.2.0 tests each value exactly as two samples (hypergeometric), with a
+Bonferroni correction over the values of a feature, and still requires a PSI
+of 0.10. A chi-square shortcut for large counts was tried and rejected: it was
+ten times too small in the far tail, the same error; the exact tail is summed
+outward by term ratios instead (about 0.01 ms). Merging rare categories was
+also tried and rejected: it hid a brand-new reference format inside an old
+category. Alarms are also counted as episodes (a run of weekly alarms on one
+feature is one alarm, as in production), not only as weeks.
+Process. One world has about 60 checked weeks, too few to see a false-alarm
+rate of a few percent, so the fresh worlds kept being where problems were
+found. 1.2 is designed on 8 development worlds (seeds 501 to 508, cached in
+local_runs/, looked at freely, never scored) across 4 candidate settings
+(baseline fixed or moving 26 weeks; alpha 1e-4 or 1e-5), and chosen by a rule
+written before any result: every change caught in at least 95% of rolls
+within 120 days, then the fewest false alarms per world-year on the worst
+stream, which must be at most 1, ties to faster detection. It is scored once
+on seeds 601 to 608. This is the third design scored on fresh worlds, and
+the README reports all three.
