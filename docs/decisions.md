@@ -1024,3 +1024,22 @@ items selling $5 a year, where a large relative miss costs nothing. Wins and
 losses are now ranked by error difference times dollar sales, like the
 headline metric; a regression test fails on the old ordering. Phone layout:
 the scoreboard bars had collapsed and chart text was unreadable; both fixed.
+
+## 107. Promotion lift: the model is not trusted until it earns it; the rule before the score
+Development weeks (3,247 controlled cuts): the shipped forecaster predicted a
+median +13% lift for price cuts; the controlled outcome (difference in
+differences against the same item at stores that did not cut) was -8.7%; rank
+correlation 0.18. Cuts of 25% or more were followed by 97-100% lower sales,
+which reads as clearance or stock-outs, not promotion. Restricting to
+temporary cuts (price back within four weeks) did not rescue it (median
+-28%). M5 has no promotion flags and comes from an everyday-low-price
+retailer; a price response learned from it is correlation, not cause. Across
+all 23,080 controlled cuts in the history, the median lift is -2.3% and the
+spread is wide (10-15% cuts: quartiles -51% and +78%).
+So the planner is built on arithmetic and evidence: the break-even lift for a
+cut at a margin (lift >= depth / (margin - depth)), and every controlled cut
+in the department as a point. Whether any estimate of lift is shown is decided
+by scripts/promo.py score, run once on the 167 cuts in the test weeks: the
+model's lift and the department history are each shown only if they beat
+"assume no lift" with a paired 95% interval excluding zero. Committed before
+the score is run.

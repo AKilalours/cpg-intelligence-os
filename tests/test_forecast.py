@@ -123,3 +123,19 @@ def test_planned_price_and_calendar_may_look_ahead_but_sales_never_do():
     b = gbm.features(w.upto(o), o)
     changed = {gbm.FEATURES[j] for j in np.where(~np.all(np.nan_to_num(a, nan=-7) == np.nan_to_num(b, nan=-7), axis=0))[0]}
     assert changed and changed <= {"plan_price", "plan_vs_8wk_high", "plan_vs_last"}
+
+
+def test_controlled_lift_cancels_a_holiday_that_lifts_every_store():
+    from cpgos.forecast import evidence
+    from datetime import date, timedelta
+    from cpgos.forecast.data import Weekly
+    n, T = 4, 30
+    U = np.full((n, T), 10.0)
+    U[:, 20] = 30.0                     # a holiday triples every store's sales
+    P = np.full((n, T), 2.0)
+    P[0, 20] = 1.5                      # store 0 also cuts its price 25% that week
+    w = Weekly(U, P, [date(2015, 1, 5) + timedelta(weeks=k) for k in range(T)], np.array(["X"] * n),
+               np.array(["CA_1", "CA_2", "TX_1", "WI_1"]), np.array(["D"] * n), np.array(["FOODS"] * n), P)
+    ev = evidence.build(w)
+    assert ev["series"].tolist() == [0] and ev["week"].tolist() == [20]
+    assert ev["lift"][0] == pytest.approx(0.0)          # the naive view would credit the cut with +200%
