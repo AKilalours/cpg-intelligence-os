@@ -308,3 +308,10 @@ export interface ForecastSummary {
     scores: Record<string, { wrmsse: number }> };
   intervals: null | { test_coverage: number; test_coverage_by_class: Record<string, number> };
 }
+
+export interface PromoEvidence {
+  dept: string; count: number; depts: Record<string, number>;
+  depth: number[]; lift: number[]; week: string[]; item: string[]; store: string[]; temporary: boolean[];
+  test: null | { test_cuts: number; mae: Record<string, number>; show_model: boolean; show_history: boolean;
+    median_actual: number; median_model: number; share_actual_positive: number };
+}

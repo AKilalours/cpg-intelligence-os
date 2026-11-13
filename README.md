@@ -286,6 +286,26 @@ so the simpler one ships. One function builds features for training and forecast
 future sales reach a feature. Stated: M5's weekly sell price stands in for a brand's promotion plan; no
 Prophet or ARIMA; a small under-forecast remains. See decision 103 and reports/forecast-1.0.0_test.json.
 
+### Promotions: will a price cut pay back? (addition 10)
+
+Before showing anyone a lift prediction, I tested whether one could be trusted. On 23,080 real M5 price cuts,
+each compared with the same item at stores that did not cut that week (so holidays cancel), the typical cut
+did nothing (median -2.3%, quartiles -51% and +78% for 10-15% cuts), and deep cuts mostly preceded zero sales
+(clearances, stock-outs). The forecaster's price response predicted +13% where development cuts delivered
+-8.7%. Scored once on the 167 cuts in the test weeks, by a rule committed first:
+
+| Estimate of a cut's lift | Error on 167 unseen cuts |
+|---|---|
+| Assume no lift | 0.986 |
+| Median of earlier cuts, same department and depth | 0.955 (not significantly better) |
+| The ML forecaster | **1.035 (worse than assuming nothing)** |
+
+So the Promotions page shows no lift prediction. It shows what a brand can trust: the break-even arithmetic
+(at a 30% margin a 20% cut needs +200% units) drawn as a curve through every real controlled cut, and the
+share of cuts like yours that cleared it (15% of 656 for 20% off at 30% margin in FOODS 3). Drag the cut and the
+margin, tap a dot to simulate that item's next 8 weeks, tap weeks to promote them. Correlation in observational
+price data is not a promotion response; a real one needs a brand's promotion calendar or an experiment.
+
 ## Phase 2b so far: document intelligence (measured)
 
 On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):

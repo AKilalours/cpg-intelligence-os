@@ -673,3 +673,33 @@ def forecast_series(item: str = Query(..., max_length=40), store: str = Query(..
                            for j, k in enumerate(methods)},
             "test_lo": _num(d["test_lo"][n]), "test_hi": _num(d["test_hi"][n]),
             "future": _num(d["future"][n]), "future_lo": _num(d["future_lo"][n]), "future_hi": _num(d["future_hi"][n])}
+
+
+# ---------- Addition 10: promotion evidence (published by scripts/promo.py; read-only here) ----------
+
+_PROMO = Path(__file__).resolve().parents[2] / "data" / "processed" / "forecast" / "promo_events.npz"
+
+
+@_lru(maxsize=2)
+def _promo(mtime: float):
+    z = _np.load(_PROMO, allow_pickle=False)
+    return {k: z[k] for k in z.files}
+
+
+@app.get("/api/promo/evidence")
+def promo_evidence(dept: str = Query("", max_length=20)) -> dict:
+    """Every controlled price cut (depth, lift) in a department, or all of them; the planner computes payback
+    at the margin the user picks. Points are sorted by week for a stable order."""
+    if not _PROMO.exists():
+        raise HTTPException(404, "no promotion evidence published yet: run make promo-publish")
+    e = _promo(_PROMO.stat().st_mtime)
+    m = e["dept"] == dept if dept else _np.ones(len(e["dept"]), dtype=bool)
+    rep = _REPORTS / "promo-1.0.0_test.json"
+    depts = {}
+    for dname in _np.unique(e["dept"]):
+        depts[str(dname)] = int((e["dept"] == dname).sum())
+    return {"dept": dept, "count": int(m.sum()), "depts": depts,
+            "depth": [round(float(x), 3) for x in e["depth"][m]], "lift": [round(float(x), 3) for x in e["lift"][m]],
+            "week": [str(x) for x in e["week"][m]], "item": [str(x) for x in e["item"][m]], "store": [str(x) for x in e["store"][m]],
+            "temporary": [bool(x) for x in e["temporary"][m]],
+            "test": json.loads(rep.read_text()) if rep.exists() else None}

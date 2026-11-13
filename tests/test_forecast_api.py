@@ -61,3 +61,18 @@ def test_win_and_loss_rank_by_money_not_by_tiny_items(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "_PUBLISHED", f)
     api._forecasts.cache_clear()
     assert TestClient(api.app).get("/api/forecast/find?sort=loss").json()[0]["item"] == "BIG"
+
+
+def test_promo_evidence_by_department(tmp_path, monkeypatch):
+    f = tmp_path / "e.npz"
+    np.savez_compressed(f, dept=np.array(["FOODS_1", "FOODS_1", "HOBBIES_1"]), item=np.array(["A", "B", "C"]),
+                        store=np.array(["CA_1"] * 3), week=np.array(["2015-01-05"] * 3),
+                        depth=np.array([0.1, 0.2, 0.3], np.float32), lift=np.array([0.5, -0.2, 1.0], np.float32),
+                        regular=np.ones(3, np.float32), units=np.ones(3, np.float32), baseline=np.ones(3, np.float32),
+                        temporary=np.array([True, False, False]))
+    monkeypatch.setattr(api, "_PROMO", f)
+    api._promo.cache_clear()
+    c = TestClient(api.app)
+    r = c.get("/api/promo/evidence?dept=FOODS_1").json()
+    assert r["count"] == 2 and r["depts"] == {"FOODS_1": 2, "HOBBIES_1": 1} and r["lift"] == [0.5, -0.2]
+    assert c.get("/api/promo/evidence").json()["count"] == 3

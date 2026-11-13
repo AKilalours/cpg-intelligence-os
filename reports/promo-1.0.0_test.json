@@ -1,0 +1,31 @@
+{
+ "version": "promo-1.0.0",
+ "gbm": "gbm-1.2.0",
+ "test_cuts": 167,
+ "model_scored": 167,
+ "mae": {
+  "zero": 0.9864,
+  "history": 0.9554,
+  "model": 1.0354
+ },
+ "model_vs_zero": {
+  "difference": 0.0489,
+  "ci95": [
+   -0.0954,
+   0.2007
+  ]
+ },
+ "history_vs_zero": {
+  "difference": -0.031,
+  "ci95": [
+   -0.0935,
+   0.0301
+  ]
+ },
+ "median_actual": -0.1969,
+ "median_model": 0.0531,
+ "median_history": -0.0709,
+ "share_actual_positive": 0.4192,
+ "show_model": false,
+ "show_history": false
+}

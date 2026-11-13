@@ -1043,3 +1043,18 @@ by scripts/promo.py score, run once on the 167 cuts in the test weeks: the
 model's lift and the department history are each shown only if they beat
 "assume no lift" with a paired 95% interval excluding zero. Committed before
 the score is run.
+
+## 108. Promotion lift result: no estimate shown; the planner is arithmetic plus evidence
+Report reports/promo-1.0.0_test.json (167 controlled cuts in the test weeks):
+error zero 0.986, department history 0.955 (paired interval -0.094 to +0.030,
+not significant), the model 1.035 (worse than zero; interval -0.095 to
++0.201). Median actual lift -19.7%; the model predicted +5.3%; 42% of cuts
+lifted sales. By the committed rule neither estimate is shown. The Promotions
+page: price-cut and margin sliders, the break-even lift d / (m - d), every
+controlled cut in a department as a dot coloured by whether it cleared
+break-even at the chosen margin, the share of cuts within 2.5 points of the
+chosen depth that paid back, and a one-item simulator over the next 8 weeks
+(tap weeks to promote, drag the assumed lift, profit and discount cost live).
+Found in the browser: at exactly break-even the bars showed red while profit
+change showed $0, because 0.2 / (0.3 - 0.2) is 2.0000000000000004 in floating
+point; verdicts now compare with a tolerance.
