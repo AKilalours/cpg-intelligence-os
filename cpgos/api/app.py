@@ -703,3 +703,89 @@ def promo_evidence(dept: str = Query("", max_length=20)) -> dict:
             "week": [str(x) for x in e["week"][m]], "item": [str(x) for x in e["item"][m]], "store": [str(x) for x in e["store"][m]],
             "temporary": [bool(x) for x in e["temporary"][m]],
             "test": json.loads(rep.read_text()) if rep.exists() else None}
+
+
+# ---------- Today: the proof wall (every scored result, read from stored reports; nothing typed by hand) ----------
+
+def _latest(conn, kind: str):
+    r = conn.execute("SELECT report_id, body FROM eval.report WHERE kind = %s ORDER BY report_id DESC LIMIT 1",
+                     (kind,)).fetchone()
+    return (r["report_id"], r["body"]) if r else (None, None)
+
+
+def _file(name: str):
+    p = _REPORTS / name
+    return json.loads(p.read_text()) if p.exists() else None
+
+
+def proof_cards(conn) -> list[dict]:
+    cards = []
+    rid, b = _latest(conn, "routing_holdout")
+    if b and b.get("with_third_reader", {}).get("accepted_correct"):
+        a = b["with_third_reader"]["accepted_correct"]
+        cards.append({"key": "invoices", "title": "Invoice fields read right", "href": "/documents",
+                      "visual": {"type": "ring", "k": a["k"], "n": a["n"]},
+                      "method": f"Values the system accepted without a person, on invoices it never trained on (report {rid})."})
+    rid, b = _latest(conn, "phase2a")
+    if b:
+        f = b["cash_application"]["full"]
+        cards.append({"key": "cash", "title": "Payments matched on their own", "href": "/finance",
+                      "visual": {"type": "ring", "k": f["auto_precision"]["k"], "n": f["auto_applied"]["n"],
+                                 "wrong": f["false_match_rate"]["k"]},
+                      "method": f"{f['auto_applied']['k']} of {f['auto_applied']['n']} payment lines posted with no person, "
+                                f"{f['false_match_rate']['k']} wrong (report {rid})."})
+    rid, b = _latest(conn, "agent_seeds")
+    if b:
+        a = b["all_regions"]
+        cards.append({"key": "agent", "title": "Valid claims wrongly disputed", "href": "/investigation",
+                      "visual": {"type": "dots", "left": a["engine"]["false_disputes"]["k"], "left_label": "rules",
+                                 "right": a["agent"]["false_disputes"]["k"], "right_label": "agent",
+                                 "p": a["paired"]["false_disputes"]["p_value"]},
+                      "method": f"Same {b['worlds']} unseen worlds, same claims; each dot is a valid claim disputed (report {rid})."})
+    rid, b = _latest(conn, "codes")
+    if b and b.get("heldout2"):
+        a = b["heldout2"]["accuracy"]
+        cards.append({"key": "reasons", "title": "Deduction reasons understood", "href": "/evaluation",
+                      "visual": {"type": "ring", "k": a["k"], "n": a["n"]},
+                      "method": f"Wordings no reader trained on, written before scoring ({b['reader']}, report {rid})."})
+    rid, b = _latest(conn, "stp_fresh")
+    if b:
+        r = b["results"]
+        cards.append({"key": "budget", "title": "Wrong postings when a fault hits", "href": "/",
+                      "visual": {"type": "versus", "left": r["fault_5pct"]["wrong_posted_no_gate"]["median"], "left_label": "no gate",
+                                 "right": r["fault_5pct"]["wrong_posted_with_gate"]["median"], "right_label": "error budget",
+                                 "unit": "wrong postings"},
+                      "method": f"A silent 5% fault on {b['lines']:,} lines across 8 unseen worlds, {b['runs']} replays (report {rid})."})
+    rid, b = _latest(conn, "drift_fresh")
+    if b:
+        det = b["detection"].values()
+        fa = sum(v["episodes"] for k, v in b["false_alarms"].items() if k != "prices")
+        cards.append({"key": "drift", "title": "Input changes caught", "href": "/",
+                      "visual": {"type": "ring", "k": sum(d["detected"] for d in det), "n": sum(d["rolls"] for d in det),
+                                 "note": f"{fa} false alarms"},
+                      "method": f"Five injected changes, 8 unseen worlds; false alarms on cash and claims: {fa} (report {rid})."})
+    f = _file("forecast-1.0.0_test.json")
+    if f:
+        cards.append({"key": "forecast", "title": "Demand forecast error", "href": "/planning",
+                      "visual": {"type": "versus", "left": round(f["scores"]["ses"]["wrmsse"], 3), "left_label": "smoothing",
+                                 "right": round(f["scores"]["lgbm"]["wrmsse"], 3), "right_label": "LightGBM", "lower_better": True,
+                                 "unit": "error"},
+                      "method": f"{f['series']:,} real M5 series, last 8 weeks, scored once after the model was frozen."})
+    i = _file("forecast-1.0.0_intervals.json")
+    if i:
+        cards.append({"key": "ranges", "title": "Weeks inside the 80% range", "href": "/planning",
+                      "visual": {"type": "ring", "k": round(i["test_coverage"] * 1000), "n": 1000, "target": 0.8},
+                      "method": "Ranges learned from earlier weeks only; an honest 80% range catches about 80%."})
+    p = _file("promo-1.0.0_test.json")
+    if p:
+        cards.append({"key": "promo", "title": "Can ML predict promo lift?", "href": "/promotions",
+                      "visual": {"type": "versus", "left": p["mae"]["zero"], "left_label": "guess 0",
+                                 "right": p["mae"]["model"], "right_label": "ML model", "lower_better": True, "honest_no": True,
+                                 "unit": "error"},
+                      "method": f"{p['test_cuts']} real price cuts, scored once. It did not beat guessing zero, so it is not shown as a prediction."})
+    return cards
+
+
+@app.get("/api/proof")
+def proof(conn: psycopg.Connection = Depends(get_conn)) -> list[dict]:
+    return proof_cards(conn)

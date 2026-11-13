@@ -315,3 +315,10 @@ export interface PromoEvidence {
   test: null | { test_cuts: number; mae: Record<string, number>; show_model: boolean; show_history: boolean;
     median_actual: number; median_model: number; share_actual_positive: number };
 }
+
+export interface ProofCard {
+  key: string; title: string; href: string; method: string;
+  visual: { type: "ring"; k: number; n: number; wrong?: number; note?: string; target?: number }
+    | { type: "dots"; left: number; left_label: string; right: number; right_label: string; p: number }
+    | { type: "versus"; left: number; left_label: string; right: number; right_label: string; lower_better?: boolean; honest_no?: boolean; unit?: string };
+}
