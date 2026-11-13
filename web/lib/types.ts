@@ -294,7 +294,7 @@ export interface DriftStatus {
     detection: Record<string, { stream: string; rolls: number; detected: number; days_to_alarm: { median: number | null } }> };
 }
 
-export interface ForecastBrief { item: string; store: string; dept: string; class: string; dollars: number;
+export interface ForecastBrief { item: string; store: string; dept: string; class: string; class_scored: string; dollars: number;
   lgbm_rmsse: number | null; ses_rmsse: number | null }
 export interface ForecastSeries extends ForecastBrief {
   weeks: string[]; future_weeks: string[]; history: (number | null)[]; actual: (number | null)[]; price: (number | null)[];

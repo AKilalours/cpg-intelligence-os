@@ -610,7 +610,11 @@ def _num(a):
 
 def _brief(d, n):
     r = d["test_rmsse"][n]
-    return {"item": str(d["item"][n]), "store": str(d["store"][n]), "dept": str(d["dept"][n]), "class": str(d["cls"][n]),
+    # "class" describes the last year (what a planner means); "class_scored" is over all training weeks, the
+    # convention the reported per-class results and the 80% ranges use (decision 106).
+    recent = d["cls_recent"] if "cls_recent" in d else d["cls"]
+    return {"item": str(d["item"][n]), "store": str(d["store"][n]), "dept": str(d["dept"][n]), "class": str(recent[n]),
+            "class_scored": str(d["cls"][n]),
             "dollars": round(float(d["dollars"][n]), 2),
             "lgbm_rmsse": None if not _np.isfinite(r[d["lg"]]) else round(float(r[d["lg"]]), 3),
             "ses_rmsse": None if not _np.isfinite(r[d["ses"]]) else round(float(r[d["ses"]]), 3)}
@@ -621,7 +625,7 @@ def forecast_summary() -> dict:
     d = _fc()
     rep = lambda name: json.loads((_REPORTS / name).read_text()) if (_REPORTS / name).exists() else None
     test = rep(f"{str(d['version'])}_test.json")
-    cls, counts = d["cls"], {}
+    cls, counts = (d["cls_recent"] if "cls_recent" in d else d["cls"]), {}
     for c in ("smooth", "erratic", "intermittent", "lumpy", "no_sales"):
         counts[c] = int((cls == c).sum())
     return {"version": str(d["version"]), "gbm": str(d["gbm"]), "series": int(len(d["item"])), "classes": counts,
@@ -642,13 +646,15 @@ def forecast_find(q: str = Query("", max_length=40), store: str = Query("", max_
     if store:
         m &= d["store"] == store
     if cls:
-        m &= d["cls"] == cls
+        m &= (d["cls_recent"] if "cls_recent" in d else d["cls"]) == cls
     idx = _np.where(m)[0]
     if sort == "dollars":
         key = -d["dollars"][idx]
     else:
         idx = idx[d["dollars"][idx] > 0]                      # series that sold something in the last year
-        gain = _np.nan_to_num(d["test_rmsse"][idx, d["ses"]] - d["test_rmsse"][idx, d["lg"]])
+        # Weighted by dollar sales, as the headline metric is: a $5-a-year item's big relative miss costs
+        # nothing, so ranking by raw error difference filled "lost most" with dead items.
+        gain = _np.nan_to_num(d["test_rmsse"][idx, d["ses"]] - d["test_rmsse"][idx, d["lg"]]) * d["dollars"][idx]
         key = -gain if sort == "win" else gain
     return [_brief(d, int(n)) for n in idx[_np.argsort(key, kind="stable")[:limit]]]
 

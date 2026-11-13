@@ -44,3 +44,20 @@ def test_series_returns_every_part_and_missing_values_as_null(client):
 def test_summary_without_reports_still_answers(client):
     r = client.get("/api/forecast/summary").json()
     assert r["series"] == 3 and r["classes"]["lumpy"] == 1 and r["stores"] == ["CA_1", "TX_2"]
+
+
+def test_win_and_loss_rank_by_money_not_by_tiny_items(tmp_path, monkeypatch):
+    # Regression: ranking by raw error difference put $5-a-year items at the top of "lost most".
+    n, H = 2, 8
+    f = tmp_path / "p.npz"
+    np.savez_compressed(
+        f, version=np.array("v"), gbm=np.array("g"), item=np.array(["TINY", "BIG"]), store=np.array(["CA_1", "CA_1"]),
+        dept=np.array(["F", "F"]), cls=np.array(["lumpy", "smooth"]), weeks=np.array(["2015-01-05"] * 60),
+        future_weeks=np.array(["2016-06-06"] * H), history=np.ones((n, 52), np.float32), actual=np.ones((n, H), np.float32),
+        price=np.ones((n, 60), np.float32), methods=np.array(["ses", "lgbm"]), test_fc=np.ones((n, 2, H), np.float32),
+        test_rmsse=np.array([[1.0, 3.0], [0.8, 0.9]], np.float32), test_lo=np.zeros((n, H), np.float32),
+        test_hi=np.ones((n, H), np.float32), future=np.ones((n, H), np.float32), future_lo=np.zeros((n, H), np.float32),
+        future_hi=np.ones((n, H), np.float32), dollars=np.array([5, 90000], np.float32))
+    monkeypatch.setattr(api, "_PUBLISHED", f)
+    api._forecasts.cache_clear()
+    assert TestClient(api.app).get("/api/forecast/find?sort=loss").json()[0]["item"] == "BIG"

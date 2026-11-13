@@ -184,7 +184,7 @@ def cmd_publish() -> int:
     PUBLISHED.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         PUBLISHED, version=np.array(VERSION), gbm=np.array(gbm.VERSION), item=full.item, store=full.store,
-        dept=full.dept, cls=cls, weeks=np.array([d.isoformat() for d in full.weeks[H0:]]),
+        dept=full.dept, cls=cls, cls_recent=metrics.demand_class(train[:, -52:]), weeks=np.array([d.isoformat() for d in full.weeks[H0:]]),
         future_weeks=np.array([d.isoformat() for d in future_weeks]),
         history=f32(full.units[:, H0:o]), actual=f32(actual), price=f32(full.price[:, H0:]),
         methods=np.array(list(test_fc)), test_fc=f32(np.stack([test_fc[k] for k in test_fc], axis=1)),

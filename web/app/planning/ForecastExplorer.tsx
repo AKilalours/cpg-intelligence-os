@@ -24,7 +24,8 @@ function Chart({ s, show }: { s: ForecastSeries; show: Set<string> }) {
   const vals = [...s.history, ...s.actual, ...s.test_hi, ...s.future_hi, ...Object.entries(s.test).filter(([k]) => show.has(k)).flatMap(([, v]) => v)]
     .filter((v): v is number => v !== null);
   const max = Math.max(1, ...vals) * 1.08;
-  const W = 760, Ht = 280, L = 40, R = 12, Tp = 16, B = 28;
+  // Text sized for the viewBox so it stays readable when the chart shrinks to a phone's width.
+  const W = 760, Ht = 330, L = 54, R = 14, Tp = 30, B = 40, FS = 20;
   const x = (i: number) => L + (i / (N - 1)) * (W - L - R);
   const y = (v: number) => Tp + (1 - v / max) * (Ht - Tp - B);
   // A path that breaks at missing weeks (an item not on the shelf) instead of drawing through them.
@@ -57,10 +58,10 @@ function Chart({ s, show }: { s: ForecastSeries; show: Set<string> }) {
            onMouseLeave={() => setHover(null)}
            onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect();
              const i = Math.round(((e.clientX - r.left) / r.width * W - L) / (W - L - R) * (N - 1)); setHover(Math.max(0, Math.min(N - 1, i))); }}>
-        {ticks.map((t) => <g key={t}><line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="#E4E1D8" /><text x={L - 6} y={y(t) + 4} fontSize="11" textAnchor="end" fill="#6C6C6C">{t}</text></g>)}
+        {ticks.map((t) => <g key={t}><line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="#E4E1D8" /><text x={L - 8} y={y(t) + 6} fontSize={FS} textAnchor="end" fill="#6C6C6C">{t}</text></g>)}
         <rect x={x(H) - 2} y={Tp} width={x(H + T - 1) - x(H) + 4} height={Ht - Tp - B} fill="#F4F2EC" />
-        <text x={x(H) + 4} y={Tp + 12} fontSize="11" fill="#6C6C6C">test weeks (scored once)</text>
-        <text x={x(H + T) + 4} y={Tp + 12} fontSize="11" fill="#6C6C6C">next 8 weeks</text>
+        <text x={x(H) + (x(H + T) - x(H)) / 2} y={Tp - 8} fontSize={FS} textAnchor="middle" fill="#6C6C6C">test</text>
+        <text x={x(H + T) + (x(N - 1) - x(H + T)) / 2} y={Tp - 8} fontSize={FS} textAnchor="middle" fill="#6C6C6C">next</text>
         <path d={band(s.test_lo, s.test_hi, H)} fill="#28543E" opacity="0.13" />
         <path d={band(s.future_lo, s.future_hi, H + T)} fill="#28543E" opacity="0.13" />
         <path d={line(s.history, 0)} fill="none" stroke="#1F2A24" strokeOpacity="0.45" strokeWidth="1.5" />
@@ -70,7 +71,7 @@ function Chart({ s, show }: { s: ForecastSeries; show: Set<string> }) {
           <path key={k} d={line(v, H)} fill="none" stroke={METHOD[k]?.color ?? "#999"} strokeWidth={k === "lgbm" ? 2.6 : 1.8} strokeDasharray={METHOD[k]?.dash} />
         ))}
         <path d={line([s.actual.at(-1) ?? s.history.at(-1) ?? 0, ...s.future], H + T - 1)} fill="none" stroke="#28543E" strokeWidth="2.6" strokeDasharray="6 4" />
-        {[0, 13, 26, 39, 52, 60].map((i) => i < N ? <text key={i} x={x(i)} y={Ht - 8} fontSize="11" textAnchor="middle" fill="#6C6C6C">{weekAt(i)?.slice(2, 7)}</text> : null)}
+        {[0, 26, 52].map((i) => i < N ? <text key={i} x={Math.max(x(i), L + 30)} y={Ht - 10} fontSize={FS} textAnchor="middle" fill="#6C6C6C">{weekAt(i)?.slice(0, 7)}</text> : null)}
         {hover !== null ? <line x1={x(hover)} x2={x(hover)} y1={Tp} y2={Ht - B} stroke="#1F2A24" strokeOpacity="0.3" /> : null}
       </svg>
       {hv ? (
@@ -148,7 +149,7 @@ export function ForecastExplorer({ summary, initialList, initial }: { summary: F
             <>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="text-xl font-bold">{s.item} at {s.store}</div>
-                <div className="text-sm text-muted">{CLASS[s.class] ?? s.class} demand · {money(s.dollars)} in the last year</div>
+                <div className="text-sm text-muted">{CLASS[s.class] ?? s.class} demand over the last year · {money(s.dollars)} sold</div>
               </div>
               <Chart s={s} show={show} />
               <div className="mt-4 grid gap-2">
@@ -157,8 +158,8 @@ export function ForecastExplorer({ summary, initialList, initial }: { summary: F
                   const worst = board.at(-1)![1] as number;
                   return (
                     <button key={k} onClick={() => { const n = new Set(show); n.has(k) ? n.delete(k) : n.add(k); setShow(n); }}
-                            aria-pressed={show.has(k)} className="grid grid-cols-[11rem_1fr_3.5rem] items-center gap-3 text-left text-sm">
-                      <span className={show.has(k) ? "font-bold" : "text-muted"}>
+                            aria-pressed={show.has(k)} className="grid grid-cols-[minmax(0,1fr)_5.5rem_3rem] items-center gap-3 text-left text-sm sm:grid-cols-[13rem_minmax(0,1fr)_3.5rem]">
+                      <span className={`truncate ${show.has(k) ? "font-bold" : "text-muted"}`}>
                         <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full" style={{ background: METHOD[k]?.color }} />{METHOD[k]?.label ?? k}</span>
                       <span className="h-2.5 rounded-full bg-paper"><span className="block h-full rounded-full" style={{ width: `${((v as number) / worst) * 100}%`, background: METHOD[k]?.color, opacity: show.has(k) ? 1 : 0.35 }} /></span>
                       <span className="text-right tabular-nums">{(v as number).toFixed(2)}</span>

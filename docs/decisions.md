@@ -1007,3 +1007,20 @@ intermittent 78.8, lumpy 78.3). The Planning page lets anyone search the
 lost, hover any week, and draw any method against the actuals. Future weeks use
 the M5 calendar where it reaches (19 June 2016); the price plan there is
 unknown and left empty, which the page says.
+
+## 106. What the page showed when looked at: class labels and the "lost most" list
+Seen in the browser at phone width: HOBBIES_1_354 at TX_3, which sells about
+150 units a week, was labelled "intermittent". It was first stocked about 60
+weeks into the data and then sold nothing for 34 stocked weeks before taking
+off, so a class computed over all training weeks calls it intermittent. 27% of
+series change class between all-weeks and last-52-weeks classification. The
+page now describes each series by its last year (what a planner means); the
+reported per-class results and the 80% ranges keep the all-weeks classes they
+were computed with, since the test cannot be scored again. Next version:
+trim weeks before an item's first sale (a known M5 practice), which also
+affects scales and intermittency.
+Also: "LightGBM lost most" ranked by raw error difference and filled with
+items selling $5 a year, where a large relative miss costs nothing. Wins and
+losses are now ranked by error difference times dollar sales, like the
+headline metric; a regression test fails on the old ordering. Phone layout:
+the scoreboard bars had collapsed and chart text was unreadable; both fixed.
