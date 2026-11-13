@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function DocumentsPage() {
   const [res, queue, gate] = await Promise.all([
     api<DatasetStatus[]>("/api/datasets"),
-    api<ReviewQueueItem[]>("/api/documents/queue?limit=500"),
+    api<ReviewQueueItem[]>("/api/documents/queue?limit=500&boxes=true"),
     api<RegressionGate>("/api/documents/regression"),
   ]);
   return (

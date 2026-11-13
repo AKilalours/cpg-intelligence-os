@@ -48,21 +48,38 @@ export function QueueBrowser({ items }: { items: ReviewQueueItem[] }) {
         ))}
       </div>
 
-      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
         {rows.map((q) => (
           <li key={q.source_document_id}>
             <Link href={`/documents/${q.source_document_id}`}
-                  className="group flex h-full flex-col rounded-xl border border-rule bg-sheet p-4 transition hover:-translate-y-0.5 hover:border-forest hover:shadow-[0_6px_20px_rgba(31,42,36,0.08)]">
-              <div className="flex items-baseline justify-between">
-                <span className="font-serif text-2xl font-light">#{q.source_document_id}</span>
-                <span className="rounded-md bg-tag px-2 py-0.5 text-sm font-bold">{q.open_fields}</span>
+                  className="group flex h-full flex-col overflow-hidden rounded-xl border border-rule bg-sheet transition hover:-translate-y-0.5 hover:border-forest hover:shadow-[0_6px_20px_rgba(31,42,36,0.08)]">
+              {/* The invoice itself, with every field boxed where it sits: red waits for you, green was accepted. */}
+              <div className="relative aspect-[3/4] w-full overflow-hidden bg-paper">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/documents/${q.source_document_id}/image`} alt={`Invoice ${q.source_document_id}`} loading="lazy"
+                     className="absolute inset-0 h-full w-full object-fill opacity-90 transition group-hover:opacity-100" />
+                {(q.boxes ?? []).map((b) => {
+                  const hot = b.status === "review", picked = field !== null && b.field === field;
+                  return (
+                    <span key={b.field} title={label(b.field)}
+                          className={`absolute rounded-[2px] ${hot ? "border-2 border-[#B3402F] bg-[#B3402F]/15" : "border border-[#609D7B]/70"} ${picked ? "ring-4 ring-[#B8D63A]" : ""} ${hot ? "animate-pulse" : ""}`}
+                          style={{ left: `${b.bbox[0] * 100}%`, top: `${b.bbox[1] * 100}%`,
+                                   width: `${Math.max(1.5, (b.bbox[2] - b.bbox[0]) * 100)}%`, height: `${Math.max(1.2, (b.bbox[3] - b.bbox[1]) * 100)}%` }} />
+                  );
+                })}
+                <span className="absolute right-2 top-2 rounded-full bg-[#B3402F] px-2.5 py-0.5 text-sm font-bold text-white shadow">{q.open_fields}</span>
               </div>
-              <div className="mt-3 flex flex-wrap gap-1">
-                {q.review_fields.map((f) => (
-                  <span key={f} className={"rounded-md px-2 py-0.5 text-xs " + (f === field ? "bg-forest text-paper" : "bg-paper")}>{label(f)}</span>
-                ))}
+              <div className="p-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="font-serif text-xl font-light">#{q.source_document_id}</span>
+                  <span className="text-xs text-muted">{q.accepted_fields} accepted</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {q.review_fields.map((f) => (
+                    <span key={f} className={"rounded-md px-2 py-0.5 text-xs " + (f === field ? "bg-forest text-paper" : "bg-paper")}>{label(f)}</span>
+                  ))}
+                </div>
               </div>
-              <span className="mt-3 text-xs text-muted group-hover:text-forest">{q.accepted_fields} already accepted</span>
             </Link>
           </li>
         ))}

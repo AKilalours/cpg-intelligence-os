@@ -372,9 +372,29 @@ def documents_regression(conn: psycopg.Connection = Depends(get_conn)):
     return out
 
 
+def _boxes(view: dict) -> list[dict]:
+    """Where each field sits on the page (fractions of width and height), and whether it waits for a person:
+    the decision's box, else the first reader that located the field, as the workbench draws it."""
+    out = []
+    for f in view["fields"]:
+        box = f.get("bbox") or next((r["bbox"] for r in view["readings"] if r["field"] == f["field"] and r.get("bbox")), None)
+        if box:
+            waiting = f["status"] == "review" and not f.get("review")
+            out.append({"field": f["field"], "status": "review" if waiting else "accepted" if f["status"] == "accepted" else "done",
+                        "bbox": [round(float(v), 4) for v in box]})
+    return out
+
+
 @app.get("/api/documents/queue")
-def document_queue(limit: int = Query(50, ge=1, le=500), conn: psycopg.Connection = Depends(get_conn)):
-    return review.queue(conn, limit)
+def document_queue(limit: int = Query(50, ge=1, le=500), boxes: bool = Query(False),
+                   conn: psycopg.Connection = Depends(get_conn)):
+    """With boxes=true each invoice also carries its field boxes, so the queue can show where the work is."""
+    items = review.queue(conn, limit)
+    if boxes:
+        for it in items:
+            v = review.document_view(conn, it["source_document_id"])
+            it["boxes"] = _boxes(v) if v else []
+    return items
 
 
 @app.get("/api/documents/{document_id}")

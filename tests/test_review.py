@@ -132,3 +132,21 @@ def test_document_view_lists_each_readers_value_and_box(conn, doc):
     r = {(x["reader"], x["field"]): x for x in review.document_view(conn, doc)["readings"]}
     assert set(r) == {("rules", "total"), ("local_model", "total"), ("claude", "total")}
     assert r[("claude", "total")]["value"] == "743.33" and r[("rules", "total")]["bbox"] == [0.1, 0.2, 0.3, 0.25]
+
+
+def test_queue_boxes_say_where_the_work_is():
+    view = {"fields": [{"field": "total", "status": "accepted", "bbox": [0.1, 0.2, 0.3, 0.25], "review": None},
+                       {"field": "tax", "status": "review", "bbox": None, "review": None},
+                       {"field": "due", "status": "review", "bbox": None, "review": {"action": "approve"}},
+                       {"field": "lost", "status": "review", "bbox": None, "review": None}],
+            "readings": [{"reader": "rules", "field": "tax", "bbox": [0.5, 0.6, 0.7, 0.65]},
+                         {"reader": "rules", "field": "due", "bbox": [0.5, 0.7, 0.7, 0.75]}]}
+    got = {b["field"]: (b["status"], b["bbox"]) for b in api._boxes(view)}
+    assert got == {"total": ("accepted", [0.1, 0.2, 0.3, 0.25]), "tax": ("review", [0.5, 0.6, 0.7, 0.65]),
+                   "due": ("done", [0.5, 0.7, 0.7, 0.75])}                 # a field with no box anywhere is left out
+
+
+def test_queue_api_adds_boxes_on_request(client, doc):
+    plain = client.get("/api/documents/queue").json()
+    assert "boxes" not in plain[0]
+    assert client.get("/api/documents/queue?boxes=true").json()[0]["boxes"] == []

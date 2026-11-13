@@ -204,6 +204,7 @@ export interface ReviewQueueItem {
   open_fields: number;
   accepted_fields: number;
   review_fields: string[];
+  boxes?: { field: string; status: "review" | "accepted" | "done"; bbox: number[] }[];
 }
 
 export interface FieldReview {

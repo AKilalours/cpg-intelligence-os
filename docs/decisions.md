@@ -1099,3 +1099,13 @@ the faulty lane earned autonomy and lost it, and "Roll again" for another draw.
 At a 20% fault and a 1-in-5 spot check it showed 65 wrong postings without the
 gate against 1 with it. The drift strip now counts alarms (runs of alarming
 weeks), not weeks.
+
+## 113. The document queue shows the invoices, with the work boxed on them
+/api/documents/queue?boxes=true adds each invoice's field boxes (as fractions
+of the page: the decision's box, else the first reader that located the field,
+exactly as the workbench draws it), marked "review" if it waits for a person,
+"accepted", or "done" once reviewed (tested, including a field no reader
+located, which is left out). The queue is now a grid of invoice thumbnails:
+fields waiting for a person pulse in red, accepted ones are outlined in green,
+and choosing a field filter rings that field in lime on every invoice, so a
+reviewer sees where on the page the work is before opening one.
