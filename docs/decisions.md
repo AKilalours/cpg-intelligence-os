@@ -1124,3 +1124,16 @@ annotations matched no pattern, and the test has failed with a syntax error
 since. It is replaced by lib/format.test.ts, which imports the real file
 (Node 22 runs TypeScript directly) and adds exact-cents tests; CI runs
 npm test. The production build was checked on the clean checkout and passes.
+
+## 115. CI, second pass: a per-Python SciPy, and a real vulnerability
+Decision 114's SciPy 1.15.3 needs numpy below 2.5, but the lock pins numpy
+2.5.4 on Python 3.12, so the 3.12 job could not install and the security audit
+(which resolves the lock as 3.12) stopped before auditing. It was verified only
+on Python 3.13 with a different numpy: the check did not match the job. SciPy
+now follows numpy's pattern, one pin per Python: 1.15.3 for 3.10, 1.16.3 for
+3.11 and newer (accepts numpy 2.4 and 2.5). With the lock resolvable, the audit
+ran and found CVE-2026-126360 in opentelemetry-api 1.45.1 (a FastAPI
+dependency); it is now 1.45.2, a patch release nothing pins exactly. Verified
+on a clean checkout: pip-audit finds no known vulnerabilities, npm audit finds
+none, and with the lock installed (SciPy 1.16.3, numpy 2.5.4) the suite passes,
+558 tests, 1 skipped.
