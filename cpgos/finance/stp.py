@@ -298,3 +298,24 @@ def items_from(matches, truth: dict[int, int], version: str) -> list[Item]:
         out.append(Item(m.remittance_line_id, m.payment_date, lane, m.invoice_id == truth[m.remittance_line_id],
                         Decimal(m.amount), version))
     return out
+
+
+def replay(items: list[Item], fault_rate: float, audit_rate: float, seed: int = 1, at: float = 0.6) -> dict:
+    """One roll for the Today replay: week by week, wrong postings with and without the gate, and when the
+    faulty lane earned trust or was stopped. A simulation on the design world; the answer key reviews."""
+    lane = busiest_lane(items)
+    start = fault_start(items, at)
+    f = inject_fault(items, lane, start, fault_rate, seed=seed) if fault_rate > 0 else items
+    g = simulate(f, Budget(audit_rate=audit_rate), salt=f"replay{seed}")
+    ungated, w = [], 0
+    by_day: dict = {}
+    for it in f:
+        by_day[it.day] = by_day.get(it.day, 0) + (not it.correct)
+    for d in sorted(by_day):
+        w += by_day[d]
+        ungated.append(w)
+    key = f"{lane}@{items[0].version}"
+    return {"lane": lane, "fault_from": str(start), "days": [p["day"] for p in g["timeline"]],
+            "gate": [p["wrong_posted"] for p in g["timeline"]], "no_gate": ungated,
+            "opened": g["opened"].get(key), "closed": g["closed_after_opening"].get(key),
+            "to_a_person": g["sent_to_a_person"], "lines": len(f), "caught": g["wrong_caught_in_review"]}

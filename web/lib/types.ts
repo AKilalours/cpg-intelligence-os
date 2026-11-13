@@ -290,7 +290,7 @@ export interface DriftAlarm {
 export interface DriftStatus {
   open: DriftAlarm[]; holds_cash: boolean;
   evaluation: null | { report_id: number; kind: string;
-    false_alarms: Record<string, { weeks_checked: number; weeks_with_an_alarm: number }> | null;
+    false_alarms: Record<string, { weeks_checked: number; weeks_with_an_alarm: number; episodes?: number; years_checked?: number }> | null;
     detection: Record<string, { stream: string; rolls: number; detected: number; days_to_alarm: { median: number | null } }> };
 }
 
@@ -332,3 +332,6 @@ export interface CasePicture {
   promotions: { promotion_id: number; store: number; start: string; end: string; allowance: string; this_store: boolean }[];
   prices: { week: string; price: number }[]; drops: string[]; pos: { week: string; units: number | null }[];
 }
+
+export interface StpReplay { lane: string; fault_from: string; days: string[]; gate: number[]; no_gate: number[];
+  opened: string | null; closed: string | null; to_a_person: number; lines: number; caught: number }

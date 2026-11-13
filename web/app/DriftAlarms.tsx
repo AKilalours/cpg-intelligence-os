@@ -52,7 +52,9 @@ export function DriftAlarms({ s }: { s: DriftStatus }) {
   const ev = s.evaluation;
   const det = ev ? Object.values(ev.detection) : [];
   const fa = ev?.false_alarms ? Object.values(ev.false_alarms) : [];
-  const weeks = fa.reduce((t, f) => t + f.weeks_checked, 0), falseWeeks = fa.reduce((t, f) => t + f.weeks_with_an_alarm, 0);
+  // Count alarms as production sees them (a run of alarming weeks is one alarm until cleared), when known.
+  const weeks = fa.reduce((t, f) => t + f.weeks_checked, 0);
+  const falseAlarms = fa.reduce((t, f) => t + (f.episodes ?? f.weeks_with_an_alarm), 0);
   return (
     <div className="space-y-3">
       {s.open.length === 0 ? (
@@ -65,7 +67,7 @@ export function DriftAlarms({ s }: { s: DriftStatus }) {
       {det.length ? (
         <p className="text-sm text-muted">
           In testing ({ev!.kind === "drift_fresh" ? "unseen worlds" : "the main world"}): {det.filter((d) => d.detected === d.rolls).length} of {det.length} kinds
-          of change caught every time, {falseWeeks} false alarms in {weeks} healthy weeks.
+          of change caught every time, {falseAlarms} false alarm{falseAlarms === 1 ? "" : "s"} in {weeks.toLocaleString()} healthy weeks.
         </p>
       ) : null}
     </div>

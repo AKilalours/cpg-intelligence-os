@@ -1089,3 +1089,13 @@ rejects it, shorter springs back; it tilts and a POST IT or WRONG stamp fades in
 as it moves. The next two cards peek out behind. A drag is the same attributed
 decision as the buttons. The alignment has its own tests (npm test, Node's
 built-in runner, no new dependency).
+
+## 112. A playable gate on Today
+/api/stp/replay runs one roll of the error budget on the design world (the
+answer key plays the reviewer; labelled a simulation on the page) for a chosen
+hidden-fault size and spot-check rate. Today plays it: wrong postings without
+and with the gate climb week by week, with "trusted" and "stopped" markers where
+the faulty lane earned autonomy and lost it, and "Roll again" for another draw.
+At a 20% fault and a 1-in-5 spot check it showed 65 wrong postings without the
+gate against 1 with it. The drift strip now counts alarms (runs of alarming
+weeks), not weeks.

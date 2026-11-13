@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { count, when } from "@/lib/format";
 import type { DriftStatus, EvaluationReport, MoneyFlow as Flow, Overview, ProofCard, ReviewQueueItem, StpStatus } from "@/lib/types";
 import { ProofWall } from "./ProofWall";
+import { GateReplay } from "./GateReplay";
 import { DriftAlarms } from "./DriftAlarms";
 import { Autonomy, type Fresh } from "./Autonomy";
 import { MoneyFlow } from "./MoneyFlow";
@@ -57,6 +58,7 @@ export default async function TodayPage() {
         <section className="mt-12" aria-label="Earned autonomy">
           <h2 className="mb-4 text-3xl">Posting on its own, only where it has earned it</h2>
           {drift.ok ? <div className="mb-3"><DriftAlarms s={drift.data} /></div> : null}
+          <div className="mb-3"><GateReplay /></div>
           <Autonomy lanes={gate.data.lanes}
                     fresh={sim.ok && sim.data ? (sim.data.body as unknown as Fresh) : null} />
         </section>

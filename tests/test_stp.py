@@ -305,3 +305,13 @@ def test_frontier_command_records_the_rule_and_the_choice(world, monkeypatch, ca
     assert body["chosen_audit_rate"] in stp.AUDIT_RATES and body["rule"].startswith("the smallest audit rate")
     assert set(body["frontier"]) == {str(r) for r in stp.AUDIT_RATES}
     assert "chosen audit rate" in capsys.readouterr().out
+
+
+def test_replay_puts_the_gate_against_no_gate_week_by_week():
+    items = _history(3000)
+    r = stp.replay(items, fault_rate=0.2, audit_rate=0.2, seed=3)
+    assert len(r["days"]) == len(r["gate"]) == len(r["no_gate"])
+    assert r["no_gate"][-1] > r["gate"][-1] and r["opened"] and r["closed"]
+    assert all(b >= a for a, b in zip(r["gate"], r["gate"][1:]))          # cumulative
+    clean = stp.replay(items, fault_rate=0.0, audit_rate=0.2)
+    assert clean["no_gate"][-1] == clean["gate"][-1] == 0

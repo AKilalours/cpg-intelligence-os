@@ -801,3 +801,23 @@ def case_picture(case_id: int, conn: psycopg.Connection = Depends(get_conn)):
     if d is None:
         raise HTTPException(404, f"no case {case_id}")
     return d
+
+
+@_lru(maxsize=1)
+def _stp_items(_key: str):
+    """The design world's would-be automatic postings with the answer key, loaded once per process."""
+    from cpgos.finance import cashapp as _ca
+    with psycopg.connect(config.get("CPGOS_DATABASE_URL")) as c:
+        c.execute("SET TRANSACTION READ ONLY")
+        truth = dict(c.execute("SELECT remittance_line_id, invoice_id FROM eval.gt_remittance_alloc").fetchall())
+        return stp_mod.items_from(_ca.match_all(c, "full", replay=True), truth, CASH_ENGINE)
+
+
+@app.get("/api/stp/replay")
+def stp_replay(fault: float = Query(0.2, ge=0, le=0.5), audit: float = Query(0.2, ge=0.01, le=1),
+               seed: int = Query(1, ge=0, le=999)) -> dict:
+    """A simulation on the design world (the answer key plays the reviewer), for the Today replay."""
+    items = _stp_items(config.get("CPGOS_DATABASE_URL") or "")
+    if not items:
+        raise HTTPException(404, "no cash lines to replay: build the world first")
+    return stp_mod.replay(items, fault, audit, seed)
