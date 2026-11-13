@@ -1078,3 +1078,14 @@ and a dispute-deadline ring. Hover any week for its numbers. Seen in the
 browser: the strip's text was unreadable at phone width and a one-week claim
 cut its own label; text is sized for the view box and short-period labels sit
 beside the band.
+
+## 111. The match deck: drag to decide, references as letter tiles
+Each suggested match shows the remittance reference and the invoice number as
+aligned letter tiles (an edit-distance alignment that also recognises an
+adjacent swap): matching characters plain, a mistyped, dropped or swapped one
+lit, so "one keystroke away" is seen rather than read. Paid and invoiced amounts
+are two bars. The card can be dragged: past 140 px right posts the match, left
+rejects it, shorter springs back; it tilts and a POST IT or WRONG stamp fades in
+as it moves. The next two cards peek out behind. A drag is the same attributed
+decision as the buttons. The alignment has its own tests (npm test, Node's
+built-in runner, no new dependency).

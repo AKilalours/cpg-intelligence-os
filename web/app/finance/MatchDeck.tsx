@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { align } from "@/lib/align";
 import { fromCents, money, toCents } from "@/lib/format";
 import type { CashAppItem } from "@/lib/types";
 import { useReviewer } from "@/components/useReviewer";
@@ -29,6 +30,48 @@ function chips(e: Record<string, unknown> | null): string[] {
   return Object.entries(e).filter(([k]) => k in name).map(([k, v]) => `${name[k]}: ${String(v)}`);
 }
 
+const OP: Record<string, string> = { same: "bg-paper text-ink", change: "bg-[#B3402F] text-white", insert: "bg-[#B8D63A] text-ink",
+  delete: "bg-[#B3402F] text-white", swap: "bg-[#B8D63A] text-ink" };
+
+// The two references as letter tiles, aligned: matching characters plain, the mistyped, dropped or swapped
+// ones lit. "One keystroke away" becomes something you see, not a sentence.
+function RefTiles({ paid, invoice }: { paid: string | null; invoice: string | null }) {
+  if (!paid || !invoice) {
+    return <p className="text-sm"><span className="rounded bg-[#B3402F] px-2 py-0.5 font-bold text-white">no reference</span> matched on amount alone</p>;
+  }
+  const cells = align(paid.toUpperCase(), invoice.toUpperCase());
+  const diff = cells.filter((c) => c.op !== "same").length;
+  const row = (side: "a" | "b") => (
+    <div className="flex flex-wrap gap-0.5">
+      {cells.map((c, k) => (
+        <span key={k} className={`grid h-8 w-6 place-items-center rounded font-mono text-base font-bold ${c[side] === null ? "border border-dashed border-[#B3402F] bg-transparent" : OP[c.op]}`}>
+          {c[side] ?? ""}</span>))}
+    </div>
+  );
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2"><span className="w-20 text-xs text-muted">remittance</span>{row("a")}</div>
+      <div className="flex items-center gap-2"><span className="w-20 text-xs text-muted">invoice</span>{row("b")}</div>
+      <div className="pl-[5.5rem] text-xs font-bold" style={{ color: diff ? "#B3402F" : "#28543E" }}>
+        {diff === 0 ? "identical" : `${diff} character${diff > 1 ? "s" : ""} differ`}</div>
+    </div>
+  );
+}
+
+function AmountBars({ paid, billed }: { paid: number; billed: number | null }) {
+  const max = Math.max(paid, billed ?? 0) || 1;
+  return (
+    <div className="space-y-1.5">
+      {[["paid", paid, "#28543E"], ["invoiced", billed, "#9A9A9A"]].map(([label, v, color]) => (
+        <div key={label as string} className="grid grid-cols-[4.5rem_1fr] items-center gap-2 text-xs">
+          <span className="text-muted">{label}</span>
+          <div className="h-4 rounded-full bg-paper">{v === null ? null : <div className="h-full rounded-full" style={{ width: `${((v as number) / max) * 100}%`, background: color as string, transition: "width 500ms" }} />}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function MatchDeck({ items, total }: { items: CashAppItem[]; total: number }) {
   const [reviewer, setReviewer] = useReviewer();
   const [i, setI] = useState(0);
@@ -36,6 +79,8 @@ export function MatchDeck({ items, total }: { items: CashAppItem[]; total: numbe
   const [leaving, setLeaving] = useState<"l" | "r" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [dx, setDx] = useState(0);
+  const drag = useRef<{ x: number; id: number } | null>(null);
   const queue = items.filter((x) => !done.some((d) => d.id === x.remittance_line_id));
   const card = queue[i % Math.max(queue.length, 1)];
 
@@ -74,6 +119,13 @@ export function MatchDeck({ items, total }: { items: CashAppItem[]; total: numbe
       </div>
     );
   }
+  // Drag the card: right approves, left rejects, past 140 px; anything shorter springs back. The same decision
+  // as the buttons, attributed to the reviewer named above.
+  const down = (e: React.PointerEvent) => { if ((e.target as HTMLElement).closest("button, input")) return;
+    drag.current = { x: e.clientX, id: e.pointerId }; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); };
+  const move = (e: React.PointerEvent) => { if (drag.current) setDx(e.clientX - drag.current.x); };
+  const up = () => { if (!drag.current) return; const d = dx; drag.current = null; setDx(0);
+    if (d > 140) act("approve"); else if (d < -140) act("reject"); };
   const paid = toCents(card.amount), billed = toCents(card.invoice_amount ?? null);
   const gap = card.invoice_amount ? paid - billed : 0n;
   const conf = card.confidence === null ? 0 : Number(card.confidence);
@@ -95,9 +147,20 @@ export function MatchDeck({ items, total }: { items: CashAppItem[]; total: numbe
         </label>
       </div>
 
-      <div key={card.remittance_line_id}
-           className={`rounded-2xl border border-rule bg-sheet p-6 shadow-[0_1px_0_#E4E1D8] transition duration-300 ${
+      <div className="relative">
+      {queue.slice(i % queue.length + 1, i % queue.length + 3).map((x, n) => (
+        <div key={x.remittance_line_id} aria-hidden className="absolute inset-x-0 top-0 h-full rounded-2xl border border-rule bg-sheet"
+             style={{ transform: `translateY(${(n + 1) * 10}px) scale(${1 - (n + 1) * 0.03})`, zIndex: -1 - n, opacity: 0.7 - n * 0.25 }} />
+      ))}
+      <div key={card.remittance_line_id} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+           style={dx ? { transform: `translateX(${dx}px) rotate(${dx / 25}deg)`, transition: "none",
+                         boxShadow: `0 0 0 ${Math.min(6, Math.abs(dx) / 30)}px ${dx > 0 ? "#609D7B" : "#B3402F"}` } : undefined}
+           className={`relative touch-pan-y select-none rounded-2xl border border-rule bg-sheet p-6 shadow-[0_1px_0_#E4E1D8] transition duration-300 ${dx ? "cursor-grabbing" : "cursor-grab"} ${
              leaving === "r" ? "translate-x-24 rotate-2 opacity-0" : leaving === "l" ? "-translate-x-24 -rotate-2 opacity-0" : "animate-rise"}`}>
+        {Math.abs(dx) > 30 ? (
+          <div className={`pointer-events-none absolute top-6 ${dx > 0 ? "left-6" : "right-6"} -rotate-6 rounded-xl border-4 px-3 py-1 text-xl font-black tracking-widest`}
+               style={{ color: dx > 0 ? "#28543E" : "#B3402F", borderColor: dx > 0 ? "#28543E" : "#B3402F", opacity: Math.min(1, Math.abs(dx) / 140) }}>
+            {dx > 0 ? "POST IT" : "WRONG"}</div>) : null}
         <div className="grid items-center gap-6 md:grid-cols-[1fr_auto_1fr]">
           <div>
             <p className="text-sm text-muted">Payment {card.payment_reference} · {card.payment_date}</p>
@@ -118,6 +181,10 @@ export function MatchDeck({ items, total }: { items: CashAppItem[]; total: numbe
             </p>
           </div>
         </div>
+        <div className="mt-5 grid gap-5 md:grid-cols-2">
+          <RefTiles paid={card.raw_invoice_ref} invoice={card.suggested_invoice} />
+          <AmountBars paid={Number(card.amount)} billed={card.invoice_amount ? Number(card.invoice_amount) : null} />
+        </div>
         <div className="mt-5 flex flex-wrap gap-2">
           {chips(card.explanation).map((c) => (
             <span key={c} className="rounded-full border border-rule bg-paper px-3 py-1 text-sm">{c}</span>
@@ -136,6 +203,8 @@ export function MatchDeck({ items, total }: { items: CashAppItem[]; total: numbe
           {err ? <span role="alert" className="text-sm font-semibold text-debit">{err}</span> : null}
           {done.length ? <span className="ml-auto text-sm text-muted">{approved} approved · {done.length - approved} rejected</span> : null}
         </div>
+        <p className="mt-3 text-xs text-muted">Drag the card: right to post, left for wrong invoice.</p>
+      </div>
       </div>
     </div>
   );
