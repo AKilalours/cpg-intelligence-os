@@ -1109,3 +1109,18 @@ located, which is left out). The queue is now a grid of invoice thumbnails:
 fields waiting for a person pulse in red, accepted ones are outlined in green,
 and choosing a field filter rings that field in lime on every invoice, so a
 reviewer sees where on the page the work is before opening one.
+
+## 114. CI was red; two causes, both fixed at the root
+Reproduced on a clean checkout (no local data, Postgres 16) rather than read
+from logs. (1) Backend, all three jobs: the forecasting tests train a small
+LightGBM, but LightGBM was only in the optional "forecast" extra, not in
+requirements.lock (what CI installs) nor the "dev" extra (what the
+latest-dependencies job installs). It is now in both, pinned to 4.6.0, the
+release that fixes CVE-2024-43598, with SciPy 1.15.3 (works on Python 3.10
+to 3.13). (2) Web: lib/format.test.mjs tested format.ts by stripping its
+TypeScript annotations with search-and-replace patterns and running the
+result; when toCents and fromCents were added (commit e9d265d) their
+annotations matched no pattern, and the test has failed with a syntax error
+since. It is replaced by lib/format.test.ts, which imports the real file
+(Node 22 runs TypeScript directly) and adds exact-cents tests; CI runs
+npm test. The production build was checked on the clean checkout and passes.

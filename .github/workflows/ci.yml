@@ -90,6 +90,6 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - run: node lib/format.test.mjs
+      - run: npm test            # node --test on lib/*.test.ts (the real TypeScript, no rewriting)
       - run: npm run typecheck
       - run: npm run build

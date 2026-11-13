@@ -40,6 +40,8 @@ idna==3.20
     #   httpx
 iniconfig==2.3.1
     # via pytest
+lightgbm==4.6.0
+    # via cpgos (forecast; 4.6.0 fixes CVE-2024-43598)
 numpy==2.2.6 ; python_full_version < '3.11'
     # via cpgos (pyproject.toml)
 numpy==2.4.6 ; python_full_version == '3.11.*'
@@ -72,6 +74,8 @@ pytest==9.2.0
     # via cpgos (pyproject.toml)
 pyyaml==6.0.3
     # via cpgos (pyproject.toml)
+scipy==1.15.3
+    # via lightgbm
 starlette==1.7.0 ; python_full_version < '3.11'
     # via fastapi
 starlette==1.10.0 ; python_full_version >= '3.11'
