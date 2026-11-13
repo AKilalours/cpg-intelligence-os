@@ -129,3 +129,24 @@ def test_a_draft_from_an_older_prompt_is_never_shown(investigated, monkeypatch):
     monkeypatch.setattr(letter, "PROMPT_VERSION", "letter-prompt-9.9.9")
     q = [r for r in cases.queue(investigated) if r["agent_action"] in ("dispute", "request")]
     assert {cases.detail(investigated, r["case_id"])["letter"]["source"] for r in q} == {"template"}
+
+
+def test_a_case_picture_shows_what_the_agent_saw_on_a_time_line(investigated):
+    from cpgos.agent.picture import picture
+    scan = next(r for r in cases.queue(investigated) if r["code"] == "WP")
+    p = picture(investigated, scan["case_id"])
+    assert p["claim"]["claim_number"] == scan["claim_number"]
+    assert isinstance(p["money"]["claimed"], str) and p["engine"]["verdict"]
+    assert p["window"][0] < p["claim"]["period_start"] <= p["claim"]["period_end"] < p["window"][1]
+    assert p["prices"] and all(isinstance(x["price"], float) for x in p["prices"])
+    assert set(p["drops"]) <= {x["week"] for x in p["prices"]}
+    # Read with the agent's role: the true sales under the damage are not readable from inside picture().
+    assert picture(investigated, 10**9) is None
+
+
+def test_case_picture_api(db_url, investigated, monkeypatch):
+    monkeypatch.setenv("CPGOS_DATABASE_URL", db_url)
+    c = TestClient(api.app)
+    cid = _first(investigated, "dispute")["case_id"]
+    assert c.get(f"/api/cases/{cid}/picture").json()["case_id"] == cid
+    assert c.get("/api/cases/999999/picture").status_code == 404

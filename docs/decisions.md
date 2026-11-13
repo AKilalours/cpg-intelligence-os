@@ -1058,3 +1058,23 @@ chosen depth that paid back, and a one-item simulator over the next 8 weeks
 Found in the browser: at exactly break-even the bars showed red while profit
 change showed $0, because 0.2 / (0.3 - 0.2) is 2.0000000000000004 in floating
 point; verdicts now compare with a tolerance.
+
+## 109. Today's proof wall: every scored result as a card, read from stored reports
+/api/proof builds one card per scored result from eval.report rows and the
+reports/ files (invoice fields, payment matching, the agent against the rules,
+deduction reasons, the error budget, drift, forecast error, the 80% range,
+promotion lift); a missing report hides its card, never a typed number
+(tested). Rings, a dot field (24 red dots for the rules against 1 for the
+agent), head-to-head bars that say "76% fewer wrong postings"; tap to flip to
+the method. The promotion card shows the honest negative in red.
+
+## 110. A case as a picture, drawn from what the agent could see
+/api/cases/{id}/picture reads with the agent's own role and tools, so the
+picture shows exactly the evidence the agent judged: the claimed period, the
+promotions on file (this store in green, others grey), the weekly shelf price
+with promo-priced weeks marked, the retailer's sales as provided (a missing
+week is a red "?"), the money split into backed and not backed, a verdict stamp
+and a dispute-deadline ring. Hover any week for its numbers. Seen in the
+browser: the strip's text was unreadable at phone width and a one-week claim
+cut its own label; text is sized for the view box and short-period labels sit
+beside the band.

@@ -322,3 +322,13 @@ export interface ProofCard {
     | { type: "dots"; left: number; left_label: string; right: number; right_label: string; p: number }
     | { type: "versus"; left: number; left_label: string; right: number; right_label: string; lower_better?: boolean; honest_no?: boolean; unit?: string };
 }
+
+export interface CasePicture {
+  case_id: number; window?: [string, string];
+  claim: { claim_number: string; amount: string; deduction_date: string; dispute_deadline: string; period_start: string | null;
+           period_end: string | null; claimed_units: string | null; raw_reason: string; code: string; store_id: number | null };
+  money: { claimed: string; supported: string | null; recoverable: string | null };
+  engine: { verdict: string; rule: string };
+  promotions: { promotion_id: number; store: number; start: string; end: string; allowance: string; this_store: boolean }[];
+  prices: { week: string; price: number }[]; drops: string[]; pos: { week: string; units: number | null }[];
+}

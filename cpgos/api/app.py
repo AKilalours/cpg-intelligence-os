@@ -789,3 +789,15 @@ def proof_cards(conn) -> list[dict]:
 @app.get("/api/proof")
 def proof(conn: psycopg.Connection = Depends(get_conn)) -> list[dict]:
     return proof_cards(conn)
+
+
+from cpgos.agent.picture import picture as _case_picture  # noqa: E402
+
+
+@app.get("/api/cases/{case_id}/picture")
+def case_picture(case_id: int, conn: psycopg.Connection = Depends(get_conn)):
+    """The case's evidence on a time line, read with the agent's own role (what it saw, nothing more)."""
+    d = _case_picture(conn, case_id)
+    if d is None:
+        raise HTTPException(404, f"no case {case_id}")
+    return d
