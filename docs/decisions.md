@@ -1137,3 +1137,20 @@ dependency); it is now 1.45.2, a patch release nothing pins exactly. Verified
 on a clean checkout: pip-audit finds no known vulnerabilities, npm audit finds
 none, and with the lock installed (SciPy 1.16.3, numpy 2.5.4) the suite passes,
 558 tests, 1 skipped.
+
+## 115. Lost-sales detection on real M5 sales: the rule before the score
+Founding Staff posting project 4 ("detecting anomalies in sales data"), and the
+signals decision 101 moved out of the drift monitor. A stocked week (it has a
+shelf price) is scored by how surprising its sales are given its last 8
+stocked weeks: a zero-sales rule, a Poisson tail, and a negative-binomial tail
+fitted per series to its last 52 weeks. Each threshold flags 1% of ordinary
+development weeks; the detector catching the most planted stock-outs (full:
+zero for 1 to 3 weeks; partial: 30% of sales) ships, ties to the simpler one.
+Development (24 weeks before the test, test weeks cut off): negative binomial
+24.4% of planted weeks, 52.4% of dollars at stake (66% for items selling 10+
+a week, 0% for 1 to 3 a week, where a zero week is ordinary); zero rule 19.7%;
+Poisson 14.0%, whose overconfidence about fast sellers forces its threshold
+too high. Chosen: negative binomial. Real M5 already contains real stock-outs,
+so "1% of real weeks flagged" includes true ones; it is an upper bound on
+false flags. Weekly totals hide stock-outs shorter than a week; daily data is
+the next step.
