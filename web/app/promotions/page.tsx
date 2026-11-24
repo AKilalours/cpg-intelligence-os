@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { Notice, PageHeader } from "@/components/ui";
+import { failureNotice } from "@/lib/result";
 import type { ForecastBrief, ForecastSeries, PromoEvidence } from "@/lib/types";
 import { PromoPlanner } from "./PromoPlanner";
 
@@ -14,7 +15,8 @@ export default async function PromotionsPage() {
   return (
     <>
       <PageHeader title="Promotions" purpose="Will a price cut pay back? The arithmetic, and what 23,080 real cuts did." />
-      {!ev.ok ? <Notice kind="empty" title="No promotion evidence yet">Run make promo-publish, then refresh.</Notice> :
+      {!ev.ok ? (() => { const n = failureNotice(ev, "No promotion evidence yet", "Run make promo-publish, then refresh.");
+        return <Notice kind={n.kind} title={n.title}>{n.body}</Notice>; })() :
         <PromoPlanner initial={ev.data} items={items.ok ? items.data : []} series={first && first.ok ? first.data : null} />}
     </>
   );

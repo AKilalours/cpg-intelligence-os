@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { count, quantity } from "@/lib/format";
 import type { SalesSeries, SeriesKey } from "@/lib/types";
 import { Notice, PageHeader, Section } from "@/components/ui";
+import { failureNotice } from "@/lib/result";
 import { SeriesExplorer } from "./SeriesExplorer";
 import { ForecastExplorer } from "./ForecastExplorer";
 import type { ForecastBrief, ForecastSeries, ForecastSummary } from "@/lib/types";
@@ -41,7 +42,8 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
           <ForecastExplorer summary={fsum.data} initialList={flist && flist.ok ? flist.data : []} initial={first && first.ok ? first.data : null} />
         </section>
       ) : (
-        <Notice kind="empty" title="No forecasts published yet">Run make forecast-publish, then refresh.</Notice>
+        (() => { const n = failureNotice(fsum, "No forecasts published yet", "Run make forecast-publish, then refresh.");
+          return <Notice kind={n.kind} title={n.title}>{n.body}</Notice>; })()
       )}
       {!keys.ok ? (
         <Notice kind="error" title="Sales data unavailable">{keys.error}</Notice>
