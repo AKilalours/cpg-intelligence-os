@@ -39,7 +39,7 @@ function Grid({ s, pick, onPick }: { s: LostSummary; pick: [number, number] | nu
   );
 }
 
-function ItemChart({ s, flags }: { s: ForecastSeries; flags: LostWeek[] }) {
+function ItemChart({ s, flags, mark }: { s: ForecastSeries; flags: LostWeek[]; mark?: string }) {
   const weeks = [...s.weeks];
   const sold = [...s.history, ...s.actual];
   const flagged = new Map(flags.map((f) => [f.week, f]));
@@ -54,6 +54,7 @@ function ItemChart({ s, flags }: { s: ForecastSeries; flags: LostWeek[] }) {
         const v = sold[i], f = flagged.get(wk), x = L + i * bw;
         return (
           <g key={wk}>
+            {wk === mark ? <rect x={x - 1} y={8} width={bw + 2} height={H - B - 6} fill="none" stroke={INK} strokeWidth="2" rx="3" /> : null}
             {f ? <rect x={x + 1} y={y(f.expected)} width={bw - 2} height={y(v ?? 0) - y(f.expected)} fill={RED} opacity="0.25" stroke={RED} strokeDasharray="3 2" /> : null}
             {v !== null && v !== undefined ? <rect x={x + 1} y={y(v)} width={bw - 2} height={y(0) - y(v)} fill={f ? RED : "#9A9A9A"} rx="1" /> : null}
             {f ? <title>{`${wk}: sold ${f.sold}, expected ${f.expected}, about $${f.lost.toFixed(0)} lost`}</title> : null}
@@ -69,10 +70,10 @@ function ItemChart({ s, flags }: { s: ForecastSeries; flags: LostWeek[] }) {
 export function LostSales({ s }: { s: LostSummary }) {
   const [pick, setPick] = useState<[number, number] | null>(null);
   const [rows, setRows] = useState<LostRow[]>([]);
-  const [item, setItem] = useState<{ s: ForecastSeries | null; flags: LostWeek[]; name: string } | null>(null);
+  const [item, setItem] = useState<{ s: ForecastSeries | null; flags: LostWeek[]; name: string; mark?: string } | null>(null);
   const [pending, start] = useTransition();
   const openCell = (r: number, c: number) => { setPick([r, c]); start(async () => setRows(await loadCell(s.stores[r], s.weeks[c]))); };
-  const openItem = (it: string, st: string) => start(async () => { const x = await loadItem(it, st); setItem({ ...x, name: `${it} at ${st}` }); });
+  const openItem = (it: string, st: string) => start(async () => { const x = await loadItem(it, st); setItem({ ...x, name: `${it} at ${st}`, mark: pick ? s.weeks[pick[1]] : undefined }); });
   const deptMax = Math.max(...Object.values(s.by_dept));
   const t = s.test;
   return (
@@ -99,24 +100,25 @@ export function LostSales({ s }: { s: LostSummary }) {
 
       <div className={`grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)] ${pending ? "opacity-60" : ""}`}>
         <div className="space-y-2">
-          {(pick ? rows.map((r) => ({ item: r.item, store: s.stores[pick[0]], lost: r.lost, note: `sold ${r.sold}, expected ${r.expected}` }))
+          {(pick ? rows.map((r) => ({ item: r.item, store: s.stores[pick[0]], lost: r.lost, note: `sold ${Math.round(r.sold)}, usually ${Math.round(r.expected)}` })).slice(0, 12)
                  : s.top.slice(0, 12).map((r) => ({ item: r.item, store: r.store, lost: r.lost, note: `${r.weeks} flagged weeks` }))).map((r) => (
             <button key={r.item + r.store} onClick={() => openItem(r.item, r.store)}
                     className="grid w-full grid-cols-[1fr_auto] items-center gap-2 rounded-xl bg-sheet px-3 py-2 text-left text-sm hover:bg-rule">
               <span><b>{r.item}</b> <span className="text-muted">{r.store} · {r.note}</span></span>
               <span className="font-bold tabular-nums" style={{ color: RED }}>{money(r.lost)}</span>
             </button>))}
+          {pick && rows.length > 12 ? <div className="text-xs text-muted">and {rows.length - 12} smaller ones that week</div> : null}
           {!pick ? <div className="pt-3 text-xs text-muted">Biggest losses over the year. Tap a week in the grid to see that week&apos;s items.</div> : null}
           <div className="pt-3 space-y-1">{Object.entries(s.by_dept).map(([d, v]) => (
             <div key={d} className="grid grid-cols-[6.5rem_1fr_3.5rem] items-center gap-2 text-xs"><span>{d.replace("_", " ")}</span>
               <span className="h-2.5 rounded-full bg-paper"><span className="block h-full rounded-full" style={{ width: `${(v / deptMax) * 100}%`, background: RED }} /></span>
               <span className="text-right tabular-nums">{money(v)}</span></div>))}</div>
         </div>
-        <div className="min-w-0 rounded-2xl border border-rule bg-sheet p-5">
+        <div className="min-w-0 self-start rounded-2xl border border-rule bg-sheet p-5 lg:sticky lg:top-20">
           {item?.s ? (<>
             <div className="text-xl font-bold">{item.name}</div>
-            <ItemChart s={item.s} flags={item.flags} />
-            <div className="mt-1 text-xs text-muted">Red bars: flagged weeks; the dashed box is what it normally sells. Hover a red bar for the numbers.</div>
+            <ItemChart s={item.s} flags={item.flags} mark={item.mark} />
+            <div className="mt-1 text-xs text-muted">Red bars: flagged weeks; the pale box above is what it usually sells; the outlined week is the one you tapped. Hover a red bar for the numbers.</div>
           </>) : <p className="text-muted">Tap an item to see its weeks.</p>}
         </div>
       </div>
