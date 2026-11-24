@@ -74,10 +74,12 @@ pytest==9.2.0
     # via cpgos (pyproject.toml)
 pyyaml==6.0.3
     # via cpgos (pyproject.toml)
-scipy==1.15.3 ; python_full_version < '3.11'
     # via lightgbm (1.15 is the last for Python 3.10; it needs numpy < 2.5)
-scipy==1.16.3 ; python_full_version >= '3.11'
     # via lightgbm (accepts numpy 2.4 and 2.5, pinned above for 3.11 and 3.12)
+scipy==1.15.3 ; python_full_version < '3.11'
+    # via lightgbm
+scipy==1.16.3 ; python_full_version >= '3.11'
+    # via lightgbm
 starlette==1.7.0 ; python_full_version < '3.11'
     # via fastapi
 starlette==1.10.0 ; python_full_version >= '3.11'
