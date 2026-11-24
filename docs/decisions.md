@@ -1138,7 +1138,7 @@ on a clean checkout: pip-audit finds no known vulnerabilities, npm audit finds
 none, and with the lock installed (SciPy 1.16.3, numpy 2.5.4) the suite passes,
 558 tests, 1 skipped.
 
-## 115. Lost-sales detection on real M5 sales: the rule before the score
+## 116. Lost-sales detection on real M5 sales: the rule before the score
 Founding Staff posting project 4 ("detecting anomalies in sales data"), and the
 signals decision 101 moved out of the drift monitor. A stocked week (it has a
 shelf price) is scored by how surprising its sales are given its last 8
@@ -1154,3 +1154,31 @@ too high. Chosen: negative binomial. Real M5 already contains real stock-outs,
 so "1% of real weeks flagged" includes true ones; it is an upper bound on
 false flags. Weekly totals hide stock-outs shorter than a week; daily data is
 the next step.
+
+## 117. Lost sales, scored once, and shown as a picture
+
+Renumbering note: the lost-sales rule was first filed as a second "115"; it is 116, and the code now says so.
+
+Scored once on the last 8 real M5 weeks (2016-03-28 to 2016-05-16), 11,027 planted stock-outs, by the rule in 116:
+
+| Detector | Real weeks flagged | Planted caught | Planted dollars caught |
+|---|---|---|---|
+| Zero rule | 0.6% | 20.6% | 42.9% |
+| Poisson | 0.7% | 15.4% | 45.4% |
+| Negative binomial (chosen in design) | 0.7% | 25.9% | 50.9% |
+
+The design choice held on the test. By speed: 0% of planted weeks caught for items selling 1-3 a week, 19% for
+3-10, 65% for 10+. That 0% is a limit of weekly data, not a bug: a slow seller's empty week is ordinary, so any
+weekly test that flags it would flag hundreds of normal weeks too. Dollars caught beat weeks caught because the
+fast sellers, where the money is, are the ones a weekly test can see.
+
+Published over the last 52 weeks: 14,653 flagged item-weeks, an estimated $879,258 lost of $45,057,003 sold
+(2.0%). The page says what that number is: an estimate that assumes the item would have sold its usual amount,
+where some flags are data problems rather than empty shelves.
+
+The page (Lost sales): a store by week heat grid coloured by rank of lost dollars (raw dollars let a few huge
+weeks wash out the rest), tap a week for its items, tap an item for its weekly bars with flagged weeks in red
+and a dashed box at what it normally sells. Plus the proof card.
+
+Open: daily data would catch sub-week stock-outs and slow sellers; a brand's on-hand inventory feed would
+separate empty shelves from data problems.

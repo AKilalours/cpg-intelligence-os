@@ -1,0 +1,101 @@
+{
+ "weeks": [
+  "2016-03-28",
+  "2016-05-16"
+ ],
+ "planted": 11027,
+ "thresholds": {
+  "zero_rule": 8.375,
+  "poisson": 5.591541454504367,
+  "neg_binomial": 1.9499410842679723
+ },
+ "detectors": {
+  "zero_rule": {
+   "flag_rate_on_real_weeks": 0.0058,
+   "caught": 0.2057,
+   "caught_dollar_weighted": 0.4292,
+   "caught_full_stockouts": 0.2627,
+   "caught_partial": 0.0,
+   "by_speed": {
+    "1-3 a week": {
+     "planted": 2704,
+     "caught": 0.0
+    },
+    "3-10 a week": {
+     "planted": 4649,
+     "caught": 0.0585
+    },
+    "10+ a week": {
+     "planted": 3074,
+     "caught": 0.6493
+    }
+   }
+  },
+  "poisson": {
+   "flag_rate_on_real_weeks": 0.0071,
+   "caught": 0.1543,
+   "caught_dollar_weighted": 0.4535,
+   "caught_full_stockouts": 0.1618,
+   "caught_partial": 0.1274,
+   "by_speed": {
+    "1-3 a week": {
+     "planted": 2704,
+     "caught": 0.0
+    },
+    "3-10 a week": {
+     "planted": 4649,
+     "caught": 0.0
+    },
+    "10+ a week": {
+     "planted": 3074,
+     "caught": 0.5537
+    }
+   }
+  },
+  "neg_binomial": {
+   "flag_rate_on_real_weeks": 0.007,
+   "caught": 0.2592,
+   "caught_dollar_weighted": 0.5091,
+   "caught_full_stockouts": 0.2836,
+   "caught_partial": 0.1713,
+   "by_speed": {
+    "1-3 a week": {
+     "planted": 2704,
+     "caught": 0.0
+    },
+    "3-10 a week": {
+     "planted": 4649,
+     "caught": 0.1854
+    },
+    "10+ a week": {
+     "planted": 3074,
+     "caught": 0.6493
+    }
+   }
+  }
+ },
+ "version": "anomaly-1.0.0",
+ "chosen": "neg_binomial",
+ "chosen_in_design": {
+  "flag_rate_on_real_weeks": 0.01,
+  "caught": 0.2444,
+  "caught_dollar_weighted": 0.5239,
+  "caught_full_stockouts": 0.2638,
+  "caught_partial": 0.1639,
+  "by_speed": {
+   "1-3 a week": {
+    "planted": 2719,
+    "caught": 0.0
+   },
+   "3-10 a week": {
+    "planted": 4650,
+    "caught": 0.1783
+   },
+   "10+ a week": {
+    "planted": 2998,
+    "caught": 0.6588
+   }
+  }
+ },
+ "flag_rate_target": 0.01
+}

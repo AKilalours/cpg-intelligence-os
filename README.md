@@ -306,6 +306,23 @@ share of cuts like yours that cleared it (15% of 656 for 20% off at 30% margin i
 margin, tap a dot to simulate that item's next 8 weeks, tap weeks to promote them. Correlation in observational
 price data is not a promotion response; a real one needs a brand's promotion calendar or an experiment.
 
+### Lost sales: weeks the shelf was probably empty (addition 9)
+
+A week an item is stocked, normally sells, and sells far less is usually an out-of-stock or phantom inventory.
+Each stocked week gets a negative-binomial surprise score against the item's last 8 stocked weeks; the
+threshold flags 1% of ordinary development weeks, fixed before scoring. Scored once on stock-outs planted in
+the last 8 real M5 weeks:
+
+| | Weeks flagged | Planted dollars caught |
+|---|---|---|
+| Zero-sales rule | 0.6% | 42.9% |
+| **Negative binomial (shipped)** | **0.7%** | **50.9%** |
+
+Items selling 1-3 a week: 0% caught, and no weekly test can do better, since their empty weeks are ordinary.
+Over the last 52 weeks it flags 14,653 item-weeks, an estimated **$879K lost of $45.1M sold (2.0%)**. The Lost
+sales page draws that as a store by week heat grid; tap a week for its items, an item for its flagged weeks.
+It is an estimate: some flags are data problems, and weekly totals hide stock-outs shorter than a week.
+
 ## Phase 2b so far: document intelligence (measured)
 
 On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):

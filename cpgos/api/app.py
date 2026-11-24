@@ -803,6 +803,13 @@ def proof_cards(conn) -> list[dict]:
                                  "right": p["mae"]["model"], "right_label": "ML model", "lower_better": True, "honest_no": True,
                                  "unit": "error"},
                       "method": f"{p['test_cuts']} real price cuts, scored once. It did not beat guessing zero, so it is not shown as a prediction."})
+    a = _file("anomaly-1.0.0_test.json")
+    if a:
+        d = a["detectors"][a.get("chosen", "neg_binomial")]
+        cards.append({"key": "lost", "title": "Lost-sales dollars caught", "href": "/lost-sales",
+                      "visual": {"type": "ring", "k": round(d["caught_dollar_weighted"] * 1000), "n": 1000,
+                                 "note": f"{d['flag_rate_on_real_weeks'] * 100:.1f}% of real weeks flagged"},
+                      "method": f"{a['planted']:,} stock-outs planted in the last 8 real M5 weeks, scored once. Slow sellers are not catchable weekly."})
     return cards
 
 
@@ -841,3 +848,71 @@ def stp_replay(fault: float = Query(0.2, ge=0, le=0.5), audit: float = Query(0.2
     if not items:
         raise HTTPException(404, "no cash lines to replay: build the world first")
     return stp_mod.replay(items, fault, audit, seed)
+
+
+# ---------- Lost sales (published by scripts/anomaly.py; read-only here) ----------
+
+_LOST = Path(__file__).resolve().parents[2] / "data" / "processed" / "forecast" / "lost_sales.npz"
+
+
+@_lru(maxsize=2)
+def _lost(mtime: float):
+    z = _np.load(_LOST, allow_pickle=False)
+    return {k: z[k] for k in z.files}
+
+
+def _lost_or_404():
+    if not _LOST.exists():
+        raise HTTPException(404, "no lost-sales flags published yet: run python scripts/anomaly.py publish")
+    return _lost(_LOST.stat().st_mtime)
+
+
+@app.get("/api/lost/summary")
+def lost_summary() -> dict:
+    """Estimated lost sales by store and week (a heat grid), by department, and the items losing most."""
+    d = _lost_or_404()
+    stores, weeks = sorted({str(s) for s in d["store"]}), sorted({str(w) for w in d["week"]})
+    si, wi = {s: i for i, s in enumerate(stores)}, {w: i for i, w in enumerate(weeks)}
+    grid = _np.zeros((len(stores), len(weeks)))
+    for s, w, v in zip(d["store"], d["week"], d["lost"]):
+        grid[si[str(s)], wi[str(w)]] += float(v)
+    by_item: dict = {}
+    for it, s, v in zip(d["item"], d["store"], d["lost"]):
+        k = (str(it), str(s))
+        by_item[k] = by_item.get(k, 0.0) + float(v)
+    top = sorted(by_item.items(), key=lambda kv: -kv[1])[:30]
+    counts: dict = {}
+    for it, s in zip(d["item"], d["store"]):
+        counts[(str(it), str(s))] = counts.get((str(it), str(s)), 0) + 1
+    depts: dict = {}
+    for dp, v in zip(d["dept"], d["lost"]):
+        depts[str(dp)] = depts.get(str(dp), 0.0) + float(v)
+    test = json.loads((_REPORTS / "anomaly-1.0.0_test.json").read_text()) if (_REPORTS / "anomaly-1.0.0_test.json").exists() else None
+    return {"detector": str(d["detector"]), "flagged_weeks": int(len(d["lost"])), "lost": round(float(d["lost"].sum()), 2),
+            "sold_total": float(d["sold_total"]) if "sold_total" in d else None,
+            "stores": stores, "weeks": weeks, "grid": [[round(x, 2) for x in row] for row in grid],
+            "by_dept": {k: round(v, 2) for k, v in sorted(depts.items(), key=lambda kv: -kv[1])},
+            "top": [{"item": k[0], "store": k[1], "lost": round(v, 2), "weeks": counts[k]} for k, v in top],
+            "test": None if not test else {"caught": test["detectors"][test["chosen"]]["caught"],
+                                            "caught_dollars": test["detectors"][test["chosen"]]["caught_dollar_weighted"],
+                                            "flag_rate": test["detectors"][test["chosen"]]["flag_rate_on_real_weeks"],
+                                            "by_speed": test["detectors"][test["chosen"]]["by_speed"], "weeks": test["weeks"]}}
+
+
+@app.get("/api/lost/cell")
+def lost_cell(store: str = Query(..., max_length=8), week: str = Query(..., max_length=10)) -> list[dict]:
+    """The flagged items behind one heat-grid cell, biggest loss first."""
+    d = _lost_or_404()
+    m = (d["store"] == store) & (d["week"] == week)
+    rows = [{"item": str(i), "sold": float(s), "expected": round(float(e), 1), "price": round(float(p), 2),
+             "lost": round(float(l), 2), "surprise": round(float(z), 1)}
+            for i, s, e, p, l, z in zip(d["item"][m], d["sold"][m], d["expected"][m], d["price"][m], d["lost"][m], d["surprise"][m])]
+    return sorted(rows, key=lambda r: -r["lost"])[:40]
+
+
+@app.get("/api/lost/item")
+def lost_item(item: str = Query(..., max_length=40), store: str = Query(..., max_length=8)) -> list[dict]:
+    d = _lost_or_404()
+    m = (d["item"] == item) & (d["store"] == store)
+    return [{"week": str(w), "sold": float(s), "expected": round(float(e), 1), "lost": round(float(l), 2)}
+            for w, s, e, l in sorted(zip(d["week"][m], d["sold"][m], d["expected"][m], d["lost"][m]))]

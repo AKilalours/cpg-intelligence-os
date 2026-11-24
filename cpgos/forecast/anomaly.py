@@ -6,7 +6,7 @@ last 8 stocked weeks, and its usual variability is a negative binomial fitted to
 The score is how surprising the week is: P(sales this low or lower). A very surprising low week is almost
 always an out-of-stock, an item missing from the shelf, or a data problem: in each case sales were lost.
 
-Detectors compared (decision 115): a plain rule (zero sales while the item usually sells 3+), a Poisson tail,
+Detectors compared (decision 116): a plain rule (zero sales while the item usually sells 3+), a Poisson tail,
 and a negative-binomial tail. Each one's threshold is set so it flags 1% of ordinary development weeks; they
 are then judged on planted stock-outs they never saw.
 """

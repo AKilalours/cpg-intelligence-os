@@ -336,3 +336,12 @@ export interface CasePicture {
 
 export interface StpReplay { lane: string; fault_from: string; days: string[]; gate: number[]; no_gate: number[];
   opened: string | null; closed: string | null; to_a_person: number; lines: number; caught: number }
+
+export interface LostSummary {
+  detector: string; flagged_weeks: number; lost: number; sold_total: number | null; stores: string[]; weeks: string[];
+  grid: number[][]; by_dept: Record<string, number>; top: { item: string; store: string; lost: number; weeks: number }[];
+  test: null | { caught: number; caught_dollars: number; flag_rate: number; weeks: string[];
+    by_speed: Record<string, { planted: number; caught: number | null }> };
+}
+export interface LostRow { item: string; sold: number; expected: number; price: number; lost: number; surprise: number }
+export interface LostWeek { week: string; sold: number; expected: number; lost: number }

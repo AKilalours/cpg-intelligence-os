@@ -76,3 +76,21 @@ def test_promo_evidence_by_department(tmp_path, monkeypatch):
     r = c.get("/api/promo/evidence?dept=FOODS_1").json()
     assert r["count"] == 2 and r["depts"] == {"FOODS_1": 2, "HOBBIES_1": 1} and r["lift"] == [0.5, -0.2]
     assert c.get("/api/promo/evidence").json()["count"] == 3
+
+
+def test_lost_sales_summary_cell_and_item(tmp_path, monkeypatch):
+    f = tmp_path / "l.npz"
+    np.savez_compressed(f, item=np.array(["A", "A", "B"]), store=np.array(["CA_1", "CA_1", "TX_1"]),
+                        dept=np.array(["F1", "F1", "H1"]), week=np.array(["2016-01-04", "2016-01-11", "2016-01-04"]),
+                        sold=np.zeros(3, np.float32), expected=np.array([10, 12, 4], np.float32),
+                        price=np.array([2, 2, 5], np.float32), lost=np.array([20, 24, 20], np.float32),
+                        surprise=np.array([5, 6, 4], np.float32), detector=np.array("neg_binomial"), threshold=np.array(3.0))
+    monkeypatch.setattr(api, "_LOST", f)
+    monkeypatch.setattr(api, "_REPORTS", tmp_path)
+    api._lost.cache_clear()
+    c = TestClient(api.app)
+    s = c.get("/api/lost/summary").json()
+    assert s["lost"] == 64 and s["stores"] == ["CA_1", "TX_1"] and s["grid"] == [[20, 24], [20, 0]]
+    assert s["top"][0] == {"item": "A", "store": "CA_1", "lost": 44, "weeks": 2} and s["test"] is None
+    assert [r["item"] for r in c.get("/api/lost/cell?store=CA_1&week=2016-01-04").json()] == ["A"]
+    assert [r["week"] for r in c.get("/api/lost/item?item=A&store=CA_1").json()] == ["2016-01-04", "2016-01-11"]

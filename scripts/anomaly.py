@@ -4,7 +4,7 @@
     python scripts/anomaly.py score    # once per version: the chosen detector on the 8 test weeks
     python scripts/anomaly.py publish  # real flagged weeks and estimated lost sales, for the app
 
-Rule written before any result (decision 115): each detector's threshold flags 1% of ordinary development
+Rule written before any result (decision 116): each detector's threshold flags 1% of ordinary development
 weeks; the detector that catches the most planted stock-outs at that rate ships (ties to the simpler one).
 """
 
@@ -131,7 +131,9 @@ def cmd_publish() -> int:
                         week=np.array([w.weeks[weeks.start + j].isoformat() for j in jj]),
                         sold=U[ii, jj].astype(np.float32), expected=mu[ii, jj].astype(np.float32),
                         price=Pr[ii, jj].astype(np.float32), lost=lost[ii, jj].astype(np.float32),
-                        surprise=s[ii, jj].astype(np.float32), detector=np.array(k), threshold=np.array(th))
+                        surprise=s[ii, jj].astype(np.float32), detector=np.array(k), threshold=np.array(th),
+                        sold_total=np.array(float(np.nansum(U * Pr))), first_week=np.array(w.weeks[weeks.start].isoformat()),
+                        last_week=np.array(w.weeks[T - 1].isoformat()))
     print(f"published {len(ii):,} flagged weeks over 52 weeks; estimated lost sales ${lost.sum():,.0f} "
           f"(of ${np.nansum(U * Pr):,.0f} sold)")
     return 0
