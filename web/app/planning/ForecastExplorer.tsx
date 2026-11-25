@@ -137,7 +137,7 @@ export function ForecastExplorer({ summary, initialList, initial }: { summary: F
                 <button onClick={() => open(b)} className={`w-full rounded-xl px-3 py-2 text-left text-sm ${on ? "bg-ink text-paper" : "bg-sheet hover:bg-rule"}`}>
                   <div className="font-bold">{b.item}</div>
                   <div className={on ? "text-paper/75" : "text-muted"}>{b.store} · {CLASS[b.class] ?? b.class} · {money(b.dollars)}/yr
-                    {gain !== null ? ` · ${gain >= 0 ? "+" : ""}${pct(gain, 0)}` : ""}</div>
+                    {gain !== null ? ` · LightGBM ${pct(Math.abs(gain), 0)} ${gain >= 0 ? "better" : "worse"}` : ""}</div>
                 </button>
               </li>
             );

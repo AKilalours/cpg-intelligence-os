@@ -48,12 +48,12 @@ export function CaseQueue({ rows }: { rows: CaseRow[] }) {
         {list.slice(0, shown).map((r, i) => (
           <li key={r.case_id} className="animate-rise" style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}>
             <Link href={`/investigation/${r.case_id}`}
-                  className="grid grid-cols-[1fr_auto] items-center gap-4 px-5 py-4 hover:bg-paper md:grid-cols-[9rem_1fr_8rem_11rem]">
+                  className="grid grid-cols-[1fr_auto] items-center gap-4 px-5 py-4 hover:bg-paper md:grid-cols-[10rem_1fr_8rem_11rem]">
               <span>
                 <span className="font-semibold">{r.claim_number}</span>
                 <span className="block text-xs text-muted">{r.code} · {r.raw_reason}</span>
-                <span className={`mt-1 inline-block rounded px-1.5 text-[11px] ${r.window_open ? "bg-forest text-white" : "bg-paper text-muted"}`}>
-                  {r.window_open ? `window open to ${r.dispute_deadline}` : "window closed"}
+                <span className={`mt-1 inline-block whitespace-nowrap rounded px-1.5 text-[11px] ${r.window_open ? "bg-forest text-white" : "bg-paper text-muted"}`}>
+                  {r.window_open ? `open until ${r.dispute_deadline}` : "window closed"}
                 </span>
               </span>
               <span className="hidden text-sm md:block">
