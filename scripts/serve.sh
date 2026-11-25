@@ -4,12 +4,33 @@
 # often belongs to Grafana or another dev server.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-kind="${1:?usage: serve.sh api|web}"
+kind="${1:?usage: serve.sh api|web|up}"
 
 env_get() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
 api_port="${CPGOS_API_PORT:-$(env_get CPGOS_API_PORT)}"; api_port="${api_port:-8100}"
 web_port="${CPGOS_WEB_PORT:-$(env_get CPGOS_WEB_PORT)}"; web_port="${web_port:-3100}"
 port=$([ "$kind" = api ] && echo "$api_port" || echo "$web_port")
+up() {
+  # Both halves from one window (2026-11-25: running api and web in two windows, one kept getting
+  # closed and every page said the API was down). The API runs in the background with its log in
+  # local_runs/api.log and stops when this window stops (Ctrl+C).
+  mkdir -p local_runs
+  if (exec 3<>"/dev/tcp/127.0.0.1/$api_port") 2>/dev/null; then
+    echo "API already running on port $api_port; using it."
+  else
+    bash scripts/serve.sh api > local_runs/api.log 2>&1 &
+    api_pid=$!
+    trap 'kill $api_pid 2>/dev/null; pkill -P $api_pid 2>/dev/null; true' EXIT INT TERM
+    printf "Starting the API"
+    for _ in $(seq 1 60); do
+      if (exec 3<>"/dev/tcp/127.0.0.1/$api_port") 2>/dev/null; then echo " ready."; break; fi
+      kill -0 $api_pid 2>/dev/null || { echo; echo "ERROR: the API stopped. Last lines of local_runs/api.log:" >&2; tail -15 local_runs/api.log >&2; exit 1; }
+      printf "."; sleep 1
+    done
+  fi
+  bash scripts/serve.sh web
+}
+[ "$kind" = up ] && { up; exit $?; }
 
 if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
   owner=""
@@ -65,5 +86,5 @@ case "$kind" in
     # so anyone on the same Wi-Fi could open the app.
     CPGOS_API_URL="http://127.0.0.1:$api_port" exec npx next dev -H 127.0.0.1 -p "$web_port"
     ;;
-  *) echo "usage: serve.sh api|web" >&2; exit 2 ;;
+  *) echo "usage: serve.sh api|web|up" >&2; exit 2 ;;
 esac
