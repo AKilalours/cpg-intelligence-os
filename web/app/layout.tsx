@@ -1,34 +1,37 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Fraunces, Lato } from "next/font/google";
+// Fonts are bundled (SIL Open Font License), so builds never depend on reaching Google Fonts.
+import "@fontsource/fraunces/300.css";
+import "@fontsource/fraunces/400.css";
+import "@fontsource/lato/400.css";
+import "@fontsource/lato/700.css";
 import { Nav } from "@/components/Nav";
 import "./globals.css";
 
-const serif = Fraunces({ subsets: ["latin"], weight: ["300", "400"], variable: "--font-serif", display: "swap" });
-const body = Lato({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-body", display: "swap" });
 
 export const metadata: Metadata = {
   title: "CPG Intelligence OS",
-  description: "Evidence-grounded AI for CPG finance: documents, cash, deductions, forecasts",
+  description: "Decision intelligence for CPG finance and planning: documents, cash application, deductions, forecasting",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${serif.variable} ${body.variable}`}>
+    <html lang="en">
       <body className="bg-paper font-sans text-ink antialiased">
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 bg-sheet px-3 py-2">
           Skip to content
         </a>
         {process.env.CPGOS_READ_ONLY === "1" ? (
           <div className="bg-ink px-4 py-2 text-center text-xs text-paper">
-            Public read-only demo on real public data (M5, FATURA, CORD). Buttons that record decisions are switched off here.{" "}
-            <a className="underline underline-offset-2" href="https://github.com/AKilalours/cpg-intelligence-os">Code and results</a>
+            Public read-only copy. Sales: Walmart M5. Invoices and receipts: FATURA and CORD (CC BY 4.0). Finance records are simulated on these sales. Decisions are not recorded here.{" "}
+            <a className="underline underline-offset-2" href="https://github.com/AKilalours/cpg-intelligence-os">Source and results</a>
           </div>
         ) : null}
         <Nav />
         <main id="main" className="mx-auto max-w-6xl px-5 pb-16 pt-8 md:px-8">{children}</main>
         <footer className="mx-auto max-w-6xl px-5 pb-8 text-xs text-muted md:px-8">
-          Independent portfolio project by Akila Lourdes Miriyala Francis. Public data only. Not affiliated with any company.
+          Independent portfolio project by Akila Lourdes Miriyala Francis. Public data only. Not affiliated with any company.{" "}
+          <a className="underline underline-offset-2" href="https://github.com/AKilalours/cpg-intelligence-os/blob/main/TESTING.md">Test it and send a report</a>.
         </footer>
       </body>
     </html>

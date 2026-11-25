@@ -162,15 +162,15 @@ export function PromoPlanner({ initial, items, series }: { initial: PromoEvidenc
           </div>
           {ev.test ? (
             <div className="rounded-2xl border border-rule bg-sheet p-5">
-              <div className="text-sm font-bold">Can a model predict the lift?</div>
+              <div className="text-sm font-bold">Promotion lift prediction</div>
               <div className="mt-3 space-y-2 text-sm">
                 {(["zero", "history", "model"] as const).map((k) => { const v = ev.test!.mae[k], w = Math.max(...Object.values(ev.test!.mae));
                   return <div key={k} className="grid grid-cols-[4.5rem_1fr_2.5rem] items-center gap-2">
-                    <span>{{ zero: "Guess 0", history: "History", model: "ML model" }[k]}</span>
+                    <span>{{ zero: "No lift", history: "History", model: "Model" }[k]}</span>
                     <span className="h-2.5 rounded-full bg-paper"><span className="block h-full rounded-full" style={{ width: `${(v / w) * 100}%`, background: k === "model" ? RED : k === "zero" ? INK : "#8C9A2E" }} /></span>
                     <span className="text-right tabular-nums">{v.toFixed(2)}</span></div>; })}
               </div>
-              <div className="mt-3 text-xs text-muted">Error on {ev.test.test_cuts} unseen cuts. The model did not beat guessing zero, so this page shows evidence, not a prediction.</div>
+              <div className="mt-3 text-xs text-muted">Mean absolute error on {ev.test.test_cuts} held-out price cuts. The model did not beat the no-lift baseline, so this page shows evidence rather than a prediction.</div>
             </div>
           ) : null}
         </div>

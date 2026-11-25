@@ -14,7 +14,6 @@ import os
 import sys
 from pathlib import Path
 
-os.environ["CPGOS_READ_ONLY"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -46,6 +45,8 @@ def slim_series(s: dict) -> dict:
 
 
 def main() -> int:
+    # Set here, not at import: tests import this module, and a process-wide read-only flag would break them.
+    os.environ["CPGOS_READ_ONLY"] = "1"
     OUT.mkdir(parents=True, exist_ok=True)
     c = TestClient(api.app)
     files: dict[str, object] = {}

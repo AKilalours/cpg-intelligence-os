@@ -1,0 +1,75 @@
+name: Test report
+description: You tried CPG Intelligence OS. Tell us what worked, what did not, and whether you would use it.
+title: "Test report: <your role>"
+labels: ["user-test"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing. The tasks are in [TESTING.md](https://github.com/AKilalours/cpg-intelligence-os/blob/main/TESTING.md) (about 15 minutes).
+        Reports are published in the README exactly as written, under the name you choose below.
+  - type: input
+    id: role
+    attributes:
+      label: Your role
+      placeholder: e.g. ML engineer, data scientist, AR analyst, finance manager
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did you test?
+      options: ["Public copy (browser)", "Local installation (make up)", "Both"]
+    validations:
+      required: true
+  - type: checkboxes
+    id: tasks
+    attributes:
+      label: Tasks completed
+      options:
+        - label: "1. Lost sales: find the store and week with the largest loss, and the item behind it"
+        - label: "2. Forecasts: find a series where LightGBM lost to smoothing, and say why that might be"
+        - label: "3. Promotions: find the cut depth where most real cuts paid back at a 30% margin"
+        - label: "4. Cash and deductions: decide whether one deduction should be disputed, using its evidence"
+        - label: "5. Proof: pick one result and check how it was measured"
+  - type: dropdown
+    id: useful
+    attributes:
+      label: How useful would this be in your work? (1 = not at all, 5 = I would use it)
+      options: ["1", "2", "3", "4", "5"]
+    validations:
+      required: true
+  - type: dropdown
+    id: trust
+    attributes:
+      label: How much do you trust the numbers it shows? (1 = not at all, 5 = fully)
+      options: ["1", "2", "3", "4", "5"]
+    validations:
+      required: true
+  - type: textarea
+    id: worked
+    attributes:
+      label: What worked well?
+    validations:
+      required: true
+  - type: textarea
+    id: broke
+    attributes:
+      label: What was confusing, wrong, or missing?
+    validations:
+      required: true
+  - type: input
+    id: minutes
+    attributes:
+      label: Minutes spent
+  - type: dropdown
+    id: credit
+    attributes:
+      label: How may this report be credited in the README?
+      options: ["Name and role", "Role only", "Do not publish"]
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: Name to show (if you chose "Name and role")

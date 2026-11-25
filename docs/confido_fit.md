@@ -24,24 +24,29 @@ labelled as estimates and show their inputs. Nothing here is Confido's internal 
   Snowflake, Aurora/RDS, Redis, Kafka; model quality measured "through online evals and human-in-the-loop review,
   not just uptime."
 
-## 2. What the two roles ask, line by line, and where the project stands
+## 2. What the two roles ask, line by line, and where the project stands (re-read 2026-11-25)
 
-Both postings (Applied AI/ML Engineer, $200K to $250K, 3+ years; Senior ML/AI Engineer, $250K to $300K, 5+ years)
-share the responsibilities. The Founding Staff posting names five concrete projects; they are included because
-they say what Confido is building.
+Both postings share the same five responsibilities; they differ in seniority. Applied AI/ML Engineer: 3+ years
+applied ML with production systems, STEM master's, $200K to $250K. Senior ML/AI Engineer: 5+ years applied ML
+(its skills box also says 6+ years of production software engineering), $250K to $300K. Both are in-office in
+New York with relocation.
 
-| Asked for | In this project | Gap |
-|---|---|---|
-| LLM systems turning messy financial documents into typed, validated data | Three-reader invoice cascade, confidence routing, human review, regression gate, receipts (real FATURA, CORD, DocILE) | Scale: dozens of layouts, not hundreds |
-| Agentic workflows over fragmented systems, with eval harnesses and guardrails | Investigation agent; database-enforced access; 1 false dispute against the rules engine's 24 on 8 unseen worlds (p = 2e-6) | The agent follows fixed playbooks; no model-chosen tool loop yet. No backup chasing |
-| Forecasting thousands of intermittent series; classical and boosted models; rolling-origin backtests; best-fit selection | 30,490 real M5 series; Croston, SBA, TSB, ETS, LightGBM; LightGBM 4.4% better than smoothing on test weeks scored once; per-series best-fit shown to overfit | No Prophet or ARIMA; no hierarchy (item to store to chain) |
-| Baselining, outlier and anomaly detection, entity reconciliation, heterogeneous ingestion | Drift monitors scored on unseen worlds; cash matching; four real datasets ingested | **No anomaly detection in sales data** (Founding Staff project 4). Entity matching thin |
-| Eval datasets, benchmarks, monitoring for systems without one right answer | Held-out data scored once, paired tests, error budget enforced by the database, drift alarms, CI | Strongest part of the project |
-| Leakage and train/serve skew | Leakage tests, one feature function for training and serving (tested) | Covered |
-| Product sense: when simpler wins | Hybrid reader over a 7B model; LoRA not shipped; simpler forecaster shipped; promotion lift not shown because it failed its test | Covered |
-| Recommending optimal promotions (Founding Staff project 5) | Tested honestly: on real M5 cuts the model did not beat guessing zero, so the page shows break-even arithmetic and evidence | A causal answer needs a promotion calendar or experiments |
-| Fine-tuning LLMs (Founding Staff) | LoRA on Qwen2.5-0.5B tried and rejected with numbers (45.9% on unseen wording) | Covered as an honest negative |
-| Production: CI/CD, containers, cloud (MLOps) | GitHub Actions CI | **No container, no hosted deployment** |
+| Responsibility (both postings) | Evidence in this project | Score | What would close the gap |
+|---|---|---|---|
+| LLM systems turning messy financial documents into typed, validated data | Three-reader invoice cascade (OCR, on-premises and hosted vision models), confidence routing, human review, a regression gate that replays every correction; 99.89% of accepted values right on held-out layouts | 9/10 | More layouts (dozens today, hundreds in production) |
+| Agentic workflows over fragmented systems, with eval harnesses and guardrails | Investigation agent with database-enforced roles (it cannot change a ledger value); 1 valid claim wrongly disputed against the rules engine's 24 on 8 held-out ledgers (p = 2e-6); error budget and drift alarms | 7/10 | A model-chosen tool loop and retrieval over contracts and backup (planned step 3) |
+| Forecasting thousands of intermittent series; classical and boosted; rolling-origin backtests | 30,490 real M5 series; SES, Croston, SBA, TSB, LightGBM; 4 rolling origins; 4.4% lower WRMSSE than smoothing on test weeks scored once; calibrated 80% ranges (79.5%) | 9/10 | ARIMA-family and Prophet baselines (named as nice-to-have); hierarchy reconciliation |
+| Baselining, outlier and anomaly detection, entity reconciliation, heterogeneous ingestion | Lost-sales detector (negative binomial, 50.9% of test stock-out value at a 0.7% flag rate); drift monitors with exact tests; cash matching; four real datasets with contracts and quarantine | 8/10 | Fuzzy entity resolution (retailer and SKU name variants) |
+| Eval datasets, benchmarks and monitoring for systems without one right answer | Rules written before scoring, held-out data scored once, paired tests, CI, error budget enforced by the database | 10/10 | Strongest part |
+| Required: evaluation habits, leakage and train/serve skew | Leakage tests; one feature function for training and serving (tested) | 10/10 | |
+| Required: product sense, simpler wins | Smoothing kept where it wins; LoRA rejected (45.9% on unseen wording); promotion model not shipped because it lost to a no-lift baseline | 10/10 | |
+| Nice to have: RAG or retrieval in production | None yet | 3/10 | Retrieval over deduction backup and promotion agreements, scored on held-out claims |
+| Nice to have: startup pace | Shipped solo, with CI, a public copy, and a decision log of 120 entries | 8/10 | |
+
+**Honest overall.** For the Applied AI/ML Engineer role the project covers every responsibility, and the two
+real gaps (retrieval, a model-chosen agent loop) are already the next two planned pieces of work. For the Senior
+role the project shows the skills, but no project can supply the years of production experience the posting
+requires; present it as evidence of senior-level judgement and apply to both, leading with the Applied role.
 
 ## 3. What would add the most value for a Confido customer, and why
 

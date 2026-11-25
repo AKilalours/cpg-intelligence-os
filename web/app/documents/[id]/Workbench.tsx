@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { docImage } from "@/lib/snapshot";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DocumentView, FieldDecision, Reading } from "@/lib/types";
 import { ReviewForm } from "./ReviewForm";
 
-const READER: Record<string, string> = { rules: "OCR", local_model: "Local AI", claude: "Claude" };
+const READER: Record<string, string> = { rules: "OCR", local_model: "On-premises vision model", claude: "Hosted vision model" };
 const label = (f: string) => f.replace(/_/g, " ");
 type Box = [number, number, number, number];
 
@@ -37,7 +38,7 @@ export function Workbench({ doc, nextId }: { doc: DocumentView; nextId: number |
   // Where each field is on the page: the decision's box, else the first reader that located it.
   const boxOf = useCallback((f: FieldDecision): Box | null =>
     f.bbox ?? doc.readings.find((r) => r.field === f.field && r.bbox)?.bbox ?? null, [doc.readings]);
-  const imgSrc = `/documents/${doc.source_document_id}/image`;
+  const imgSrc = docImage(doc.source_document_id);
   const openField = fields.find((f) => f.field === open) ?? null;
   const openBox = openField ? boxOf(openField) : null;
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);

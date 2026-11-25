@@ -1234,3 +1234,16 @@ break-even planner over real cuts, and the impact calculator. What is not: invoi
 cases and the error budget, which need the database; the page says they run locally with `make up`.
 The Docker image and private-data snapshot from 119 are kept: they work unchanged on any Docker host if one becomes
 free or affordable, and deploy-demo.yml skips itself until HF_SPACE is set.
+
+## 121. The public link is the real app, not a separate page
+
+The static showcase (120) was a second, simpler interface, and it read as a different product. Replaced: GitHub
+Pages now serves the real web app itself, built as static files. `make public-snapshot` asks the real API, in
+process and read-only, every question the pages and buttons ask (2,372 answers and 154 invoice images, 16 MB),
+keyed by the exact request path; the same key is derived in the browser (tested in both languages). The build runs
+in a throwaway copy where each server action is replaced by a read-only twin (web/public-build/) with the same
+exports, so `next build` type-checks the twins against their callers and the local app is untouched. Writes show
+a read-only message. Limits, stated on the page where they apply: forecast search covers the top 100 series per
+sort order, and the error-budget replay snaps to a recorded grid. Fonts are bundled (SIL OFL), so no build
+depends on reaching Google. Interface wording was rewritten in professional terms; the finance records are
+still described as simulated, because they are.

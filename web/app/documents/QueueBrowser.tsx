@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { docImage } from "@/lib/snapshot";
 import { useMemo, useState } from "react";
 import type { ReviewQueueItem } from "@/lib/types";
 
@@ -56,7 +57,7 @@ export function QueueBrowser({ items }: { items: ReviewQueueItem[] }) {
               {/* The invoice itself, with every field boxed where it sits: red waits for you, green was accepted. */}
               <div className="relative aspect-[3/4] w-full overflow-hidden bg-paper">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/documents/${q.source_document_id}/image`} alt={`Invoice ${q.source_document_id}`} loading="lazy"
+                <img src={docImage(q.source_document_id)} alt={`Invoice ${q.source_document_id}`} loading="lazy"
                      className="absolute inset-0 h-full w-full object-fill opacity-90 transition group-hover:opacity-100" />
                 {(q.boxes ?? []).map((b) => {
                   const hot = b.status === "review", picked = field !== null && b.field === field;

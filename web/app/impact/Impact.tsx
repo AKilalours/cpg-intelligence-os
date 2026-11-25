@@ -136,12 +136,12 @@ export function Impact({ measured }: { measured: { cash: ProofCard | null; agent
           <div className="text-sm text-muted">analyst days a month to work them, at about {RESOLVED_PER_ANALYST_DAY} a day (HighRadius)</div>
         </div>
         <div className="rounded-2xl border border-rule bg-sheet p-5">
-          <div className="text-sm text-muted">What this project measured (a generated finance world over real M5 sales, not a brand&apos;s books)</div>
+          <div className="text-sm text-muted">Measured in this system (simulated ledgers built on Walmart M5 sales, not a brand&apos;s books)</div>
           <ul className="mt-3 space-y-3 text-sm">
             {cash && cash.type === "ring" ? <li><Link href="/finance" className="hover:underline"><b className="font-serif text-2xl font-light">{pct(cash.k / cash.n)}</b> of payment
               lines posted with no person, {cash.wrong ?? 0} wrong ({cash.k} of {cash.n}).</Link></li> : null}
             {agent && agent.type === "dots" ? <li><Link href="/investigation" className="hover:underline"><b className="font-serif text-2xl font-light">{agent.right} vs {agent.left}</b> valid
-              claims wrongly disputed: the agent against the rules engine on 8 unseen worlds. Fewer wrongful disputes means less retailer friction.</Link></li> : null}
+              claims wrongly disputed: the investigation agent against the rules engine on 8 held-out simulated ledgers. Fewer wrongful disputes means less retailer friction.</Link></li> : null}
             {reasons && reasons.type === "ring" ? <li><Link href="/evaluation" className="hover:underline"><b className="font-serif text-2xl font-light">{pct(reasons.k / reasons.n)}</b> of
               deduction reasons read right in wordings no reader trained on.</Link></li> : null}
             {!cash && !agent && !reasons ? <li className="text-muted">Start the API to show the measured rates.</li> : null}

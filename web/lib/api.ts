@@ -6,8 +6,22 @@ const BASE = process.env.CPGOS_API_URL ?? "http://127.0.0.1:8100";
 // "nothing published yet" (404) from "the API is down" (0) or "the API broke" (500).
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string; status: number };
 
+// Public static build: answers recorded from the real API (scripts/public_snapshot.py), read at build time.
+const SNAPSHOT = process.env.CPGOS_SNAPSHOT_DIR;
+
+async function fromSnapshot<T>(path: string): Promise<ApiResult<T>> {
+  const { readFile } = await import("node:fs/promises");
+  const { snapKey } = await import("./snapshot");
+  try {
+    return { ok: true, data: JSON.parse(await readFile(`${SNAPSHOT}/snap/${snapKey(path)}.json`, "utf8")) as T };
+  } catch {
+    return { ok: false, status: 404, error: "Not included in the public copy. It is available in a running installation." };
+  }
+}
+
 // Server-side fetch with no caching: every page view shows the ledger as it is now.
 export async function api<T>(path: string): Promise<ApiResult<T>> {
+  if (SNAPSHOT) return fromSnapshot<T>(path);
   try {
     const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
     if (!res.ok) {

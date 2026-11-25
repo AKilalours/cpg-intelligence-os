@@ -66,7 +66,7 @@ export function DriftAlarms({ s }: { s: DriftStatus }) {
       ) : s.open.map((a) => <Alarm key={a.drift_alarm_id} a={a} />)}
       {det.length ? (
         <p className="text-sm text-muted">
-          In testing ({ev!.kind === "drift_fresh" ? "unseen worlds" : "the main world"}): {det.filter((d) => d.detected === d.rolls).length} of {det.length} kinds
+          In testing ({ev!.kind === "drift_fresh" ? "held-out simulated ledgers" : "the development ledger"}): {det.filter((d) => d.detected === d.rolls).length} of {det.length} kinds
           of change caught every time, {falseAlarms} false alarm{falseAlarms === 1 ? "" : "s"} in {weeks.toLocaleString()} healthy weeks.
         </p>
       ) : null}
