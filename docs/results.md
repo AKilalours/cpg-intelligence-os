@@ -4,6 +4,8 @@ An AI operating layer for a consumer-goods brand's back office: it reads invoice
 investigates deductions, forecasts demand, and finds lost sales. Built solo by Akila Lourdes Miriyala Francis on
 public data (Walmart M5 sales, FATURA invoices, CORD receipts). Not affiliated with any company.
 
+**Click around:** https://akilalours.github.io/cpg-intelligence-os/
+
 **Rule behind every number:** the method is fixed and written down first, then scored once on data it never saw,
 with the uncertainty shown. Where a model lost, it was not shipped, and the page says so.
 
@@ -28,7 +30,7 @@ Inmar's published rates, $250K to $1M at HighRadius's. The calculator shows the 
 it claims no recovered dollars.
 
 **Engineering:** Postgres with database-enforced roles (the agent cannot change a ledger value), FastAPI, Next.js,
-LightGBM, local models through Ollama, a paid-model budget cap, 560+ tests in CI, a read-only public demo built
+LightGBM, local models through Ollama, a paid-model budget cap, 560+ tests in CI, a free public showcase published
 by GitHub Actions. Every design choice and its evidence: [docs/decisions.md](decisions.md).
 
 **Next:** expected deductions from the promotion plan and forecast, so an inflated claim is flagged before it is
