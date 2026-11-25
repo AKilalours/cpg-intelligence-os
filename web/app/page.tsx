@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NextSteps, RecentStrip } from "@/components/Journey";
 import { api } from "@/lib/api";
 import { count, when } from "@/lib/format";
 import type { DriftStatus, EvaluationReport, MoneyFlow as Flow, Overview, ProofCard, ReviewQueueItem, StpStatus } from "@/lib/types";
@@ -30,6 +31,7 @@ export default async function TodayPage() {
 
   return (
     <>
+      <RecentStrip />
       <h1 className="mb-8 font-serif text-5xl font-light tracking-tight md:text-6xl">Today, as of {e.as_of}</h1>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -98,6 +100,13 @@ export default async function TodayPage() {
           </div>
         )}
       </details>
+      <NextSteps steps={[
+        { href: "/investigation", title: `Review the ${e.deductions_due_14d} disputes due in 14 days`, detail: "Start with the claim closest to its deadline", roles: ["deductions"] },
+        { href: "/lost-sales", title: "Find where empty shelves cost the most", detail: "52 weeks, 10 stores, one grid", roles: ["planning"] },
+        { href: "/evaluation", title: "Check how every number was measured", detail: "Held-out data, scored once", roles: ["leadership"] },
+        { href: "/documents", title: `Clear the ${waiting} invoices waiting for review`, detail: "Only the fields the readers could not settle", roles: ["deductions"] },
+        { href: "/impact", title: "Size the opportunity for a brand", detail: "Your sales against published ranges", roles: ["leadership"] },
+      ]} />
     </>
   );
 }

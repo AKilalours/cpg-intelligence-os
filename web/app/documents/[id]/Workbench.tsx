@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { docImage } from "@/lib/snapshot";
+import { track } from "@/lib/journey";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DocumentView, FieldDecision, Reading } from "@/lib/types";
 import { ReviewForm } from "./ReviewForm";
@@ -19,6 +20,7 @@ function timeline(readings: Reading[]): Step[] {
 }
 
 export function Workbench({ doc, nextId }: { doc: DocumentView; nextId: number | null }) {
+  useEffect(() => { track({ href: `/documents/${doc.source_document_id}`, label: `Invoice ${doc.source_document_id}`, kind: "Invoice" }); }, [doc.source_document_id]);
   const fields = useMemo(() => {
     const waiting = doc.fields.filter((f) => f.status === "review" && !f.review);
     const rest = doc.fields.filter((f) => !(f.status === "review" && !f.review) && (f.value !== null || f.review));

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { ForecastBrief, ForecastSeries, ForecastSummary } from "@/lib/types";
 import { findSeries, getSeries } from "./forecastActions";
+import { focusFrom, focusQuery, track } from "@/lib/journey";
 
 const METHOD: Record<string, { label: string; color: string; dash?: string }> = {
   lgbm: { label: "LightGBM (shipped)", color: "#28543E" },
@@ -95,7 +96,13 @@ export function ForecastExplorer({ summary, initialList, initial }: { summary: F
     const t = setTimeout(() => start(async () => setList(await findSeries(q, store, cls, sort))), 250);
     return () => clearTimeout(t);
   }, [q, store, cls, sort]);
-  const open = (b: ForecastBrief) => start(async () => setS(await getSeries(b.item, b.store)));
+  const openPair = (item: string, store: string) => start(async () => {
+    const x = await getSeries(item, store);
+    if (x) { setS(x); track({ href: `/planning${focusQuery(item, store)}`, label: `${item} · ${store}`, kind: "Forecast" }); }
+  });
+  const open = (b: ForecastBrief) => openPair(b.item, b.store);
+  // Arriving from another page with ?item=&store= opens that series straight away.
+  useEffect(() => { const f = focusFrom(window.location.search); if (f) openPair(f.item, f.store); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const board = useMemo(() => s ? Object.entries(s.test_rmsse).filter(([, v]) => v !== null).sort((a, b) => (a[1] as number) - (b[1] as number)) : [], [s]);
   const p = summary.test?.paired?.lgbm_vs_ses;
   return (

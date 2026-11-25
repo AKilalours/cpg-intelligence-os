@@ -52,3 +52,9 @@ html {
 }
 
 h1, h2 { font-family: var(--font-serif), Georgia, serif; font-weight: 300; letter-spacing: -0.01em; }
+
+/* Cards that lead somewhere rise toward the pointer: a small, physical cue that they can be opened. */
+.lift { transition: transform 180ms ease, box-shadow 180ms ease; will-change: transform; }
+.lift:hover, .lift:focus-visible { transform: translateY(-3px); box-shadow: 0 14px 28px -14px rgba(31, 42, 36, 0.45); }
+.lift:active { transform: translateY(-1px) scale(0.99); }
+@media (prefers-reduced-motion: reduce) { .lift, .lift:hover, .lift:active { transition: none; transform: none; } }

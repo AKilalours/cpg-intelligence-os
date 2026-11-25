@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { ForecastBrief, ForecastSeries, PromoEvidence } from "@/lib/types";
 import { findItems, loadEvidence, loadSeries } from "./actions";
+import { nearestPoint } from "@/lib/pick";
+import { focusFrom, focusQuery, track } from "@/lib/journey";
 
 const GREEN = "#609D7B", RED = "#B3402F", INK = "#1F2A24", FOREST = "#28543E";
 const pct = (x: number, d = 0) => `${(x * 100).toFixed(d)}%`;
@@ -25,39 +27,60 @@ function Slider({ label, value, set, min, max, step, show }: { label: string; va
   );
 }
 
-function Scatter({ ev, depth, margin, onPick }: { ev: PromoEvidence; depth: number; margin: number; onPick: (i: number) => void }) {
-  const [hover, setHover] = useState<number | null>(null);
+// Thousands of dots share the same few depths, so they stack. Instead of a hover target per dot (where the top
+// dot wins and its neighbours are unreachable), the pointer picks the single nearest dot, says how many others
+// sit at that spot, and shows one card placed on the far side of the point so it never covers it.
+function Scatter({ ev, depth, margin, onPick, picked }: { ev: PromoEvidence; depth: number; margin: number; onPick: (i: number) => void; picked: number | null }) {
+  const [hover, setHover] = useState<ReturnType<typeof nearestPoint>>(null);
+  const ref = useRef<SVGSVGElement>(null);
   const W = 760, H = 420, L = 64, R = 44, T = 18, B = 48, FS = 18;
   const x = (d: number) => L + ((Math.min(d, 0.5) - 0.1) / 0.4) * (W - L - R);
   const y = (l: number) => T + (1 - (Math.max(-1, Math.min(l, 3)) + 1) / 4) * (H - T - B);
   // Show at most 2,500 points (stable sample) so the chart stays fast; the numbers use every cut.
   const idx = useMemo(() => { const n = ev.depth.length, step = Math.max(1, Math.ceil(n / 2500));
     return Array.from({ length: Math.ceil(n / step) }, (_, k) => k * step); }, [ev]);
+  const pts = useMemo(() => idx.map((i) => [i, x(ev.depth[i]), y(ev.lift[i])] as [number, number, number]), [idx, ev]);
   const curve = useMemo(() => { const pts: string[] = [];
     for (let d = 0.1; d <= 0.5001; d += 0.005) { const b = breakEven(d, margin); if (!isFinite(b) || b > 3) break; pts.push(`${x(d).toFixed(1)},${y(b).toFixed(1)}`); }
     return pts; }, [margin]);
   const lastX = curve.length ? Number(curve[curve.length - 1].split(",")[0]) : x(0.1);
-  const h = hover === null ? null : hover;
+  const locate = (e: React.PointerEvent) => {
+    const r = ref.current!.getBoundingClientRect();
+    return nearestPoint(pts, ((e.clientX - r.left) * W) / r.width, ((e.clientY - r.top) * H) / r.height);
+  };
+  const h = hover;
+  const pickedPt = picked !== null && picked < ev.depth.length ? { x: x(ev.depth[picked]), y: y(ev.lift[picked]) } : null;
   return (
     <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Each dot is a real price cut: how deep it was and how sales changed against stores that did not cut">
+      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="w-full touch-none" role="img" style={{ cursor: h ? "pointer" : "crosshair" }}
+           aria-label="Each dot is a real price cut: how deep it was and how sales changed against stores that did not cut"
+           onPointerMove={(e) => setHover(locate(e))} onPointerLeave={() => setHover(null)}
+           onPointerDown={(e) => { const n = locate(e); setHover(n); if (n) onPick(n.i); }}>
         <path d={`M${curve.join("L")}L${lastX},${T}L${x(0.1)},${T}Z`} fill={GREEN} opacity="0.10" />
         {lastX < x(0.5) ? <rect x={lastX} y={T} width={x(0.5) - lastX} height={H - T - B} fill={RED} opacity="0.06" /> : null}
         {[-1, 0, 1, 2, 3].map((v) => <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#E4E1D8" strokeDasharray={v === 0 ? undefined : "3 5"} />
           <text x={L - 8} y={y(v) + 6} fontSize={FS} textAnchor="end" fill="#6C6C6C">{signed(v)}</text></g>)}
         {[0.1, 0.2, 0.3, 0.4, 0.5].map((d) => <text key={d} x={x(d)} y={H - 16} fontSize={FS} textAnchor="middle" fill="#6C6C6C">{pct(d)} off</text>)}
         <rect x={x(Math.max(0.1, depth - 0.025))} y={T} width={Math.max(2, x(depth + 0.025) - x(Math.max(0.1, depth - 0.025)))} height={H - T - B} fill={INK} opacity="0.06" />
-        {idx.map((i) => { const d = ev.depth[i], l = ev.lift[i], ok = pays(l, d, margin);
-          return <circle key={i} cx={x(d)} cy={y(l)} r={hover === i ? 6 : 2.6} fill={ok ? GREEN : RED} opacity={Math.abs(d - depth) <= 0.025 ? 0.9 : 0.28}
-                         onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onClick={() => onPick(i)} style={{ cursor: "pointer" }} />; })}
-        <path d={`M${curve.join("L")}`} fill="none" stroke={FOREST} strokeWidth="3.5" />
-        <line x1={x(depth)} x2={x(depth)} y1={T} y2={H - B} stroke={INK} strokeWidth="2" />
+        {pts.map(([i, cx, cy]) => { const ok = pays(ev.lift[i], ev.depth[i], margin);
+          return <circle key={i} cx={cx} cy={cy} r={2.6} fill={ok ? GREEN : RED} opacity={Math.abs(ev.depth[i] - depth) <= 0.025 ? 0.9 : 0.28} pointerEvents="none" />; })}
+        <path d={`M${curve.join("L")}`} fill="none" stroke={FOREST} strokeWidth="3.5" pointerEvents="none" />
+        <line x1={x(depth)} x2={x(depth)} y1={T} y2={H - B} stroke={INK} strokeWidth="2" pointerEvents="none" />
+        {pickedPt ? <circle cx={pickedPt.x} cy={pickedPt.y} r={9} fill="none" stroke={INK} strokeWidth="2.5" pointerEvents="none" /> : null}
+        {h ? <g pointerEvents="none"><circle cx={h.x} cy={h.y} r={13} fill={INK} opacity="0.08" />
+          <circle cx={h.x} cy={h.y} r={6} fill={pays(ev.lift[h.i], ev.depth[h.i], margin) ? GREEN : RED} stroke="#fff" strokeWidth="2" /></g> : null}
       </svg>
-      {h !== null ? (
-        <div className="pointer-events-none absolute left-2 top-2 rounded-xl border border-rule bg-sheet px-3 py-2 text-sm shadow-sm">
-          <div className="font-bold">{ev.item[h]} at {ev.store[h]}</div>
-          <div>Week of {ev.week[h]}: {pct(ev.depth[h])} off, sales {signed(ev.lift[h])} vs other stores</div>
-          <div className="text-muted">{ev.temporary[h] ? "Price came back after" : "Price stayed down"}</div>
+      {h ? (
+        <div className="pointer-events-none absolute z-10 w-64 rounded-xl border border-rule bg-sheet px-3 py-2 text-sm shadow-lg"
+             style={{ left: `${(h.x / W) * 100}%`, top: `${(h.y / H) * 100}%`,
+                      transform: `translate(${h.x > W * 0.55 ? "calc(-100% - 16px)" : "16px"}, ${h.y > H * 0.55 ? "calc(-100% - 8px)" : "8px"})` }}>
+          <div className="font-bold">{ev.item[h.i]} at {ev.store[h.i]}</div>
+          <div>Week of {ev.week[h.i]}: {pct(ev.depth[h.i])} off</div>
+          <div>Sales {signed(ev.lift[h.i])} against stores that did not cut</div>
+          <div className={pays(ev.lift[h.i], ev.depth[h.i], margin) ? "font-bold text-forest" : "font-bold text-debit"}>
+            {pays(ev.lift[h.i], ev.depth[h.i], margin) ? "Paid back" : "Did not pay back"} at {pct(margin)} margin</div>
+          {h.stacked > 0 ? <div className="mt-1 text-xs text-muted">{h.stacked} more cut{h.stacked > 1 ? "s" : ""} at this spot</div> : null}
+          <div className="mt-1 text-xs text-muted">Tap to simulate this item below</div>
         </div>
       ) : null}
     </div>
@@ -118,10 +141,17 @@ export function PromoPlanner({ initial, items, series }: { initial: PromoEvidenc
   const [list, setList] = useState(items);
   const [s, setS] = useState(series);
   const [pending, start] = useTransition();
+  const [picked, setPicked] = useState<number | null>(null);
+  const openItem = (item: string, store: string) => start(async () => {
+    const x = await loadSeries(item, store);
+    if (x) { setS(x); track({ href: `/promotions${focusQuery(item, store)}`, label: `${item} · ${store}`, kind: "Price cut" }); }
+  });
+  // Arriving from another page with ?item=&store= simulates that item straight away.
+  useEffect(() => { const f = focusFrom(window.location.search); if (f) openItem(f.item, f.store); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const be = breakEven(depth, margin);
   const near = useMemo(() => ev.depth.map((d, i) => [d, ev.lift[i]] as const).filter(([d]) => Math.abs(d - depth) <= 0.025), [ev, depth]);
   const paid = near.filter(([d, l]) => pays(l, d, margin)).length;
-  const chooseDept = (d: string) => { setDept(d); start(async () => { const e = await loadEvidence(d); if (e) setEv(e); setList(await findItems("", d)); }); };
+  const chooseDept = (d: string) => { setDept(d); setPicked(null); start(async () => { const e = await loadEvidence(d); if (e) setEv(e); setList(await findItems("", d)); }); };
   return (
     <div className="space-y-6">
       <div className="grid gap-3 md:grid-cols-[1fr_1fr_1.3fr]">
@@ -143,7 +173,7 @@ export function PromoPlanner({ initial, items, series }: { initial: PromoEvidenc
 
       <div className={`grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] ${pending ? "opacity-60" : ""}`}>
         <div className="rounded-2xl border border-rule bg-sheet p-4">
-          <Scatter ev={ev} depth={depth} margin={margin} onPick={(i) => start(async () => { const x = await loadSeries(ev.item[i], ev.store[i]); if (x) setS(x); })} />
+          <Scatter ev={ev} depth={depth} margin={margin} picked={picked} onPick={(i) => { setPicked(i); openItem(ev.item[i], ev.store[i]); }} />
           <div className="mt-1 flex flex-wrap gap-4 text-sm text-muted">
             <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full" style={{ background: GREEN }} />paid back</span>
             <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full" style={{ background: RED }} />did not</span>
@@ -179,7 +209,7 @@ export function PromoPlanner({ initial, items, series }: { initial: PromoEvidenc
       <div className="grid gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <ul className="space-y-1" aria-label="Items">
           {list.map((b) => (
-            <li key={b.item + b.store}><button onClick={() => start(async () => { const x = await loadSeries(b.item, b.store); if (x) setS(x); })}
+            <li key={b.item + b.store}><button onClick={() => openItem(b.item, b.store)}
               className={`w-full rounded-xl px-3 py-2 text-left text-sm ${s && s.item === b.item && s.store === b.store ? "bg-ink text-paper" : "bg-sheet hover:bg-rule"}`}>
               <div className="font-bold">{b.item}</div><div className="opacity-70">{b.store} · ${Math.round(b.dollars).toLocaleString()}/yr</div></button></li>
           ))}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { WorkspaceChip } from "@/components/Journey";
 
 const SECTIONS = [
   { href: "/", label: "Today" },
@@ -32,6 +33,7 @@ export function Nav() {
             </Link>
           );
         })}
+        <WorkspaceChip />
       </nav>
     </header>
   );

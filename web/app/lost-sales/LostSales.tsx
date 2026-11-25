@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { focusFrom, focusQuery, track } from "@/lib/journey";
 import type { ForecastSeries, LostRow, LostSummary, LostWeek } from "@/lib/types";
 import { loadCell, loadItem } from "./actions";
 
@@ -70,10 +72,16 @@ function ItemChart({ s, flags, mark }: { s: ForecastSeries; flags: LostWeek[]; m
 export function LostSales({ s }: { s: LostSummary }) {
   const [pick, setPick] = useState<[number, number] | null>(null);
   const [rows, setRows] = useState<LostRow[]>([]);
-  const [item, setItem] = useState<{ s: ForecastSeries | null; flags: LostWeek[]; name: string; mark?: string } | null>(null);
+  const [item, setItem] = useState<{ s: ForecastSeries | null; flags: LostWeek[]; name: string; mark?: string; it?: string; st?: string } | null>(null);
   const [pending, start] = useTransition();
   const openCell = (r: number, c: number) => { setPick([r, c]); start(async () => setRows(await loadCell(s.stores[r], s.weeks[c]))); };
-  const openItem = (it: string, st: string) => start(async () => { const x = await loadItem(it, st); setItem({ ...x, name: `${it} at ${st}`, mark: pick ? s.weeks[pick[1]] : undefined }); });
+  const openItem = (it: string, st: string) => start(async () => {
+    const x = await loadItem(it, st);
+    setItem({ ...x, name: `${it} at ${st}`, mark: pick ? s.weeks[pick[1]] : undefined, it, st });
+    track({ href: `/lost-sales${focusQuery(it, st)}`, label: `${it} · ${st}`, kind: "Lost sales" });
+  });
+  // Arriving from another page with ?item=&store= opens that item straight away.
+  useEffect(() => { const f = focusFrom(window.location.search); if (f) openItem(f.item, f.store); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const deptMax = Math.max(...Object.values(s.by_dept));
   const t = s.test;
   return (
@@ -119,6 +127,12 @@ export function LostSales({ s }: { s: LostSummary }) {
             <div className="text-xl font-bold">{item.name}</div>
             <ItemChart s={item.s} flags={item.flags} mark={item.mark} />
             <div className="mt-1 text-xs text-muted">Red bars: flagged weeks; the pale box above is what it usually sells; the outlined week is the one you tapped. Hover a red bar for the numbers.</div>
+            {item.it && item.st ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link href={`/planning${focusQuery(item.it, item.st)}`} className="lift rounded-xl bg-forest px-4 py-2 text-sm font-bold text-paper">Forecast this item</Link>
+                <Link href={`/promotions${focusQuery(item.it, item.st)}`} className="lift rounded-xl border border-rule bg-sheet px-4 py-2 text-sm font-bold">Would a price cut pay back?</Link>
+              </div>
+            ) : null}
           </>) : <p className="text-muted">Tap an item to see its weeks.</p>}
         </div>
       </div>

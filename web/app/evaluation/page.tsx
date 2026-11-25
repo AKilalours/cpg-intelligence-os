@@ -1,4 +1,5 @@
 import { AgentProof, type AgentReport } from "./AgentProof";
+import { NextSteps } from "@/components/Journey";
 import { api } from "@/lib/api";
 import { count, money, pct, rateText, when } from "@/lib/format";
 import type { CashAppScore, EvaluationReport, IngestionRun, Phase2aReport } from "@/lib/types";
@@ -150,6 +151,11 @@ function Reconciliation({ r }: { r: EvaluationReport }) {
           </tbody>
         </table>
       </Section>
+      <NextSteps steps={[
+        { href: "/impact", title: "What these results are worth to a brand", roles: ["leadership"] },
+        { href: "/investigation", title: "Open a case the agent decided", roles: ["deductions"] },
+        { href: "/planning", title: "Explore the forecasts", roles: ["planning"] },
+      ]} />
     </>
   );
 }

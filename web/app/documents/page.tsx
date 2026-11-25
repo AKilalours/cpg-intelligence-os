@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { NextSteps } from "@/components/Journey";
 import { count } from "@/lib/format";
 import type { DatasetStatus, RegressionGate, ReviewQueueItem } from "@/lib/types";
 import { Gate } from "./Gate";
@@ -70,6 +71,11 @@ export default async function DocumentsPage() {
       </div>
         </div>
       </details>
+      <NextSteps steps={[
+        { href: "/finance", title: "Match the payments for these invoices", detail: "Cash application, ranked by money at risk", roles: ["deductions"] },
+        { href: "/evaluation", title: "See how invoice reading was scored", detail: "99.89% of accepted values right on held-out layouts", roles: ["leadership"] },
+        { href: "/investigation", title: "Investigate the deductions taken against them", roles: ["deductions"] },
+      ]} />
     </>
   );
 }

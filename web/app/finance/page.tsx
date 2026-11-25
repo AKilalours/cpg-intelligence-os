@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { NextSteps } from "@/components/Journey";
 import { count, money } from "@/lib/format";
 import type { CashAppSummary, Deduction, Overview } from "@/lib/types";
 import { Cmd, Notice, PageHeader } from "@/components/ui";
@@ -69,6 +70,11 @@ export default async function FinancePage() {
         {!queue.ok ? <Notice kind="error" title="Deductions unavailable">{queue.error}</Notice>
           : queue.data.length === 0 ? empty : <DeadlineBoard rows={queue.data} />}
       </section>
+      <NextSteps steps={[
+        { href: "/investigation", title: "Open the agent's case for a claim", detail: "Evidence, verdict and the dispute letter", roles: ["deductions"] },
+        { href: "/impact", title: "What invalid deductions cost a brand", detail: "Your sales against published ranges", roles: ["leadership"] },
+        { href: "/", title: "Back to today's money flow", roles: ["leadership", "deductions"] },
+      ]} />
     </>
   );
 }

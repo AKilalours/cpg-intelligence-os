@@ -1247,3 +1247,20 @@ a read-only message. Limits, stated on the page where they apply: forecast searc
 sort order, and the error-budget replay snaps to a recorded grid. Fonts are bundled (SIL OFL), so no build
 depends on reaching Google. Interface wording was rewritten in professional terms; the finance records are
 still described as simulated, because they are.
+
+## 122. A guided flow: workspaces, a carried item, and a next step on every page
+
+Visitors arrive without context, so the app now leads. First visit asks for a workspace (deductions and cash,
+demand planning, finance leadership); each opens on its own work. Every page ends with up to three next steps,
+the visitor's workspace first. An item opened on Lost sales carries to Planning and Promotions in the address
+(?item=&store=, validated against the code formats, tested), so the next page shows the same item. Recently
+viewed cases, invoices and items appear on Today. All of it lives in the visitor's own browser storage and
+tolerates storage being blocked; nothing is sent anywhere.
+
+Promotions: thousands of cuts share a few depths, so dots stack and a per-dot hover target hid the ones beneath.
+The chart now picks the single nearest dot to the pointer, says how many others sit on the same spot, and places
+one card on the far side of the point (lib/pick.ts, tested with a stacked case and a point just below a stack).
+The workspace picker is portalled to the page body: the nav's backdrop blur made it the containing block for
+fixed children, which clipped the picker to the nav bar on first render.
+
+README: led by recordings of the public build (Playwright, 900 px GIFs), with the full write-up folded below.
