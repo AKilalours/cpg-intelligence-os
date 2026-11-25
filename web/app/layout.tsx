@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </a>
         {process.env.CPGOS_READ_ONLY === "1" ? (
           <div className="bg-ink px-4 py-2 text-center text-xs text-paper">
-            Public read-only copy. Sales: Walmart M5. Invoices and receipts: FATURA and CORD (CC BY 4.0). Finance records are simulated on these sales. Decisions are not recorded here.{" "}
+            Read-only public copy · Walmart M5 sales, FATURA and CORD documents (CC BY 4.0), simulated finance records{" "}
             <a className="underline underline-offset-2" href="https://github.com/AKilalours/cpg-intelligence-os">Source and results</a>
           </div>
         ) : null}

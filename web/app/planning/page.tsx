@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NextSteps } from "@/components/Journey";
 import { api } from "@/lib/api";
 import { count, quantity } from "@/lib/format";
 import type { SalesSeries, SeriesKey } from "@/lib/types";
@@ -95,6 +96,11 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
           Seasonal-naive, Croston/TSB, ETS, and LightGBM, compared with rolling-origin backtests.
         </Notice>
       </Section>
+      <NextSteps steps={[
+        { href: "/lost-sales", title: "Where did sales go missing?", detail: "Weeks the shelf was likely empty", roles: ["planning"] },
+        { href: "/promotions", title: "Would a price cut pay back?", detail: "23,080 real cuts against your margin", roles: ["planning"] },
+        { href: "/evaluation", title: "How the forecaster was scored", roles: ["leadership"] },
+      ]} />
     </>
   );
 }

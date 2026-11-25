@@ -6,6 +6,7 @@ import type { CaseDetail, ToolCall } from "@/lib/types";
 import { useReviewer } from "@/components/useReviewer";
 import { ACTION, cap } from "../CaseQueue";
 import { decideCase } from "./actions";
+import { track } from "@/lib/journey";
 
 const TOOL: Record<string, string> = {
   claim: "Read the claim", engine_assessment: "Read the engine's check", promotions: "Looked up promotions on file",
@@ -43,6 +44,7 @@ function show(v: unknown): string {
 }
 
 export function CaseView({ c }: { c: CaseDetail }) {
+  useEffect(() => { track({ href: `/investigation/${c.case_id}`, label: `Claim ${c.claim_number}`, kind: "Case" }); }, [c.case_id, c.claim_number]);
   const steps = c.finding.tool_calls;
   const [step, setStep] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);

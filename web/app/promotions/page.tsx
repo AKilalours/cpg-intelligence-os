@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { NextSteps } from "@/components/Journey";
 import { Notice, PageHeader } from "@/components/ui";
 import { failureNotice } from "@/lib/result";
 import type { ForecastBrief, ForecastSeries, PromoEvidence } from "@/lib/types";
@@ -18,6 +19,11 @@ export default async function PromotionsPage() {
       {!ev.ok ? (() => { const n = failureNotice(ev, "No promotion evidence yet", "Run make promo-publish, then refresh.");
         return <Notice kind={n.kind} title={n.title}>{n.body}</Notice>; })() :
         <PromoPlanner initial={ev.data} items={items.ok ? items.data : []} series={first && first.ok ? first.data : null} />}
+      <NextSteps steps={[
+        { href: "/planning", title: "Forecast the next 8 weeks", detail: "LightGBM against classical baselines", roles: ["planning"] },
+        { href: "/lost-sales", title: "Check the item for empty-shelf weeks", roles: ["planning"] },
+        { href: "/impact", title: "Size the opportunity for a brand", roles: ["leadership"] },
+      ]} />
     </>
   );
 }

@@ -1,35 +1,55 @@
+<div align="center">
+
 # CPG Intelligence OS
-### Evidence-grounded AI for financial operations and commercial planning
 
-**What it is.** An AI operating layer for a consumer-goods brand's back office: it reads invoices, matches
-retailer payments, investigates deductions, forecasts demand, and finds lost sales. Every number below was fixed
-in advance, then scored once on data the system never saw.
+**Reads retailer invoices · matches payments · investigates deductions · forecasts demand · finds lost sales**
 
-**[Live showcase (click around)](https://akilalours.github.io/cpg-intelligence-os/)** · **[Results on one page](docs/results.md)** ·
-**[Every decision and its evidence](docs/decisions.md)**
+[![Open the live app](https://img.shields.io/badge/Open_the_live_app-28543E?style=for-the-badge)](https://akilalours.github.io/cpg-intelligence-os/)
+[![Test it in 15 minutes](https://img.shields.io/badge/Test_it_in_15_minutes-E5FF87?style=for-the-badge&labelColor=1F2A24)](TESTING.md)
+[![Results on one page](https://img.shields.io/badge/Results_on_one_page-FFFFFF?style=for-the-badge&labelColor=1F2A24)](docs/results.md)
 
-| What it does | Measured on unseen data | Compared with |
+[![ci](https://github.com/AKilalours/cpg-intelligence-os/actions/workflows/ci.yml/badge.svg)](https://github.com/AKilalours/cpg-intelligence-os/actions/workflows/ci.yml)
+[![pages](https://github.com/AKilalours/cpg-intelligence-os/actions/workflows/pages.yml/badge.svg)](https://akilalours.github.io/cpg-intelligence-os/)
+
+<img src="docs/media/today.gif" width="900" alt="Today: where every retailer dollar went, and the error budget stopping a silent fault">
+
+</div>
+
+| | |
+|:---:|:---:|
+| <img src="docs/media/lost-sales.gif" width="430" alt="Lost sales grid and item drill-down"><br>**Lost sales**: $879K of likely empty-shelf weeks, store by week | <img src="docs/media/forecasts.gif" width="430" alt="Forecast explorer"><br>**Forecasts**: 30,490 real series, LightGBM 4.4% better than smoothing |
+| <img src="docs/media/invoices.gif" width="430" alt="Invoice review workbench"><br>**Invoices**: three readers, a person checks only what they cannot settle | <img src="docs/media/investigation.gif" width="430" alt="Deduction investigation"><br>**Deductions**: the agent investigates, a person decides |
+| <img src="docs/media/promotions.gif" width="430" alt="Promotion break-even planner"><br>**Promotions**: will a price cut pay back, against 23,080 real cuts | <img src="docs/media/impact.gif" width="430" alt="Impact calculator"><br>**Impact**: invalid deductions at stake for a brand's own sales |
+
+### Scored once, on data it never saw
+
+| | Result | Against |
 |---|---|---|
-| Reads invoice fields | **99.89%** of accepted values right; 69.5% of invoices need no person | Regression gate on every human correction |
-| Matches retailer payments | **88.2%** posted with no person, **0 wrong** | Rest ranked for a person by money at risk |
-| Investigates deductions (agent) | **1** valid claim wrongly disputed | Rules engine: **24** (8 unseen worlds, p = 2e-6) |
-| Error budget on automation | **30** wrong postings under a silent 5% fault | **126** with no gate |
-| Drift monitors | **98%** of injected changes caught, 0 false alarms on cash and claims | 8 unseen worlds |
-| Demand forecasting, 30,490 real series | **4.4%** lower error than smoothing | 80% ranges held 79.5% of weeks |
-| Lost sales (likely empty shelves) | **50.9%** of planted lost dollars caught at a 0.7% flag rate | Est. $879K of $45.1M sold |
-| Promotion lift prediction | Did **not** beat guessing zero, so not shipped | Break-even evidence shown instead |
+| Invoice fields | **99.89%** of accepted values right | 69.5% of invoices need no review |
+| Payments matched | **88.2%** automatically, **0 wrong** | the rest ranked by money at risk |
+| Deduction agent | **1** valid claim disputed in error | rules engine: **24** (p = 2e-6) |
+| Error budget | **30** incorrect postings under a silent fault | no gate: **126** |
+| Demand forecast | **4.4%** lower error | exponential smoothing, 30,490 series |
+| Lost sales | **50.9%** of test stock-out value found | 0.7% of real weeks flagged |
+| Promotion lift model | **not shipped**: lost to a no-lift baseline | break-even evidence shown instead |
 
-> Independent portfolio project. Not affiliated with any company. Public data only (M5, FATURA, CORD). No
-> customer relationships, production deployments, or performance improvements are claimed without reproducible
-> evidence in this repo.
+### Tested by real users
 
-## Run it
+Engineers and finance practitioners are invited to [test it in 15 minutes](TESTING.md) and
+[file a report](https://github.com/AKilalours/cpg-intelligence-os/issues/new?template=user-test-report.yml).
+Reports appear here exactly as written. **No reports yet.**
+
+### Run it
 
 ```bash
-make setup      # once: Python environment, locked packages, .env
-make db         # Postgres in Docker
-make up         # API and UI together; open http://127.0.0.1:3100 (Ctrl+C stops both)
+make setup && make db && make up     # then open http://127.0.0.1:3100
 ```
+
+Independent portfolio project by Akila Lourdes Miriyala Francis. Public data only: Walmart M5 sales, FATURA and
+CORD documents (CC BY 4.0); finance records are simulated on those sales. Not affiliated with any company.
+
+<details>
+<summary><b>Full technical write-up</b>: methods, every result, and the decision log</summary>
 
 ## Status
 
@@ -440,3 +460,5 @@ Python in your shell can't be picked up by accident. `make help` lists everythin
   no public dataset links real remittances to real invoices.
 - Several dataset licenses are flagged `license_verified: false` in the registry
   and must be read before use.
+
+</details>
