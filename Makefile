@@ -221,6 +221,7 @@ demo-snapshot: $(PY)  ## Package the public demo's data into local_runs/demo/ (r
 
 demo-upload:  ## Upload local_runs/demo/ to a PRIVATE Hugging Face dataset: make demo-upload REPO=your-hf-name/cpg-os-demo-data
 	@test -n "$(REPO)" || { echo "Usage: make demo-upload REPO=your-hf-name/cpg-os-demo-data"; exit 1; }
+	@case "$(REPO)" in hf_*) echo "REFUSED: that looks like an access token, not a username. Revoke it at huggingface.co/settings/tokens, then use REPO=your-username/cpg-os-demo-data (run: .venv/bin/hf auth whoami)"; exit 1;; esac
 	$(PY) -m pip install --quiet "huggingface_hub>=0.30,<2"
 	$(PY) -c "from huggingface_hub import HfApi; a = HfApi(); a.create_repo('$(REPO)', repo_type='dataset', private=True, exist_ok=True); assert a.repo_info('$(REPO)', repo_type='dataset').private, 'refusing: repo is public'; a.upload_folder(folder_path='local_runs/demo', repo_id='$(REPO)', repo_type='dataset')"
 
