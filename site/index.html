@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPG Intelligence OS</title>
+<meta name="description" content="An AI operating layer for a consumer-goods brand's back office, measured on unseen public data. Independent portfolio project by Akila Lourdes Miriyala Francis.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&family=Lato:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#FAF8F4;--sheet:#FFFFFF;--ink:#1F2A24;--muted:#6C6C6C;--rule:#E4E1D8;--forest:#28543E;--tag:#E5FF87;--red:#B3402F;--sage:#9DB8A8;--blush:#E7B9AE}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 Lato,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+.serif{font-family:Fraunces,Georgia,serif;font-weight:300}
+nav{position:sticky;top:8px;z-index:5;margin:8px auto 0;max-width:1120px;padding:0 16px}
+nav .bar{display:flex;gap:4px;align-items:center;overflow-x:auto;background:var(--sheet);border:1px solid var(--rule);border-radius:16px;padding:6px 8px;box-shadow:0 1px 2px rgba(31,42,36,.06)}
+nav a{white-space:nowrap;text-decoration:none;font-size:14px;padding:6px 12px;border-radius:10px}
+nav a:hover{background:var(--paper)}
+nav .logo{font-family:Fraunces,serif;font-size:20px;padding-right:12px}
+nav .logo b{color:var(--forest);font-weight:400}
+header{padding:56px 0 24px}
+h1{font-family:Fraunces,serif;font-weight:300;font-size:clamp(40px,7vw,76px);line-height:1.02;margin:0 0 16px;letter-spacing:-.01em}
+h2{font-family:Fraunces,serif;font-weight:300;font-size:clamp(30px,4.5vw,44px);margin:0 0 6px;line-height:1.1}
+.lede{font-size:19px;max-width:66ch;color:#3c4a42;margin:0}
+.links{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.btn{display:inline-block;text-decoration:none;border-radius:12px;padding:10px 16px;font-weight:700;font-size:14px;border:1px solid var(--ink)}
+.btn.primary{background:var(--forest);border-color:var(--forest);color:#fff}
+section{padding:44px 0;border-top:1px solid var(--rule);scroll-margin-top:64px}
+.sub{color:var(--muted);margin:0 0 22px;max-width:70ch}
+.card{background:var(--sheet);border:1px solid var(--rule);border-radius:20px;padding:20px}
+.grid{display:grid;gap:14px}
+@media(min-width:760px){.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.side{grid-template-columns:22rem minmax(0,1fr)}.wide{grid-template-columns:1.4fr 1fr 1fr}}
+.kpi .n{font-family:Fraunces,serif;font-weight:300;font-size:46px;line-height:1.05}
+.kpi .l{font-size:14px;color:var(--muted)}
+.dark{background:var(--forest);color:#fff;border-color:var(--forest)}
+.dark .l{color:rgba(255,255,255,.8)}
+.alarm{background:var(--red);color:#fff;border-color:var(--red)}
+.alarm .l{color:rgba(255,255,255,.85)}
+.proof .t{font-weight:700;margin-bottom:6px}
+.proof .m{font-size:13px;color:var(--muted);margin-top:8px}
+.meter{height:10px;border-radius:99px;background:var(--paper);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:99px;background:var(--forest);transition:width .3s}
+.versus{display:grid;grid-template-columns:5.5rem 1fr 3.5rem;gap:8px;align-items:center;font-size:13px;margin-top:6px}
+.chip{display:inline-block;border:1px solid var(--rule);background:var(--sheet);border-radius:99px;padding:4px 12px;font-size:13px;cursor:pointer;margin:0 6px 6px 0}
+.chip[aria-pressed=true]{background:var(--forest);border-color:var(--forest);color:#fff}
+.heat{display:grid;gap:2px;min-width:560px}
+.heat button{height:18px;border:0;border-radius:3px;padding:0;cursor:pointer}
+.heat button:focus-visible,.row:focus-visible,.chip:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.heat .on{box-shadow:0 0 0 2px var(--ink)}
+.scroll{overflow-x:auto}
+.row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;width:100%;text-align:left;background:var(--sheet);border:1px solid var(--rule);border-radius:12px;padding:8px 12px;margin-bottom:6px;cursor:pointer;font:inherit;font-size:14px;color:inherit}
+.row:hover,.row.on{background:#F1EFE8}
+.row .money{color:var(--red);font-weight:700}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+svg text{font-family:Lato,sans-serif}
+input[type=range]{width:100%;accent-color:var(--forest)}
+.big{font-family:Fraunces,serif;font-weight:300;font-size:clamp(44px,8vw,72px);line-height:1}
+.legend span{display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:16px;height:4px;border-radius:2px}
+footer{padding:36px 0 48px;color:var(--muted);font-size:13px;border-top:1px solid var(--rule)}
+.note{font-size:13px;color:var(--muted);margin-top:10px}
+.honest{border-left:4px solid var(--red)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<nav aria-label="Sections"><div class="bar">
+  <a class="logo" href="#top">cpg<b>·</b>os</a>
+  <a href="#proof">Results</a><a href="#lost">Lost sales</a><a href="#forecast">Forecasts</a>
+  <a href="#promo">Promotions</a><a href="#impact">Impact</a>
+  <a href="https://github.com/AKilalours/cpg-intelligence-os">Code</a>
+</div></nav>
+
+<main class="wrap" id="top">
+<header>
+  <h1>An AI back office for a consumer-goods brand, measured on data it never saw.</h1>
+  <p class="lede">It reads invoices, matches retailer payments, investigates deductions, forecasts demand and finds lost
+    sales. Every method was written down first, then scored once on unseen public data. Where a model lost, it was not
+    shipped. Everything on this page is live and clickable, built from the real results.</p>
+  <div class="links">
+    <a class="btn primary" href="https://github.com/AKilalours/cpg-intelligence-os">Code, tests and every decision</a>
+    <a class="btn" href="https://github.com/AKilalours/cpg-intelligence-os/blob/main/docs/results.md">Results on one page</a>
+    <a class="btn" id="videoLink" href="#" hidden>2-minute walkthrough</a>
+  </div>
+</header>
+
+<section id="proof" aria-labelledby="proofH">
+  <h2 id="proofH">Results</h2>
+  <p class="sub">Each card was scored once, on data held back until the method was frozen.</p>
+  <div class="grid g3" id="proofCards"></div>
+</section>
+
+<section id="lost" aria-labelledby="lostH">
+  <h2 id="lostH">Lost sales</h2>
+  <p class="sub">Weeks an item was on the shelf and sold far less than usual: usually an empty shelf. Tap a week, then an item.</p>
+  <div class="grid wide" id="lostKpis"></div>
+  <div class="card" style="margin-top:14px"><div class="scroll"><div class="heat" id="heat"></div></div>
+    <div class="small" style="display:flex;justify-content:space-between;margin-top:8px"><span id="h0" class="muted"></span><b id="hv">Tap a week</b><span id="h1" class="muted"></span></div></div>
+  <div class="grid side" style="margin-top:14px">
+    <div><div id="lostRows"></div><div id="lostNote" class="note"></div></div>
+    <div class="card" style="min-width:0"><div id="itemTitle" style="font-weight:700;font-size:19px">Tap an item to see its weeks</div><div id="itemChart"></div>
+      <div class="note">Red bars are flagged weeks; the pale box above each is what the item usually sells. Full weekly charts are included for the 40 biggest losses.</div></div>
+  </div>
+  <p class="note">An estimate: it assumes the item would have sold its usual amount, and some flags are data problems rather than empty shelves.</p>
+</section>
+
+<section id="forecast" aria-labelledby="fcH">
+  <h2 id="fcH">Demand forecasts</h2>
+  <p class="sub" id="fcSub"></p>
+  <div class="grid g3" id="fcKpis"></div>
+  <div class="grid side" style="margin-top:14px">
+    <div id="fcRows" style="max-height:520px;overflow:auto"></div>
+    <div class="card" style="min-width:0"><div id="fcTitle" style="font-weight:700;font-size:19px"></div>
+      <div class="legend" style="margin-top:6px"><span><i style="background:#1F2A24"></i>actual</span><span><i style="background:#28543E"></i>LightGBM</span><span><i style="background:#B3402F"></i>smoothing</span><span><i style="background:#DCD8CC;height:10px"></i>80% range</span></div>
+      <div id="fcChart"></div><div class="note" id="fcNote"></div></div>
+  </div>
+</section>
+
+<section id="promo" aria-labelledby="promoH">
+  <h2 id="promoH">Will a price cut pay back?</h2>
+  <p class="sub">The model that tried to predict promotion lift did worse than guessing zero, so it is not used. What is shown instead: the arithmetic, and what real controlled price cuts did.</p>
+  <div class="grid g3">
+    <div class="card"><div class="muted small">Price cut</div><div class="big" id="cutV"></div><input type="range" id="cut" min="10" max="50" step="1" value="20" aria-label="Price cut percent"></div>
+    <div class="card"><div class="muted small">Your margin</div><div class="big" id="marV"></div><input type="range" id="mar" min="15" max="70" step="1" value="30" aria-label="Margin percent"></div>
+    <div class="card dark kpi"><div class="l">To pay back, promoted weeks must sell</div><div class="big" id="beV"></div><div class="l">more units than usual</div></div>
+  </div>
+  <div style="margin:14px 0 6px" id="depts"></div>
+  <div class="grid side" style="grid-template-columns:minmax(0,1fr)">
+    <div class="card" style="min-width:0"><div id="promoChart"></div>
+      <div class="small" style="margin-top:6px"><b id="paidV"></b> <span class="muted" id="paidN"></span></div></div>
+  </div>
+  <div class="card honest" style="margin-top:14px" id="promoHonest"></div>
+</section>
+
+<section id="impact" aria-labelledby="impH">
+  <h2 id="impH">What invalid deductions cost a brand like yours</h2>
+  <p class="sub">Retailers deduct money from payments; some of it the brand does not owe. Move the numbers. The ranges come from published industry sources, linked below.</p>
+  <div class="card dark"><label for="sales" class="l small">Your annual gross sales</label><div class="big" id="salesV"></div>
+    <input type="range" id="sales" min="0" max="1000" style="accent-color:#E5FF87;margin-top:12px"></div>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="muted small">Share of sales taken as deductions</span><span class="serif" style="font-size:34px" id="dV"></span></div>
+      <input type="range" id="d" min="0" max="250" value="100" aria-label="Deduction rate"><div id="dBands"></div></div>
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="muted small">Share of deduction dollars that are invalid</span><span class="serif" style="font-size:34px" id="vV"></span></div>
+      <input type="range" id="v" min="0" max="250" value="75" aria-label="Invalid share"><div id="vBands"></div></div>
+  </div>
+  <div class="card grid g2" style="margin-top:14px;align-items:center">
+    <div id="funnel"></div>
+    <div><div class="muted small">Invalid deductions at stake each year</div><div class="big" style="color:var(--red)" id="atStake"></div>
+      <p class="small muted">It comes back only if someone disputes it, with proof, before the retailer's window closes. No recovered-dollar figure is claimed.</p>
+      <div id="ranges" class="small"></div></div>
+  </div>
+  <p class="note">Sources: <a href="https://www.inmar.com/blog/insights/martech/hidden-cost-cpg-chargebacks-what-manufacturers-overlook">Inmar</a> (deductions are 5-15% of gross sales in CPG);
+    <a href="https://www.highradius.com/insights/finsider/deduction-metrics-enterprises/">HighRadius</a>, citing the Credit Research Foundation (10-20% of revenue; 5-10% of deduction value invalid). Vendor figures that disagree, so they are shown side by side.</p>
+</section>
+</main>
+
+<footer class="wrap">
+  Independent portfolio project by Akila Lourdes Miriyala Francis. Public data only: M5 (Walmart sales, via the M5
+  forecasting competition), FATURA and CORD (CC BY 4.0). Not affiliated with any company. The full app (documents,
+  cash matching, the investigation agent, the error budget) runs locally: <code>make up</code>.
+  <span id="stamp"></span>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, attrs = {}, html = "") => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); e.innerHTML = html; return e; };
+const money = (x) => x >= 1e9 ? `$${+(x / 1e9).toFixed(1)}B` : x >= 1e6 ? `$${+(x / 1e6).toFixed(x >= 1e8 ? 0 : 1)}M` : x >= 1e3 ? `$${Math.round(x / 1e3).toLocaleString()}K` : `$${Math.round(x).toLocaleString()}`;
+const pct = (x, d = 0) => `${(x * 100).toFixed(d)}%`;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const load = (n) => fetch(`json/${n}.json`).then((r) => { if (!r.ok) throw new Error(n); return r.json(); });
+const RED = "#B3402F", FOREST = "#28543E", INK = "#1F2A24";
+
+// ---------- Results ----------
+function proof(cards) {
+  const box = $("proofCards");
+  for (const c of cards) {
+    const v = c.visual; let body = "";
+    if (v.type === "ring") {
+      const r = v.k / v.n;
+      body = `<div class="kpi"><div class="n">${(r * 100).toFixed(r > 0.99 ? 2 : 1)}%</div><div class="l">${v.k.toLocaleString()} of ${v.n.toLocaleString()}${v.wrong !== undefined ? `, ${v.wrong} wrong` : ""}${v.note ? ` · ${esc(v.note)}` : ""}</div></div>
+        <div class="meter" style="margin-top:10px"><i style="width:${r * 100}%"></i></div>`;
+    } else if (v.type === "dots") {
+      body = `<div class="kpi"><div class="n">${v.right} <span class="muted" style="font-size:24px">vs</span> ${v.left}</div><div class="l">${esc(v.right_label)} vs ${esc(v.left_label)}${v.p ? ` · p = ${v.p < 0.001 ? v.p.toExponential(0) : v.p}` : ""}</div></div>`;
+    } else {
+      const mx = Math.max(v.left, v.right);
+      const lower = v.lower_better || /wrong/.test(v.unit || ""); const better = lower ? v.right < v.left : v.right > v.left;
+      body = `<div class="kpi"><div class="n" style="color:${v.honest_no ? RED : "inherit"}">${v.honest_no ? "No" : better ? `${Math.round(Math.abs(1 - v.right / v.left) * 100)}% ${lower ? (/wrong/.test(v.unit || "") ? "fewer" : "less") : "more"}` : "–"}</div></div>
+        ${[[v.left_label, v.left, "#9A9A9A"], [v.right_label, v.right, v.honest_no ? RED : FOREST]].map(([l, x, col]) =>
+          `<div class="versus"><span>${esc(l)}</span><span class="meter"><i style="width:${(x / mx) * 100}%;background:${col}"></i></span><span style="text-align:right">${x}</span></div>`).join("")}`;
+    }
+    box.append(el("div", { class: "card proof" }, `<div class="t">${esc(c.title)}</div>${body}<div class="m">${esc(c.method)}</div>`));
+  }
+}
+
+// ---------- Lost sales ----------
+function lostSales(s, cells, items) {
+  const t = s.test;
+  $("lostKpis").innerHTML = `<div class="card alarm kpi"><div class="l">Estimated sales lost in 52 weeks</div><div class="n" style="font-size:60px">${money(s.lost)}</div>
+      <div class="l">${s.sold_total ? `${(100 * s.lost / s.sold_total).toFixed(1)}% of ${money(s.sold_total)} sold · ` : ""}${s.flagged_weeks.toLocaleString()} item-weeks</div></div>` +
+    (t ? `<div class="card dark kpi"><div class="l">Planted stock-outs caught, by dollars</div><div class="n" style="font-size:60px">${pct(t.caught_dollars)}</div><div class="l">on weeks it never saw · ${pct(t.flag_rate, 1)} of real weeks flagged</div></div>
+      <div class="card"><div class="muted small">Caught, by how fast an item sells</div>${Object.entries(t.by_speed).map(([k, v]) =>
+        `<div class="versus"><span>${k}</span><span class="meter"><i style="width:${(v.caught || 0) * 100}%"></i></span><span style="text-align:right">${pct(v.caught || 0)}</span></div>`).join("")}
+        <div class="note">A slow seller's empty week is ordinary; no weekly test can tell.</div></div>` : "");
+  const sorted = s.grid.flat().filter((v) => v > 0).sort((a, b) => a - b);
+  const shade = (v) => { if (v <= 0) return "#E4E1D8"; let lo = 0, hi = sorted.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] < v) lo = m + 1; else hi = m; } return `rgba(179,64,47,${0.15 + 0.85 * lo / Math.max(1, sorted.length - 1)})`; };
+  const heat = $("heat");
+  heat.style.gridTemplateColumns = `3rem repeat(${s.weeks.length}, minmax(8px,1fr))`;
+  $("h0").textContent = s.weeks[0]; $("h1").textContent = s.weeks[s.weeks.length - 1];
+  let picked = null;
+  s.stores.forEach((st, r) => {
+    heat.append(el("div", { class: "small", style: "font-weight:700;text-align:right;padding-right:6px;line-height:18px" }, st));
+    s.weeks.forEach((wk, c) => {
+      const b = el("button", { "aria-label": `${st}, week of ${wk}: ${money(s.grid[r][c])} estimated lost` });
+      b.style.background = shade(s.grid[r][c]);
+      b.onmouseenter = () => { $("hv").textContent = `${st}, week of ${wk}: ${money(s.grid[r][c])}`; };
+      b.onclick = () => { if (picked) picked.classList.remove("on"); picked = b; b.classList.add("on"); showRows(st, wk); };
+      heat.append(b);
+    });
+  });
+  const rows = $("lostRows");
+  const list = (arr, note) => {
+    rows.innerHTML = "";
+    for (const x of arr) {
+      const has = items[`${x.item}|${x.store}`];
+      const b = el("button", { class: "row" }, `<span><b>${esc(x.item)}</b> <span class="muted">${esc(x.store)} · ${esc(x.note)}</span></span><span class="money">${money(x.lost)}</span>`);
+      b.onclick = () => { rows.querySelectorAll(".row").forEach((r) => r.classList.remove("on")); b.classList.add("on"); showItem(x.item, x.store, x.week); };
+      if (!has) b.title = "Weekly chart included for the 40 biggest losses only";
+      rows.append(b);
+    }
+    $("lostNote").textContent = note;
+  };
+  const showRows = (st, wk) => {
+    const c = cells[`${st}|${wk}`] || { n: 0, rows: [] };
+    $("hv").textContent = `${st}, week of ${wk}`;
+    list(c.rows.map((r) => ({ item: r.item, store: st, lost: r.lost, week: wk, note: `sold ${Math.round(r.sold)}, usually ${Math.round(r.expected)}` })),
+      c.n > c.rows.length ? `and ${c.n - c.rows.length} smaller ones that week` : c.n ? "" : "Nothing flagged that week.");
+  };
+  list(s.top.slice(0, 12).map((r) => ({ ...r, note: `${r.weeks} flagged weeks` })), "Biggest losses over the year. Tap a week in the grid to see that week's items.");
+  const showItem = (it, st, mark) => {
+    const d = items[`${it}|${st}`];
+    $("itemTitle").textContent = `${it} at ${st}`;
+    if (!d) { $("itemChart").innerHTML = `<p class="muted">The free showcase carries weekly charts for the 40 biggest losses; the full app has every item.</p>`; return; }
+    const W = 760, H = 240, L = 44, B = 30, n = d.weeks.length, bw = (W - L - 6) / n;
+    const fl = new Map(d.flags.map((f) => [f.week, f]));
+    const mx = Math.max(1, ...d.sold.map((v) => v || 0), ...d.flags.map((f) => f.expected));
+    const y = (v) => 10 + (1 - v / mx) * (H - 10 - B);
+    let g = `<text x="${L - 8}" y="${y(mx) + 6}" font-size="16" text-anchor="end" fill="#6C6C6C">${Math.round(mx)}</text><text x="${L - 8}" y="${y(0)}" font-size="16" text-anchor="end" fill="#6C6C6C">0</text>`;
+    d.weeks.forEach((wk, i) => {
+      const v = d.sold[i], f = fl.get(wk), x = L + i * bw;
+      if (wk === mark) g += `<rect x="${x - 1}" y="6" width="${bw + 2}" height="${H - B - 4}" fill="none" stroke="${INK}" stroke-width="2" rx="3"/>`;
+      if (f) g += `<rect x="${x + .5}" y="${y(f.expected)}" width="${Math.max(1, bw - 1)}" height="${Math.max(0, y(v || 0) - y(f.expected))}" fill="${RED}" opacity=".22"><title>${wk}: sold ${f.sold}, usually ${Math.round(f.expected)}, about $${Math.round(f.lost)} lost</title></rect>`;
+      if (v != null) g += `<rect x="${x + .5}" y="${y(v)}" width="${Math.max(1, bw - 1)}" height="${y(0) - y(v)}" fill="${f ? RED : "#9A9A9A"}"/>`;
+    });
+    g += `<text x="${L}" y="${H - 6}" font-size="16" fill="#6C6C6C">${d.weeks[0].slice(0, 7)}</text><text x="${W - 4}" y="${H - 6}" font-size="16" text-anchor="end" fill="#6C6C6C">${d.weeks[n - 1].slice(0, 7)}</text>`;
+    $("itemChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Weekly sales of ${esc(it)} at ${esc(st)}, flagged weeks in red">${g}</svg>`;
+  };
+  showItem(s.top[0].item, s.top[0].store);
+}
+
+// ---------- Forecasts ----------
+function forecasts(sum, series) {
+  const sc = sum.test && sum.test.scores, iv = sum.intervals;
+  $("fcSub").textContent = `${sum.series.toLocaleString()} real Walmart item-store series, forecast 8 weeks ahead and scored once on the last 8 weeks. The 40 biggest sellers are here to explore.`;
+  if (sc) $("fcKpis").innerHTML = `<div class="card dark kpi"><div class="l">Series forecast</div><div class="n">${sum.series.toLocaleString()}</div></div>
+    <div class="card dark kpi"><div class="l">Less error than exponential smoothing (WRMSSE ${sc.lgbm.wrmsse.toFixed(3)} vs ${sc.ses.wrmsse.toFixed(3)})</div><div class="n">${pct(1 - sc.lgbm.wrmsse / sc.ses.wrmsse, 1)}</div></div>
+    <div class="card dark kpi"><div class="l">Of real weeks inside the 80% range</div><div class="n">${iv ? pct(iv.test_coverage, 1) : "–"}</div></div>`;
+  const rows = $("fcRows");
+  series.forEach((s, i) => {
+    const g = s.ses_rmsse && s.lgbm_rmsse != null ? 1 - s.lgbm_rmsse / s.ses_rmsse : null;
+    const b = el("button", { class: "row" }, `<span><b>${esc(s.item)}</b> <span class="muted">${esc(s.store)} · ${money(s.dollars)}/yr${g != null ? ` · LightGBM ${pct(Math.abs(g))} ${g >= 0 ? "better" : "worse"}` : ""}</span></span>`);
+    b.onclick = () => { rows.querySelectorAll(".row").forEach((r) => r.classList.remove("on")); b.classList.add("on"); draw(s); };
+    rows.append(b); if (i === 0) b.classList.add("on");
+  });
+  const draw = (s) => {
+    $("fcTitle").textContent = `${s.item} at ${s.store}`;
+    const hist = s.history, act = s.actual, nT = act.length, nF = s.future.length, n = hist.length + nT + nF;
+    const all = [...hist, ...act, ...(s.test_hi || []), ...(s.future_hi || []), ...(s.test.lgbm || []), ...(s.test.ses || [])].filter((v) => v != null);
+    const mx = Math.max(1, ...all), W = 760, H = 260, L = 44, B = 28;
+    const x = (i) => L + (i / (n - 1)) * (W - L - 6), y = (v) => 10 + (1 - v / mx) * (H - 10 - B);
+    const line = (vals, off, col, w, dash = "") => { const p = vals.map((v, i) => v == null ? null : `${x(off + i).toFixed(1)},${y(v).toFixed(1)}`).filter(Boolean); return p.length ? `<polyline points="${p.join(" ")}" fill="none" stroke="${col}" stroke-width="${w}" ${dash ? `stroke-dasharray="${dash}"` : ""}/>` : ""; };
+    const band = (lo, hi, off) => { if (!lo || !hi) return ""; const up = hi.map((v, i) => `${x(off + i).toFixed(1)},${y(v ?? 0).toFixed(1)}`), dn = lo.map((v, i) => `${x(off + i).toFixed(1)},${y(v ?? 0).toFixed(1)}`).reverse(); return `<polygon points="${[...up, ...dn].join(" ")}" fill="#DCD8CC" opacity=".8"/>`; };
+    const t0 = hist.length, f0 = hist.length + nT;
+    let g = `<rect x="${x(t0)}" y="8" width="${x(f0 - 1) - x(t0)}" height="${H - B - 8}" fill="#F1EFE8"/>`;
+    g += band(s.test_lo, s.test_hi, t0) + band(s.future_lo, s.future_hi, f0);
+    g += line(hist, 0, "#8A8A8A", 1.5) + line(act, t0, INK, 2.5) + line(s.test.ses || [], t0, RED, 2, "5 4") + line(s.test.lgbm || [], t0, FOREST, 2.5) + line(s.future, f0, FOREST, 2.5, "6 4");
+    g += `<text x="${(x(t0) + x(f0 - 1)) / 2}" y="22" font-size="15" text-anchor="middle" fill="#6C6C6C">test</text><text x="${(x(f0) + x(n - 1)) / 2}" y="22" font-size="15" text-anchor="middle" fill="#6C6C6C">next 8</text>`;
+    g += `<text x="${L - 8}" y="${y(mx) + 6}" font-size="15" text-anchor="end" fill="#6C6C6C">${Math.round(mx)}</text><text x="${L - 8}" y="${y(0)}" font-size="15" text-anchor="end" fill="#6C6C6C">0</text>`;
+    $("fcChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Weekly sales and forecasts for ${esc(s.item)} at ${esc(s.store)}">${g}</svg>`;
+    $("fcNote").textContent = s.lgbm_rmsse != null ? `Error on the test weeks (RMSSE, lower is better): LightGBM ${s.lgbm_rmsse}, smoothing ${s.ses_rmsse}.` : "";
+  };
+  draw(series[0]);
+}
+
+// ---------- Promotions ----------
+function promos(all) {
+  const be = (d, m) => (m > d ? d / (m - d) : Infinity);
+  let dept = "all";
+  const depts = $("depts");
+  const keys = ["all", ...Object.keys(all.all.depts)];
+  for (const k of keys) {
+    const ev = all[k] || all.all;
+    const b = el("button", { class: "chip", "aria-pressed": String(k === dept) }, `${k === "all" ? "All" : k.replace("_", " ")} ${(k === "all" ? ev.count : all.all.depts[k]).toLocaleString()}`);
+    b.onclick = () => { dept = k; depts.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", "false")); b.setAttribute("aria-pressed", "true"); draw(); };
+    depts.append(b);
+  }
+  const draw = () => {
+    const d = +$("cut").value / 100, m = +$("mar").value / 100, need = be(d, m), ev = all[dept] || all.all;
+    $("cutV").textContent = `${Math.round(d * 100)}%`; $("marV").textContent = `${Math.round(m * 100)}%`;
+    $("beV").textContent = isFinite(need) ? `+${Math.round(need * 100)}%` : "never";
+    const W = 900, H = 340, L = 56, B = 34, T = 10, x = (v) => L + ((v - 0.1) / 0.4) * (W - L - 10), y = (v) => T + (1 - (Math.max(-1, Math.min(3, v)) + 1) / 4) * (H - T - B);
+    let g = "", near = 0, paid = 0;
+    for (const v of [-1, 0, 1, 2, 3]) g += `<line x1="${L}" x2="${W - 10}" y1="${y(v)}" y2="${y(v)}" stroke="#E4E1D8"/><text x="${L - 8}" y="${y(v) + 5}" font-size="14" text-anchor="end" fill="#6C6C6C">${v >= 0 ? "+" : ""}${v * 100}%</text>`;
+    for (const v of [0.1, 0.2, 0.3, 0.4, 0.5]) g += `<text x="${x(v)}" y="${H - 8}" font-size="14" text-anchor="${v === 0.5 ? "end" : "middle"}" fill="#6C6C6C">${Math.round(v * 100)}% off</text>`;
+    g += `<rect x="${x(Math.max(0.1, d - 0.025))}" y="${T}" width="${x(Math.min(0.5, d + 0.025)) - x(Math.max(0.1, d - 0.025))}" height="${H - T - B}" fill="${INK}" opacity=".06"/>`;
+    const step = Math.max(1, Math.floor(ev.depth.length / 6000));
+    for (let i = 0; i < ev.depth.length; i++) {
+      const dd = ev.depth[i], l = ev.lift[i], close = Math.abs(dd - d) <= 0.025, ok = l >= be(dd, m) - 1e-9;
+      if (close) { near++; if (ok) paid++; }
+      if (dd < 0.1 || dd > 0.5 || (!close && i % step)) continue;
+      g += `<circle cx="${x(dd).toFixed(1)}" cy="${y(l).toFixed(1)}" r="2.4" fill="${ok ? "#5E9A73" : RED}" opacity="${close ? 0.85 : 0.25}"/>`;
+    }
+    const pts = []; for (let v = 0.1; v <= 0.5001; v += 0.005) { const b = be(v, m); if (!isFinite(b) || b > 3) break; pts.push(`${x(v).toFixed(1)},${y(b).toFixed(1)}`); }
+    g += `<polyline points="${pts.join(" ")}" fill="none" stroke="${FOREST}" stroke-width="3"/>`;
+    $("promoChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Real price cuts by depth and lift, with the break-even curve">${g}</svg>`;
+    $("paidV").textContent = near ? `${pct(paid / near)} of real cuts near ${Math.round(d * 100)}% off paid back at a ${Math.round(m * 100)}% margin` : "No real cuts near this depth";
+    $("paidN").textContent = near ? `(${paid.toLocaleString()} of ${near.toLocaleString()}; green paid back, red did not)` : "";
+  };
+  ["cut", "mar"].forEach((id) => $(id).addEventListener("input", draw));
+  const t = all.all.test;
+  $("promoHonest").innerHTML = t ? `<b>Can a model predict the lift?</b> On ${t.test_cuts} real price cuts it never saw: guessing zero lift had error ${t.mae.zero}, the ML model ${t.mae.model}. The model did not beat guessing zero, so this page shows evidence, not a prediction. A causal answer needs a brand's promotion calendar or an experiment.` : "";
+  draw();
+}
+
+// ---------- Impact ----------
+function impact() {
+  const LO = Math.log10(1e6), HI = Math.log10(2e9);
+  const snap = (x) => { const k = 10 ** (Math.floor(Math.log10(x)) - 1); return Math.round(x / k) * k; };
+  const salesAt = (p) => snap(10 ** (LO + (HI - LO) * p / 1000));
+  $("sales").value = Math.round(((Math.log10(50e6) - LO) / (HI - LO)) * 1000);
+  const bandsHtml = (bands) => `<div style="position:relative;height:${bands.length * 14 + 4}px;margin-top:6px">${bands.map((b, i) =>
+    `<div title="${b.name}: ${b.lo * 100}% to ${b.hi * 100}%" style="position:absolute;left:${b.lo / 0.25 * 100}%;width:${(b.hi - b.lo) / 0.25 * 100}%;top:${i * 14}px;height:9px;border-radius:9px;background:${b.c}"></div>`).join("")}</div>
+    <div class="legend">${bands.map((b) => `<span><i style="background:${b.c};height:8px"></i>${b.name} ${b.lo * 100}% to ${b.hi * 100}%</span>`).join("")}</div>`;
+  const D = [{ name: "Inmar", lo: 0.05, hi: 0.15, c: "#E7B9AE" }, { name: "HighRadius", lo: 0.10, hi: 0.20, c: "#9DB8A8" }];
+  const V = [{ name: "HighRadius", lo: 0.05, hi: 0.10, c: "#E7B9AE" }];
+  $("dBands").innerHTML = bandsHtml(D); $("vBands").innerHTML = bandsHtml(V);
+  const draw = () => {
+    const S = salesAt(+$("sales").value), d = +$("d").value / 1000, v = +$("v").value / 1000, ded = S * d, inv = ded * v;
+    $("salesV").textContent = money(S); $("dV").textContent = `${+(d * 100).toFixed(1)}%`; $("vV").textContent = `${+(v * 100).toFixed(1)}%`;
+    $("atStake").textContent = money(inv);
+    const W = 1000, bar = 40, gap = 84, rows = [["Gross sales", S, d, "#D8D3C6", RED], ["Deductions retailers take", ded, v, RED, INK], ["Invalid, so disputable", inv, 0, INK, INK]];
+    let g = "";
+    rows.forEach(([l, val, sl, c1, c2], i) => {
+      const yy = i * (bar + gap);
+      g += `<text x="0" y="${yy - 10}" font-size="30" fill="#6C6C6C">${l}</text><text x="${W}" y="${yy - 10}" font-size="32" font-weight="700" text-anchor="end" fill="${INK}">${money(val)}</text>
+        <rect x="0" y="${yy}" width="${W}" height="${bar}" rx="6" fill="${c1}"/>`;
+      if (sl > 0) g += `<rect x="0" y="${yy}" width="${Math.max(3, W * sl)}" height="${bar}" rx="6" fill="${c2}"/><path d="M0 ${yy + bar} L${Math.max(3, W * sl)} ${yy + bar} L${W} ${yy + bar + gap - 40} L0 ${yy + bar + gap - 40} Z" fill="${c2}" opacity=".08"/>`;
+    });
+    $("funnel").innerHTML = `<svg viewBox="0 -40 ${W} ${3 * bar + 2 * gap + 44}" width="100%" role="img" aria-label="${money(S)} sales, ${money(ded)} deducted, ${money(inv)} invalid">${g}</svg>`;
+    $("ranges").innerHTML = D.map((x) => `<div>At ${x.name}'s rates: <b>${money(S * x.lo * 0.05)} to ${money(S * x.hi * 0.10)}</b> a year</div>`).join("");
+  };
+  ["sales", "d", "v"].forEach((id) => $(id).addEventListener("input", draw));
+  draw();
+}
+
+impact();
+Promise.all(["proof", "lost_summary", "lost_cells", "lost_items", "forecast_summary", "forecast_series", "promo", "meta"].map((n) => load(n).catch(() => null)))
+  .then(([p, ls, lc, li, fs, fser, pr, meta]) => {
+    if (p) proof(p); if (ls && lc && li) lostSales(ls, lc, li); if (fs && fser) forecasts(fs, fser); if (pr) promos(pr);
+    if (meta && meta.video) { const a = $("videoLink"); a.href = meta.video; a.hidden = false; }
+    if (meta && meta.exported) $("stamp").textContent = ` Data exported ${meta.exported} from commit ${meta.commit}.`;
+  });
+</script>
+</body>
+</html>

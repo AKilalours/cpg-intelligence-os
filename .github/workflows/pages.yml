@@ -1,0 +1,34 @@
+# The free public showcase: site/ (static HTML + exported JSON) published to GitHub Pages.
+# No server, no database, no card. One-time setup: repo Settings -> Pages -> Source: GitHub Actions.
+name: pages
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the showcase has its data
+        run: |
+          for f in proof lost_summary lost_cells lost_items forecast_summary forecast_series promo meta; do
+            test -s "site/json/$f.json" || { echo "missing site/json/$f.json: run make showcase-data"; exit 1; }
+          done
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

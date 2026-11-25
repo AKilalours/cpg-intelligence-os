@@ -9,7 +9,7 @@ ROUND ?= 2
 SPLIT ?= validation
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report agent-seeds letters-local stp-simulate stp-frontier stp-fresh stp-status forecast-design forecast-score forecast-publish promo-score promo-publish drift-design drift-dev drift-watch drift-fresh codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-paired codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web up demo-snapshot demo-upload
+.PHONY: help setup lock doctor db migrate stop download load-m5 load-cord decide-docs regress-docs export-regressions names-analysis receipts-collect receipts-eval finance-world finance-evidence finance-restore-evidence real-run world-sidecar agent-design agent-score agent-report agent-seeds letters-local stp-simulate stp-frontier stp-fresh stp-status forecast-design forecast-score forecast-publish promo-score promo-publish drift-design drift-dev drift-watch drift-fresh codes-baselines codes-prompted setup-lora codes-lora codes-hybrid codes-paired codes-report reconcile eval-recon load-fatura train-router eval-router route-docs learn-rules extract-docs eval-extract vlm-dev eval-cascade vlm-collect routing-estimate routing-calibration routing-holdout test api web up demo-snapshot demo-upload showcase-data
 
 help:  ## List commands
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -215,6 +215,9 @@ api: $(PY)  ## Run the API (port from .env, default 8100)
 
 web:  ## Run the UI (port from .env, default 3100)
 	bash scripts/serve.sh web
+
+showcase-data: $(PY)  ## Export the free GitHub Pages showcase's data to site/json/ (needs the database up; aggregates only)
+	$(PY) scripts/showcase_export.py
 
 demo-snapshot: $(PY)  ## Package the public demo's data into local_runs/demo/ (refuses non-shareable datasets; uploads nothing)
 	$(PY) scripts/demo_snapshot.py

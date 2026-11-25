@@ -1218,3 +1218,19 @@ Postgres, the API and the UI. Three rules:
 Deploy: .github/workflows/deploy-demo.yml uploads the code to the Space after CI passes on main, only when the
 repo has HF_SPACE and HF_TOKEN set. Not yet run end to end: the database restore inside the image depends on the
 real dump and is checked on the first build.
+
+## 120. The public link is a free static showcase, not a hosted server
+
+Hugging Face now marks Docker Spaces as paid (checked 2026-11-25), and every always-on alternative asks for a card.
+The constraint here is $0 and no billing details, so the public link is GitHub Pages: static files, free for public
+repos, no card. A static site cannot query a database, so `make showcase-data` asks the real API, in-process and
+read-only, for the same answers the app shows and saves them to site/json/ (about 3 MB): the proof cards, the
+lost-sales grid with every week's items and charts for the 40 biggest losses, the 40 biggest forecast series,
+every controlled price cut by department, and the forecast summary. Aggregates only: no raw files, no document
+images, nothing from DocILE.
+
+What is live on the page: the results, the lost-sales grid and drill-down, the forecast explorer, the promotion
+break-even planner over real cuts, and the impact calculator. What is not: invoices, cash matching, the agent's
+cases and the error budget, which need the database; the page says they run locally with `make up`.
+The Docker image and private-data snapshot from 119 are kept: they work unchanged on any Docker host if one becomes
+free or affordable, and deploy-demo.yml skips itself until HF_SPACE is set.
