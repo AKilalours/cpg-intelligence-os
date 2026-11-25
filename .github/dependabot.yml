@@ -1,11 +1,19 @@
 # Weekly update pull requests. Each one runs the full CI (tests on Python 3.10
 # and 3.12, security audit, web build) before anything is merged.
+# Major versions of the styling and type-checking toolchain change how the build works
+# (Tailwind 4 moved its PostCSS plugin and broke the build on 2026-11-25), so those
+# are upgraded deliberately in their own pull request, not automatically.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /web
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: pip
     directory: /
     schedule:
