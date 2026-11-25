@@ -19,6 +19,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 bg-sheet px-3 py-2">
           Skip to content
         </a>
+        {process.env.CPGOS_READ_ONLY === "1" ? (
+          <div className="bg-ink px-4 py-2 text-center text-xs text-paper">
+            Public read-only demo on real public data (M5, FATURA, CORD). Buttons that record decisions are switched off here.{" "}
+            <a className="underline underline-offset-2" href="https://github.com/AKilalours/cpg-intelligence-os">Code and results</a>
+          </div>
+        ) : null}
         <Nav />
         <main id="main" className="mx-auto max-w-6xl px-5 pb-16 pt-8 md:px-8">{children}</main>
         <footer className="mx-auto max-w-6xl px-5 pb-8 text-xs text-muted md:px-8">

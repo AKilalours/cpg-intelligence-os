@@ -36,6 +36,23 @@ app.add_middleware(
 
 DB_DOWN = "The database isn't running. Start it with: make db"
 
+READ_ONLY = "This is the read-only public demo: decisions are not recorded here. Run it locally to try them."
+
+
+@app.middleware("http")
+async def read_only_demo(request, call_next):
+    """CPGOS_READ_ONLY=1 (the hosted demo) refuses every write before it reaches a handler or the database.
+    Strangers can open the demo; none of them should be able to approve, dispute or clear anything."""
+    if request.method not in ("GET", "HEAD", "OPTIONS") and config.get("CPGOS_READ_ONLY", "") == "1":
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content={"detail": READ_ONLY})
+    return await call_next(request)
+
+
+@app.get("/api/mode")
+def mode() -> dict:
+    return {"read_only": config.get("CPGOS_READ_ONLY", "") == "1"}
+
 
 @app.exception_handler(psycopg.OperationalError)
 def database_unreachable(_request, exc: psycopg.OperationalError):

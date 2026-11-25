@@ -1,0 +1,37 @@
+# Deploys the read-only demo to a Hugging Face Docker Space after CI passes on main.
+# Needs, in this GitHub repo's settings: secret HF_TOKEN (write access to the Space) and
+# variable HF_SPACE (e.g. your-hf-name/cpg-intelligence-os). Without them the job skips itself.
+name: deploy-demo
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    if: ${{ vars.HF_SPACE != '' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Assemble the Space (code only; the data stays in a private dataset)
+        run: |
+          mkdir space
+          git archive HEAD cpgos db reports web requirements.lock pyproject.toml deploy/start.sh | tar -x -C space
+          cp deploy/Dockerfile space/Dockerfile
+          cp deploy/README.md space/README.md
+          ! grep -rIl -i "docile" space/reports || { echo "refusing: a report mentions DocILE data"; exit 1; }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Upload to the Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+        run: |
+          pip install --quiet "huggingface_hub>=0.30,<2"
+          python -c "import os; from huggingface_hub import HfApi; HfApi(token=os.environ['HF_TOKEN']).upload_folder(folder_path='space', repo_id=os.environ['HF_SPACE'], repo_type='space', delete_patterns=['*'], commit_message='deploy ' + os.environ.get('GITHUB_SHA','')[:7])"

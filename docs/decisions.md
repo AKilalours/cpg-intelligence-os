@@ -1197,3 +1197,24 @@ of payment lines posted with no person and 0 wrong; 1 against 24 valid claims wr
 reason wordings read right), read live from /api/proof. No dollars-recovered figure: recovery depends on a team's
 process and deadlines, and no source gives a defensible rate. Lost-sales dollars are left off too: the 2.0% was
 measured on Walmart retail sales, and a brand's gross sales are a different quantity.
+
+## 119. A public demo that cannot be written to and does not publish the data
+
+Where: a free Hugging Face Docker Space (no card; sleeps when idle, wakes in about a minute). One container runs
+Postgres, the API and the UI. Three rules:
+
+1. Read-only by construction. CPGOS_READ_ONLY=1 makes the API refuse every non-GET request in middleware, before
+   any handler or database call. tests/test_read_only.py posts to every write route and also counts the app's POST
+   routes, so a new write route without coverage fails the test. The UI shows a banner saying decisions are off.
+2. The data is not in a public repository. `make demo-snapshot` packages the database dump, published forecast
+   files and document images into local_runs/demo/; `make demo-upload` puts them in a PRIVATE Hugging Face dataset
+   (it refuses if the repo is public). The Space fetches it at build time with a build secret. The Space repository
+   holds code only.
+3. Licences. The snapshot refuses a database containing any research-only or registration-only dataset (DocILE,
+   dunnhumby; tests/test_demo_snapshot.py), and takes images only from the fatura/ and cord/ folders (both CC BY 4.0,
+   credited on the banner). M5 is shown, as across the app; its licence is Kaggle's competition rules, which the
+   registry marks unverified, so that is a judgement call left visible here rather than hidden.
+
+Deploy: .github/workflows/deploy-demo.yml uploads the code to the Space after CI passes on main, only when the
+repo has HF_SPACE and HF_TOKEN set. Not yet run end to end: the database restore inside the image depends on the
+real dump and is checked on the first build.
