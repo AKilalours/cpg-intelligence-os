@@ -27,7 +27,7 @@ jobs:
           node-version: 22
       - name: Build the public copy of the app
         run: bash scripts/build_public.sh public-snapshot /${{ github.event.repository.name }}
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
           path: .public-build/out
