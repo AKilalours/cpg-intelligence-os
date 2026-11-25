@@ -1,30 +1,46 @@
 # CPG Intelligence OS
 ### Evidence-grounded AI for financial operations and commercial planning
 
-**Problem.** CPG businesses operate across fragmented financial documents, retailer
-transactions, promotional records, and sales data. Inconsistent identifiers,
-unfamiliar document layouts, and uncertain evidence make automated decisions
-difficult to trust.
+**What it is.** An AI operating layer for a consumer-goods brand's back office: it reads invoices, matches
+retailer payments, investigates deductions, forecasts demand, and finds lost sales. Every number below was fixed
+in advance, then scored once on data the system never saw.
 
-**Solution.** An independent applied AI platform that converts heterogeneous
-business records into validated financial data, investigates exceptions through
-controlled agentic workflows, and connects financial operations to demand
-forecasting and promotion analytics.
+**[Results on one page](docs/results.md)** · **Live demo:** coming with the first deploy (read-only) ·
+**[Every decision and its evidence](docs/decisions.md)**
 
-> Independent portfolio project. Not affiliated with any company. No customer
-> relationships, production deployments, or performance improvements are claimed
-> without reproducible evidence in this repo.
+| What it does | Measured on unseen data | Compared with |
+|---|---|---|
+| Reads invoice fields | **99.89%** of accepted values right; 69.5% of invoices need no person | Regression gate on every human correction |
+| Matches retailer payments | **88.2%** posted with no person, **0 wrong** | Rest ranked for a person by money at risk |
+| Investigates deductions (agent) | **1** valid claim wrongly disputed | Rules engine: **24** (8 unseen worlds, p = 2e-6) |
+| Error budget on automation | **30** wrong postings under a silent 5% fault | **126** with no gate |
+| Drift monitors | **98%** of injected changes caught, 0 false alarms on cash and claims | 8 unseen worlds |
+| Demand forecasting, 30,490 real series | **4.4%** lower error than smoothing | 80% ranges held 79.5% of weeks |
+| Lost sales (likely empty shelves) | **50.9%** of planted lost dollars caught at a 0.7% flag rate | Est. $879K of $45.1M sold |
+| Promotion lift prediction | Did **not** beat guessing zero, so not shipped | Break-even evidence shown instead |
+
+> Independent portfolio project. Not affiliated with any company. Public data only (M5, FATURA, CORD). No
+> customer relationships, production deployments, or performance improvements are claimed without reproducible
+> evidence in this repo.
+
+## Run it
+
+```bash
+make setup      # once: Python environment, locked packages, .env
+make db         # Postgres in Docker
+make up         # API and UI together; open http://127.0.0.1:3100 (Ctrl+C stops both)
+```
 
 ## Status
 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Data foundation and product shell | **Done**, verified on full real M5 |
-| 2 | Document AI and reconciliation | **Reconciliation done** (2a); document AI measured on FATURA invoices and CORD receipt photos (2b); review UI next |
-| 3 | Agentic investigation | **Investigator scored** (Texas and Wisconsin, once); case screen and number-checked letters done; fine-tuned code model next |
-| 4 | Evaluation and production controls | Not started |
-| 5 | Forecasting and promotion analytics | Not started |
-| 6 | Product polish and technical proof | Not started |
+| 2 | Document AI and reconciliation | **Done**: FATURA invoices, CORD receipts, cash matching, deduction validation |
+| 3 | Agentic investigation | **Done**: investigator scored on unseen worlds; case screen; number-checked letters |
+| 4 | Evaluation and production controls | **Done**: error budget enforced by the database, drift alarms, regression gate, CI |
+| 5 | Forecasting and promotion analytics | **Done**: LightGBM vs classical baselines, intervals, promotion evidence, lost sales |
+| 6 | Product polish and technical proof | **In progress**: Impact page done; public demo next |
 
 ## What exists today
 
