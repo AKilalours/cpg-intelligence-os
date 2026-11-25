@@ -15,7 +15,7 @@ jobs:
     if: ${{ vars.HF_SPACE != '' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Assemble the Space (code only; the data stays in a private dataset)
