@@ -10,6 +10,7 @@ const SECTIONS = [
   { href: "/planning", label: "Planning" },
   { href: "/promotions", label: "Promotions" },
   { href: "/lost-sales", label: "Lost sales" },
+  { href: "/impact", label: "Impact" },
   { href: "/investigation", label: "Investigate" },
   { href: "/evaluation", label: "Proof" },
 ];

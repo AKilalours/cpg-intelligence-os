@@ -323,6 +323,15 @@ Over the last 52 weeks it flags 14,653 item-weeks, an estimated **$879K lost of 
 sales page draws that as a store by week heat grid; tap a week for its items, an item for its flagged weeks.
 It is an estimate: some flags are data problems, and weekly totals hide stock-outs shorter than a week.
 
+### Impact: what deductions cost a brand like yours
+
+The Impact page is a calculator a brand can try in ten seconds. Move annual gross sales and two rates, and it
+shows what is deducted and what part of that is invalid, against the published ranges it came from: Inmar
+(deductions are 5-15% of gross sales) and HighRadius (10-20% of revenue; 5-10% of deduction value invalid). A
+$50M brand has $125K to $750K a year of invalid deductions at stake at Inmar's rates, $250K to $1M at
+HighRadius's. Beside it sit this project's measured rates, as measurements, not multipliers. It claims no
+company's revenue and no dollars recovered.
+
 ## Phase 2b so far: document intelligence (measured)
 
 On FATURA (10,000 invoices, 50 layouts; 10 layouts held back and scored once):

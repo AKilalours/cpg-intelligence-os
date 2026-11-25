@@ -1182,3 +1182,18 @@ and a dashed box at what it normally sells. Plus the proof card.
 
 Open: daily data would catch sub-week stock-outs and slow sellers; a brand's on-hand inventory feed would
 separate empty shelves from data problems.
+
+## 118. The impact page: a brand's own sales times published ranges, nothing more
+
+A brand moves its annual gross sales (log slider, $1M to $2B), the share taken as deductions, and the invalid share.
+The page multiplies: deductions = sales x rate; invalid at stake = deductions x invalid share. Each slider's track
+shows where each source's range sits: Inmar 5-15% of gross sales; HighRadius (citing the Credit Research
+Foundation) 10-20% of revenue and 5-10% of deduction value invalid. Both sources were re-read on 2026-11-25. For a
+$50M brand: $125K to $750K a year at Inmar's rates, $250K to $1M at HighRadius's (tested in web/lib/impact.test.ts).
+
+What it deliberately does not do: multiply by this project's measured rates. Those were measured on a generated
+finance world over real M5 sales, not on a brand's books, so they sit beside the estimate as measured facts (88.2%
+of payment lines posted with no person and 0 wrong; 1 against 24 valid claims wrongly disputed; 85.3% of unseen
+reason wordings read right), read live from /api/proof. No dollars-recovered figure: recovery depends on a team's
+process and deadlines, and no source gives a defensible rate. Lost-sales dollars are left off too: the 2.0% was
+measured on Walmart retail sales, and a brand's gross sales are a different quantity.
