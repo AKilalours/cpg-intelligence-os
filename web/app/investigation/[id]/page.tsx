@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { snapshotIds } from "@/lib/snapshotParams";
 import { api } from "@/lib/api";
 import type { CaseDetail, CasePicture as Pic } from "@/lib/types";
 import { CasePicture } from "./CasePicture";
@@ -6,6 +7,10 @@ import { Notice } from "@/components/ui";
 import { CaseView } from "./CaseView";
 
 export const dynamic = "force-dynamic";
+
+export async function generateStaticParams() {
+  return snapshotIds("cases");
+}
 
 export default async function CasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

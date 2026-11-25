@@ -22,6 +22,6 @@ def test_cards_come_only_from_reports_that_exist(conn, tmp_path, monkeypatch):
     conn.row_factory = dict_row
     cards = {k["key"]: k for k in api.proof_cards(conn)}
     assert set(cards) == {"agent", "promo"}
-    assert cards["agent"]["visual"] == {"type": "dots", "left": 24, "left_label": "rules", "right": 1,
-                                        "right_label": "agent", "p": 2e-6}
+    assert cards["agent"]["visual"] == {"type": "dots", "left": 24, "left_label": "rules engine", "right": 1,
+                                        "right_label": "investigation agent", "p": 2e-6}
     assert cards["promo"]["visual"]["honest_no"] is True

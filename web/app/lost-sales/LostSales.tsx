@@ -85,14 +85,14 @@ export function LostSales({ s }: { s: LostSummary }) {
           <div className="mt-1 text-sm opacity-80">{s.sold_total ? `${(100 * s.lost / s.sold_total).toFixed(1)}% of ${money(s.sold_total)} sold · ` : ""}{s.flagged_weeks.toLocaleString()} item-weeks</div>
         </div>
         {t ? (<>
-          <div className="rounded-2xl bg-forest p-5 text-paper"><div className="text-sm opacity-80">Planted stock-outs caught, by dollars</div>
-            <div className="font-serif text-5xl font-light">{pct(t.caught_dollars)}</div><div className="mt-1 text-sm opacity-80">on weeks it never saw</div></div>
+          <div className="rounded-2xl bg-forest p-5 text-paper"><div className="text-sm opacity-80">Test stock-outs detected, by value</div>
+            <div className="font-serif text-5xl font-light">{pct(t.caught_dollars)}</div><div className="mt-1 text-sm opacity-80">on held-out weeks</div></div>
           <div className="rounded-2xl border border-rule bg-sheet p-5"><div className="text-sm text-muted">Caught, by how fast an item sells</div>
             <div className="mt-3 space-y-2">{Object.entries(t.by_speed).map(([k, v]) => (
               <div key={k} className="grid grid-cols-[6rem_1fr_2.5rem] items-center gap-2 text-sm"><span>{k}</span>
                 <span className="h-3 rounded-full bg-paper"><span className="block h-full rounded-full bg-forest" style={{ width: `${(v.caught ?? 0) * 100}%` }} /></span>
                 <span className="text-right tabular-nums">{pct(v.caught ?? 0)}</span></div>))}</div>
-            <div className="mt-2 text-xs text-muted">A slow seller's zero week is ordinary; no weekly test can tell.</div></div>
+            <div className="mt-2 text-xs text-muted">A zero week is normal for a slow seller, so weekly data cannot flag it.</div></div>
         </>) : null}
       </div>
 

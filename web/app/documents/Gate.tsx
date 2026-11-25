@@ -19,7 +19,7 @@ export function Gate({ g }: { g: RegressionGate }) {
           {g.passed ? "Gate passes" : "Gate fails"}
         </span>
         <span className="font-serif text-2xl">{count(g.confirmed_values)} values people confirmed</span>
-        <span className="text-sm text-muted">replayed on rule {g.policy.replace("two-readers-", "")}, no AI calls</span>
+        <span className="text-sm text-muted">replayed on rule {g.policy.replace("two-readers-", "")}, no model calls</span>
       </div>
       <div className="mt-4 flex h-3 overflow-hidden rounded-full bg-rule">
         {parts.map((p, i) => p.n > 0 ? <div key={p.label} className={`${p.cls} origin-left animate-grow`}

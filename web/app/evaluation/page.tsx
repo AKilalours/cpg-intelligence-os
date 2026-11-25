@@ -29,7 +29,7 @@ export default async function EvaluationPage() {
     <>
       <PageHeader
         title="Proof"
-        purpose="Every number scored against a hidden answer key, with its uncertainty."
+        purpose="Every figure scored against verified labels, with its uncertainty."
       />
       {story.ok ? <RuleStory points={story.data} /> : null}
       {agent.ok && agent.data ? <AgentProof r={agent.data} /> : null}
@@ -76,7 +76,7 @@ function Reconciliation({ r }: { r: EvaluationReport }) {
   return (
     <>
       <p className="mb-6 text-sm text-muted">
-        Report #{r.report_id} · {when(r.created_at)} · real M5 sales, generated payments · engines cannot read the answer key
+        Report #{r.report_id} · {when(r.created_at)} · Walmart M5 sales, simulated payments · labels hidden from the engines
       </p>
 
       <Section title="Cash application" note={`Automatic posting at confidence ≥ ${b.cash_application.auto_threshold}`}>

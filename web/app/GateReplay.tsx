@@ -44,7 +44,7 @@ export function GateReplay() {
           <input type="range" min={0.02} max={0.5} step={0.01} value={audit} onChange={(e) => setAudit(Number(e.target.value))} className="w-full accent-[#28543E]" aria-label="Spot-check rate" /></label>
         <div className="flex items-end gap-2">
           <button onClick={() => go()} disabled={pending} className="rounded-full bg-ink px-5 py-2 font-bold text-paper disabled:opacity-50">{pending ? "…" : "Play"}</button>
-          <button onClick={() => { const s = seed + 1; setSeed(s); go(s); }} disabled={pending} className="rounded-full border border-rule px-4 py-2 text-sm" title="Another roll of the dice">Roll again</button>
+          <button onClick={() => { const s = seed + 1; setSeed(s); go(s); }} disabled={pending} className="rounded-full border border-rule px-4 py-2 text-sm" title="Run the simulation with a new random seed">Run again</button>
         </div>
       </div>
 
@@ -72,7 +72,7 @@ export function GateReplay() {
           <text x={W - R} y={H - 10} fontSize={FS} textAnchor="end" fill="#6C6C6C">{r.days[n - 1]?.slice(0, 7)}</text>
         </svg>
       ) : <div className="mt-3 h-48 animate-pulse rounded-xl bg-paper" />}
-      {r ? <p className="mt-1 text-xs text-muted">Simulation on the main world: {r.lines.toLocaleString()} lines, {r.to_a_person.toLocaleString()} checked by a person, {r.caught} wrong ones caught there. The answer key plays the reviewer.</p> : null}
+      {r ? <p className="mt-1 text-xs text-muted">Simulation on the development ledger: {r.lines.toLocaleString()} lines, {r.to_a_person.toLocaleString()} checked by a person, {r.caught} wrong ones caught there. Verified labels stand in for the reviewer.</p> : null}
     </div>
   );
 }

@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { snapshotIds } from "@/lib/snapshotParams";
 import { api } from "@/lib/api";
 import { money, when } from "@/lib/format";
 import type { DeductionDetail } from "@/lib/types";
 import { Notice, PageHeader, Section, Status } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
+
+export async function generateStaticParams() {
+  return snapshotIds("deductions");
+}
 
 // Evidence values are shown exactly as stored; nested records (e.g. the
 // promotions a scan-back was checked against) render as their own rows.

@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { snapshotIds } from "@/lib/snapshotParams";
 import { api } from "@/lib/api";
 import type { DocumentView, ReviewQueueItem } from "@/lib/types";
 import { Notice, PageHeader } from "@/components/ui";
 import { Workbench } from "./Workbench";
 
 export const dynamic = "force-dynamic";
+
+export async function generateStaticParams() {
+  return snapshotIds("documents");
+}
 
 export default async function DocumentReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

@@ -63,7 +63,7 @@ function FreshProof({ fresh }: { fresh: Fresh }) {
   return (
     <div className="rounded-2xl border border-rule bg-sheet p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-lg font-bold">{fresh.seeds.length} unseen worlds, {fresh.runs} rolls each</div>
+        <div className="text-lg font-bold">{fresh.seeds.length} held-out simulated ledgers, {fresh.runs} runs each</div>
         <div className="flex flex-wrap gap-1" role="group" aria-label="Scenario">
           {SCEN.map(([key, label]) => (
             <button key={key} onClick={() => setK(key)} aria-pressed={k === key}
@@ -76,7 +76,7 @@ function FreshProof({ fresh }: { fresh: Fresh }) {
       <div className="mt-5 space-y-3" aria-live="polite">
         <Row label="Wrong postings, no gate" v={r.wrong_posted_no_gate.median} w={bar(r.wrong_posted_no_gate.median)} color="bg-[#B3402F]" />
         <Row label="With the gate (typical)" v={r.wrong_posted_with_gate.median} w={bar(r.wrong_posted_with_gate.median)} color="bg-forest" />
-        <Row label="With the gate (bad roll)" v={r.wrong_posted_with_gate.p90} w={bar(r.wrong_posted_with_gate.p90)} color="bg-[#609D7B]" />
+        <Row label="With the gate (worst 10% of runs)" v={r.wrong_posted_with_gate.p90} w={bar(r.wrong_posted_with_gate.p90)} color="bg-[#609D7B]" />
       </div>
       <div className="mt-4 text-sm text-muted">
         {Math.round(r.sent_to_a_person.median).toLocaleString()} of {fresh.lines.toLocaleString()} lines went to a person.

@@ -4,6 +4,8 @@
 
 :root {
   color-scheme: light;
+  --font-serif: "Fraunces";
+  --font-body: "Lato";
 }
 
 html {

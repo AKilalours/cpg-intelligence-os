@@ -15,3 +15,6 @@ build/
 dist/
 # Output of make real-run: local results, read back by the developer, never committed.
 local_runs/
+
+# Throwaway copy used to build the public static site
+.public-build/
