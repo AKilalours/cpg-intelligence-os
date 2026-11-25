@@ -15,11 +15,11 @@ concurrency:
   group: pages
   cancel-in-progress: true
 jobs:
-  deploy:
+  # Two jobs, as GitHub's own Pages workflow does: the deploy job starts only after the build job has finished
+  # uploading, so the artifact is always registered by the time deploy-pages looks for it. (In one job, run 6
+  # uploaded 12.8 MB and deploy-pages, starting 0 s later, reported "No artifacts named github-pages".)
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,8 +28,15 @@ jobs:
       - name: Build the public copy of the app
         run: bash scripts/build_public.sh public-snapshot /${{ github.event.repository.name }}
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: .public-build/out
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
