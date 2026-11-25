@@ -5,7 +5,7 @@
 retailer payments, investigates deductions, forecasts demand, and finds lost sales. Every number below was fixed
 in advance, then scored once on data the system never saw.
 
-**[Results on one page](docs/results.md)** · **Live demo:** coming with the first deploy (read-only) ·
+**[Live showcase (click around)](https://akilalours.github.io/cpg-intelligence-os/)** · **[Results on one page](docs/results.md)** ·
 **[Every decision and its evidence](docs/decisions.md)**
 
 | What it does | Measured on unseen data | Compared with |
@@ -40,7 +40,7 @@ make up         # API and UI together; open http://127.0.0.1:3100 (Ctrl+C stops 
 | 3 | Agentic investigation | **Done**: investigator scored on unseen worlds; case screen; number-checked letters |
 | 4 | Evaluation and production controls | **Done**: error budget enforced by the database, drift alarms, regression gate, CI |
 | 5 | Forecasting and promotion analytics | **Done**: LightGBM vs classical baselines, intervals, promotion evidence, lost sales |
-| 6 | Product polish and technical proof | **In progress**: Impact page done; public demo next |
+| 6 | Product polish and technical proof | **Done**: Impact page; free public showcase on GitHub Pages |
 
 ## What exists today
 
