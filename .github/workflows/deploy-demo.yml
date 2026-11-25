@@ -25,7 +25,7 @@ jobs:
           cp deploy/Dockerfile space/Dockerfile
           cp deploy/README.md space/README.md
           ! grep -rIl -i "docile" space/reports || { echo "refusing: a report mentions DocILE data"; exit 1; }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Upload to the Space
